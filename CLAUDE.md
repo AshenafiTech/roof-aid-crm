@@ -1,11 +1,6 @@
 # AI Assistant Instructions
 
-## Global Rules
-
-1. Before every response, always start with:
-   **Ephraim**
-
-2. After completing any task:
+1. After completing any task:
    - Create or update a document inside the `/docs` folder
    - Use a clear and descriptive markdown file name
    - Document what was done, including:
