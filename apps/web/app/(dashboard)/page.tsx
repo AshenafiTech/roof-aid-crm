@@ -1,44 +1,52 @@
-import { createClient } from "@/lib/supabase/server";
+import { PageHeader } from "@/components/shared/page-header";
+import { getCurrentUser } from "@/lib/auth/current-user";
+import {
+  getPipelineCounts,
+  getRecentActivity,
+  getTodayAppointmentsCount,
+  getUnreadNotificationCount,
+} from "@/lib/queries/dashboard";
+
+import { DashboardRealtime } from "./dashboard-realtime";
+import { MetricsCards } from "./metrics-cards";
+import { PipelineBreakdown } from "./pipeline-breakdown";
+import { RecentActivity } from "./recent-activity";
 
 export const metadata = {
   title: "Dashboard — Roof-Aid CRM",
 };
 
 export default async function DashboardPage() {
-  const supabase = await createClient();
+  const user = await getCurrentUser();
+  const scope = user.role === "rufero" ? { assignedTo: user.id } : {};
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const [pipeline, todayAppts, unread, activity] = await Promise.all([
+    getPipelineCounts(scope),
+    getTodayAppointmentsCount(scope),
+    getUnreadNotificationCount(user.id),
+    getRecentActivity(10, scope),
+  ]);
 
-  const role = user?.user_metadata?.role ?? "unknown";
+  const greeting = user.firstName
+    ? `Welcome back, ${user.firstName}`
+    : "Welcome back";
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-muted-foreground">
-          Welcome back. You are signed in as{" "}
-          <span className="font-medium text-foreground">{role}</span>.
-        </p>
+      <PageHeader
+        title={greeting}
+        description="Here's what's happening across your pipeline today."
+      />
+      <MetricsCards
+        pipeline={pipeline}
+        todayAppointments={todayAppts}
+        unreadNotifications={unread}
+      />
+      <div className="grid gap-6 lg:grid-cols-2">
+        <PipelineBreakdown pipeline={pipeline} />
+        <RecentActivity items={activity} />
       </div>
-
-      {/* Placeholder cards — will be replaced with real widgets */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {["Prospects", "Appointments", "Documents", "Notifications"].map(
-          (label) => (
-            <div
-              key={label}
-              className="rounded-lg border bg-card p-6 text-card-foreground"
-            >
-              <p className="text-sm font-medium text-muted-foreground">
-                {label}
-              </p>
-              <p className="mt-1 text-2xl font-bold">—</p>
-            </div>
-          )
-        )}
-      </div>
+      <DashboardRealtime tenantId={user.tenantId} userId={user.id} />
     </div>
   );
 }
