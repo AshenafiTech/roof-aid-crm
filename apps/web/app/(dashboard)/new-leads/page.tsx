@@ -1,4 +1,3 @@
-import { PageHeader } from "@/components/shared/page-header";
 import { ProspectListView } from "@/components/shared/prospect-list-view";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import {
@@ -9,10 +8,8 @@ import {
   type ProspectFilters,
 } from "@/lib/queries/prospects";
 
-import { RealtimeRefresh } from "./realtime-refresh";
-
 export const metadata = {
-  title: "Prospects — Roof-Aid CRM",
+  title: "New Leads — Roof-Aid CRM",
 };
 
 const PAGE_SIZE = 60;
@@ -20,14 +17,13 @@ const PAGE_SIZE = 60;
 type SearchParams = {
   city?: string;
   state?: string;
-  status?: string;
   q?: string;
   load?: string;
   priceMin?: string;
   priceMax?: string;
 };
 
-export default async function ProspectsPage({
+export default async function NewLeadsPage({
   searchParams,
 }: {
   searchParams: Promise<SearchParams>;
@@ -47,7 +43,7 @@ export default async function ProspectsPage({
   const filters: ProspectFilters = {
     city: params.city?.trim() || undefined,
     state: params.state?.trim() || undefined,
-    status: "prospects",
+    status: "new_leads",
     search: params.q?.trim() || undefined,
     offset: 0,
     pageSize: effectiveSize,
@@ -65,18 +61,15 @@ export default async function ProspectsPage({
   const rotatedRows = applyAntiCollisionRotation(rows);
 
   return (
-    <>
-      <ProspectListView
-        rows={rotatedRows}
-        total={total}
-        cities={cities}
-        states={states}
-        pageSize={PAGE_SIZE}
-        basePath="/prospects"
-        statusFilter="prospects"
-        showStatusFilter={false}
-      />
-      <RealtimeRefresh tenantId={user.tenantId} />
-    </>
+    <ProspectListView
+      rows={rotatedRows}
+      total={total}
+      cities={cities}
+      states={states}
+      pageSize={PAGE_SIZE}
+      basePath="/new-leads"
+      statusFilter="new_leads"
+      showStatusFilter={false}
+    />
   );
 }

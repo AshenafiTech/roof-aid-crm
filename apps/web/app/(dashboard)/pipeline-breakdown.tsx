@@ -1,6 +1,7 @@
 import { Card } from "@/components/ui/card";
 import {
   PROSPECT_STATUSES,
+  PROSPECT_STATUS_BAR_COLORS,
   PROSPECT_STATUS_LABELS,
 } from "@/lib/constants/prospect-status";
 import type { PipelineCount } from "@/lib/queries/dashboard";
@@ -28,7 +29,7 @@ export function PipelineBreakdown({
               </div>
               <div className="h-2 overflow-hidden rounded-full bg-muted">
                 <div
-                  className="h-full bg-primary transition-[width]"
+                  className={`h-full transition-[width] ${PROSPECT_STATUS_BAR_COLORS[status]}`}
                   style={{ width: `${pct}%` }}
                 />
               </div>

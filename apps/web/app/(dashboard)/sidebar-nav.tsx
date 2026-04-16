@@ -23,6 +23,7 @@ export function SidebarNav({ role, collapsed = false, onNavigate }: Props) {
   const pathname = usePathname();
   const items = filterNavForRole(NAV_ITEMS, role);
   const main = items.filter((i) => i.section === "main");
+  const tools = items.filter((i) => i.section === "tools");
   const admin = items.filter((i) => i.section === "admin");
 
   return (
@@ -34,6 +35,15 @@ export function SidebarNav({ role, collapsed = false, onNavigate }: Props) {
         collapsed={collapsed}
         onNavigate={onNavigate}
       />
+      {tools.length > 0 && (
+        <Section
+          label="Tools"
+          items={tools}
+          pathname={pathname}
+          collapsed={collapsed}
+          onNavigate={onNavigate}
+        />
+      )}
       {admin.length > 0 && (
         <Section
           label="Admin"

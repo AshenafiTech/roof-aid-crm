@@ -40,7 +40,7 @@ export function MetricsCards({
               <p className="text-sm text-muted-foreground">{label}</p>
               <p className="mt-1 text-2xl font-semibold">{value}</p>
             </div>
-            <Icon className="h-8 w-8 shrink-0 text-muted-foreground/40" />
+            <Icon className="h-8 w-8 shrink-0 text-primary/20" />
           </div>
         </Card>
       ))}

@@ -20,6 +20,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import type { AuthUser } from "@/lib/types/auth";
+import type { NotificationRow } from "@/lib/queries/notifications";
 
 import { signOut } from "./actions";
 import { NotificationBell } from "./notification-bell";
@@ -28,10 +29,12 @@ import { SidebarNav } from "./sidebar-nav";
 export function DashboardShell({
   user,
   unreadCount,
+  recentNotifications,
   children,
 }: {
   user: AuthUser;
   unreadCount: number;
+  recentNotifications: NotificationRow[];
   children: React.ReactNode;
 }) {
   const [isPending, startTransition] = useTransition();
@@ -119,7 +122,7 @@ export function DashboardShell({
             </div>
 
             <div className="flex items-center gap-3">
-              <NotificationBell userId={user.id} initialCount={unreadCount} />
+              <NotificationBell userId={user.id} initialCount={unreadCount} initialNotifications={recentNotifications} />
               <span className="hidden text-sm text-muted-foreground md:inline-block">
                 {displayName}
               </span>

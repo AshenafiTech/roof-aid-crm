@@ -14,18 +14,21 @@ export type ProspectListItem = ProspectRow & {
 
 export type ProspectFilters = {
   city?: string;
+  state?: string;
   status?: ProspectStatus;
   search?: string;
   assignedTo?: string;
+  priceMin?: number;
+  priceMax?: number;
   page?: number;
   pageSize?: number;
+  offset?: number;
 };
 
 export async function listProspects(filters: ProspectFilters) {
   const supabase = await createClient();
-  const page = filters.page ?? 1;
   const size = filters.pageSize ?? 60;
-  const from = (page - 1) * size;
+  const from = filters.offset ?? 0;
   const to = from + size - 1;
 
   let query = supabase
@@ -38,9 +41,12 @@ export async function listProspects(filters: ProspectFilters) {
     .range(from, to);
 
   if (filters.city) query = query.eq("city", filters.city);
+  if (filters.state) query = query.eq("state", filters.state);
   if (filters.status) query = query.eq("status", filters.status);
   if (filters.search) query = query.ilike("name", `%${filters.search}%`);
   if (filters.assignedTo) query = query.eq("assigned_to", filters.assignedTo);
+  if (filters.priceMin != null) query = query.gte("home_value", filters.priceMin);
+  if (filters.priceMax != null) query = query.lte("home_value", filters.priceMax);
 
   const { data, error, count } = await query;
   if (error) throw error;
@@ -48,9 +54,13 @@ export async function listProspects(filters: ProspectFilters) {
   return {
     rows: (data ?? []) as unknown as ProspectListItem[],
     total: count ?? 0,
-    page,
-    size,
   };
+}
+
+export function applyAntiCollisionRotation<T>(rows: T[]): T[] {
+  if (rows.length <= 1) return rows;
+  const offset = new Date().getSeconds() % rows.length;
+  return [...rows.slice(offset), ...rows.slice(0, offset)];
 }
 
 export async function listCities(): Promise<string[]> {
@@ -63,6 +73,20 @@ export async function listCities(): Promise<string[]> {
   const set = new Set<string>();
   for (const row of data ?? []) {
     if (row.city) set.add(row.city);
+  }
+  return Array.from(set).sort();
+}
+
+export async function listStates(): Promise<string[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("prospects")
+    .select("state")
+    .not("state", "is", null);
+  if (error) throw error;
+  const set = new Set<string>();
+  for (const row of data ?? []) {
+    if (row.state) set.add(row.state);
   }
   return Array.from(set).sort();
 }

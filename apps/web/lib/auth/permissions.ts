@@ -14,6 +14,10 @@ export function canEditProspect(role: UserRole): boolean {
   );
 }
 
+export function canManageUsers(role: UserRole): boolean {
+  return role === "owner" || role === "super_admin";
+}
+
 export function canTransition(
   role: UserRole,
   from: ProspectStatus | null,

@@ -19,30 +19,39 @@ export const PROSPECT_STATUS_LABELS: Record<ProspectStatus, string> = {
 };
 
 export const PROSPECT_STATUS_COLORS: Record<ProspectStatus, string> = {
-  new_leads: "bg-blue-100 text-blue-800 border-blue-200",
-  prospects: "bg-purple-100 text-purple-800 border-purple-200",
-  contacted: "bg-yellow-100 text-yellow-800 border-yellow-200",
-  scheduled: "bg-orange-100 text-orange-800 border-orange-200",
-  closed_customer: "bg-green-100 text-green-800 border-green-200",
-  not_viable: "bg-gray-100 text-gray-800 border-gray-200",
+  new_leads: "bg-blue-50 text-blue-700 border-blue-200",
+  prospects: "bg-blue-50 text-blue-700 border-blue-200",
+  contacted: "bg-sky-50 text-sky-700 border-sky-200",
+  scheduled: "bg-sky-50 text-sky-700 border-sky-200",
+  closed_customer: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  not_viable: "bg-gray-50 text-gray-500 border-gray-200",
 };
 
 export const PROSPECT_STATUS_ACCENTS: Record<ProspectStatus, string> = {
-  new_leads: "border-l-blue-500",
-  prospects: "border-l-purple-500",
-  contacted: "border-l-yellow-500",
-  scheduled: "border-l-orange-500",
-  closed_customer: "border-l-green-600",
-  not_viable: "border-l-gray-400",
+  new_leads: "border-l-blue-400",
+  prospects: "border-l-blue-400",
+  contacted: "border-l-sky-400",
+  scheduled: "border-l-sky-400",
+  closed_customer: "border-l-emerald-500",
+  not_viable: "border-l-gray-300",
 };
 
 export const PROSPECT_STATUS_ROW_BG: Record<ProspectStatus, string> = {
   new_leads: "",
   prospects: "",
-  contacted: "bg-yellow-50/40 hover:bg-yellow-50",
-  scheduled: "bg-orange-50/40 hover:bg-orange-50",
-  closed_customer: "bg-green-50/40 hover:bg-green-50",
+  contacted: "",
+  scheduled: "",
+  closed_customer: "",
   not_viable: "bg-muted/30 text-muted-foreground",
+};
+
+export const PROSPECT_STATUS_BAR_COLORS: Record<ProspectStatus, string> = {
+  new_leads: "bg-blue-500",
+  prospects: "bg-blue-400",
+  contacted: "bg-sky-500",
+  scheduled: "bg-sky-400",
+  closed_customer: "bg-emerald-500",
+  not_viable: "bg-gray-300",
 };
 
 export function isProspectStatus(value: unknown): value is ProspectStatus {

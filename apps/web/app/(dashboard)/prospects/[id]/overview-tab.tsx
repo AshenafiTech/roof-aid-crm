@@ -12,6 +12,7 @@ import { canEditProspect } from "@/lib/auth/permissions";
 import type { AuthUser } from "@/lib/types/auth";
 
 import { updateProspect } from "./actions";
+import { DncToggle } from "./dnc-toggle";
 import type { ProspectWithAssignee } from "./types";
 
 function Field({
@@ -56,49 +57,49 @@ export function OverviewTab({
 
   if (!editing) {
     return (
-      <Card className="p-6">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Overview</h2>
-          {canEdit && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setEditing(true)}
-            >
-              <Pencil className="mr-1 h-4 w-4" /> Edit
-            </Button>
-          )}
-        </div>
-        <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <Field label="Name" value={prospect.name} />
-          <Field label="Phone" value={firstPhone(prospect.phones) || "—"} />
-          <Field label="Email" value={prospect.email} />
-          <Field label="Address" value={prospect.address} />
-          <Field
-            label="City / State"
-            value={
-              [prospect.city, prospect.state].filter(Boolean).join(", ") ||
-              "—"
-            }
-          />
-          <Field label="ZIP" value={prospect.zip} />
-          <Field
-            label="Hail size"
-            value={
-              prospect.hail_size != null ? `${prospect.hail_size}"` : "—"
-            }
-          />
-          <Field
-            label="Home value"
-            value={formatCurrency(prospect.home_value)}
-          />
-          <Field label="Source" value={prospect.source} />
-          <Field
-            label="Do not call"
-            value={prospect.do_not_call ? "Yes" : "No"}
-          />
-        </dl>
-      </Card>
+      <div className="space-y-4">
+        <Card className="p-6">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-lg font-semibold">Overview</h2>
+            {canEdit && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setEditing(true)}
+              >
+                <Pencil className="mr-1 h-4 w-4" /> Edit
+              </Button>
+            )}
+          </div>
+          <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <Field label="Name" value={prospect.name} />
+            <Field label="Phone" value={firstPhone(prospect.phones) || "—"} />
+            <Field label="Email" value={prospect.email} />
+            <Field label="Address" value={prospect.address} />
+            <Field
+              label="City / State"
+              value={
+                [prospect.city, prospect.state].filter(Boolean).join(", ") ||
+                "—"
+              }
+            />
+            <Field label="ZIP" value={prospect.zip} />
+            <Field
+              label="Hail size"
+              value={
+                prospect.hail_size != null ? `${prospect.hail_size}"` : "—"
+              }
+            />
+            <Field
+              label="Home value"
+              value={formatCurrency(prospect.home_value)}
+            />
+            <Field label="Source" value={prospect.source} />
+            <Field label="Type" value={prospect.tipo} />
+          </dl>
+        </Card>
+        <DncToggle prospect={prospect} />
+      </div>
     );
   }
 

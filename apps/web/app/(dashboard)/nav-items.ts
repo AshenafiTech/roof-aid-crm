@@ -1,10 +1,14 @@
 import {
   BarChart3,
+  Bell,
   Calendar,
   FileText,
   LayoutDashboard,
+  Mail,
   MessageSquare,
+  Phone,
   Settings,
+  Sparkles,
   UserCog,
   Users,
   type LucideIcon,
@@ -17,7 +21,7 @@ export type NavItem = {
   href: string;
   icon: LucideIcon;
   roles: UserRole[];
-  section: "main" | "admin";
+  section: "main" | "tools" | "admin";
 };
 
 export const NAV_ITEMS: NavItem[] = [
@@ -25,6 +29,13 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Dashboard",
     href: "/",
     icon: LayoutDashboard,
+    roles: ["owner", "admin", "telefonista", "rufero"],
+    section: "main",
+  },
+  {
+    label: "New Leads",
+    href: "/new-leads",
+    icon: Sparkles,
     roles: ["owner", "admin", "telefonista", "rufero"],
     section: "main",
   },
@@ -50,11 +61,33 @@ export const NAV_ITEMS: NavItem[] = [
     section: "main",
   },
   {
-    label: "Communications",
-    href: "/communications",
+    label: "Notifications",
+    href: "/notifications",
+    icon: Bell,
+    roles: ["owner", "admin", "telefonista", "rufero"],
+    section: "main",
+  },
+
+  {
+    label: "Phone",
+    href: "/phone",
+    icon: Phone,
+    roles: ["owner", "admin", "telefonista"],
+    section: "tools",
+  },
+  {
+    label: "SMS",
+    href: "/sms",
     icon: MessageSquare,
     roles: ["owner", "admin", "telefonista"],
-    section: "main",
+    section: "tools",
+  },
+  {
+    label: "Quick Email",
+    href: "/email",
+    icon: Mail,
+    roles: ["owner", "admin", "telefonista"],
+    section: "tools",
   },
 
   {
