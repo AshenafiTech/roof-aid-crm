@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
@@ -538,7 +538,12 @@ export function ProspectListView({
         {/* Right panel — map view: map + detail overlay */}
         {viewMode === "map" && (
           <div className="hidden sm:flex flex-1 flex-col relative">
-            <ProspectMap prospects={rows} focused={selected} className="absolute inset-0" />
+            <ProspectMap
+              prospects={rows}
+              focused={selected}
+              onSelect={(id) => setSelectedId(id)}
+              className="absolute inset-0"
+            />
 
             {selected && (
               <div className="absolute bottom-0 inset-x-0 bg-background/95 backdrop-blur-sm border-t shadow-2xl max-h-[50%] overflow-y-auto">
@@ -779,22 +784,38 @@ function MapCardItem({
   const status = isProspectStatus(prospect.status) ? prospect.status : null;
   const accent = status ? PROSPECT_STATUS_ACCENTS[status] : "border-l-transparent";
   const location = [prospect.city, prospect.state].filter(Boolean).join(", ");
-  const coords = parseCoordinates(prospect.coordinates);
+  const ref = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (isSelected) {
+      ref.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+  }, [isSelected]);
 
   return (
     <button
+      ref={ref}
       type="button"
       onClick={onSelect}
+      aria-pressed={isSelected}
       className={cn(
-        "w-full text-left border-l-4 px-3 py-2 transition-all",
-        accent,
-        isSelected ? "bg-accent shadow-sm" : "hover:bg-muted/40",
+        "relative w-full text-left border-l-4 px-3 py-2 transition-all",
+        isSelected
+          ? "border-l-primary bg-primary/10 shadow-[inset_0_0_0_1px_var(--primary)] z-10"
+          : cn(accent, "hover:bg-muted/40"),
       )}
     >
+      {isSelected && (
+        <span className="absolute right-2 top-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground shadow">
+          <MapPin className="h-3 w-3" />
+        </span>
+      )}
       <div className="flex items-center gap-2">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <p className="truncate text-sm font-medium">{prospect.name}</p>
+            <p className={cn("truncate text-sm", isSelected ? "font-semibold text-primary" : "font-medium")}>
+              {prospect.name}
+            </p>
             {prospect.do_not_call && (
               <span className="shrink-0 flex items-center gap-0.5 rounded bg-destructive/10 px-1.5 py-0.5 text-[10px] font-medium text-destructive">
                 <PhoneOff className="h-2.5 w-2.5" /> DNC
@@ -806,7 +827,7 @@ function MapCardItem({
             {prospect.phones?.[0] && <span className="shrink-0">{prospect.phones[0]}</span>}
           </div>
         </div>
-        <div className="flex flex-col items-end gap-1 shrink-0">
+        <div className={cn("flex flex-col items-end gap-1 shrink-0", isSelected && "pr-6")}>
           <StatusBadge status={prospect.status} className="text-[10px] px-1.5 py-0" />
           {prospect.home_value ? (
             <span className="text-[10px] text-muted-foreground font-medium">{formatCurrency(prospect.home_value)}</span>
