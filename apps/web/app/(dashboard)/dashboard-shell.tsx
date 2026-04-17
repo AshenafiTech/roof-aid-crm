@@ -18,6 +18,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
 import type { AuthUser } from "@/lib/types/auth";
 import type { NotificationRow } from "@/lib/queries/notifications";
@@ -83,6 +84,14 @@ export function DashboardShell({
         <div className="flex-1 overflow-hidden">
           <SidebarNav role={user.role} collapsed={collapsed} />
         </div>
+        <div
+          className={cn(
+            "border-t p-2",
+            collapsed ? "flex justify-center" : "",
+          )}
+        >
+          <ThemeToggle collapsed={collapsed} />
+        </div>
       </aside>
 
       {/* Content column */}
@@ -107,10 +116,17 @@ export function DashboardShell({
                   <SheetHeader className="border-b p-4">
                     <SheetTitle className="text-left">Roof-Aid</SheetTitle>
                   </SheetHeader>
-                  <SidebarNav
-                    role={user.role}
-                    onNavigate={() => setMobileOpen(false)}
-                  />
+                  <div className="flex h-[calc(100%-3.75rem)] flex-col">
+                    <div className="flex-1 overflow-y-auto">
+                      <SidebarNav
+                        role={user.role}
+                        onNavigate={() => setMobileOpen(false)}
+                      />
+                    </div>
+                    <div className="border-t p-2">
+                      <ThemeToggle />
+                    </div>
+                  </div>
                 </SheetContent>
               </Sheet>
               <span className="text-lg font-semibold tracking-tight md:hidden">
