@@ -179,6 +179,7 @@ export function ProspectListView({
     return "map";
   });
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [overlayHidden, setOverlayHidden] = useState(false);
   const [showPriceFilter, setShowPriceFilter] = useState(false);
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
   const [bulkPending, startBulk] = useTransition();
@@ -253,6 +254,7 @@ export function ProspectListView({
 
   function toggleSelect(id: string) {
     setSelectedId((prev) => (prev === id ? null : id));
+    setOverlayHidden(false);
   }
 
   return (
@@ -451,7 +453,7 @@ export function ProspectListView({
               </p>
             )}
             {selectedId && !someChecked && (
-              <Button variant="ghost" size="sm" className="h-6 text-xs px-2" onClick={() => setSelectedId(null)}>
+              <Button variant="ghost" size="sm" className="h-6 text-xs px-2" onClick={() => { setSelectedId(null); setOverlayHidden(false); }}>
                 Clear selection
               </Button>
             )}
@@ -541,14 +543,27 @@ export function ProspectListView({
             <ProspectMap
               prospects={rows}
               focused={selected}
-              onSelect={(id) => setSelectedId(id)}
+              onSelect={(id) => {
+                setSelectedId(id);
+                setOverlayHidden(false);
+              }}
               className="absolute inset-0"
             />
 
-            {selected && (
+            {selected && !overlayHidden && (
               <div className="absolute bottom-0 inset-x-0 bg-background/95 backdrop-blur-sm border-t shadow-2xl max-h-[50%] overflow-y-auto">
-                <ProspectDetailPanel prospect={selected} onClose={() => setSelectedId(null)} compact />
+                <ProspectDetailPanel prospect={selected} onClose={() => setOverlayHidden(true)} compact />
               </div>
+            )}
+            {selected && overlayHidden && (
+              <Button
+                size="sm"
+                variant="secondary"
+                className="absolute bottom-3 left-1/2 -translate-x-1/2 shadow-lg"
+                onClick={() => setOverlayHidden(false)}
+              >
+                Show details
+              </Button>
             )}
           </div>
         )}
