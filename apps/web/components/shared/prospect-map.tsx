@@ -47,7 +47,7 @@ export function ProspectMap({
   className?: string;
 }) {
   return (
-    <div className={className}>
+    <div className={className} style={{ isolation: "isolate", zIndex: 0 }}>
       <LeafletMap prospects={prospects} focused={focused ?? null} onSelect={onSelect} />
     </div>
   );

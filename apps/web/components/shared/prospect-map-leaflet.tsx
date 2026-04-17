@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import L from "leaflet";
-import { MapContainer, Marker, Popup, TileLayer, useMap } from "react-leaflet";
+import { MapContainer, Marker, TileLayer, Tooltip, useMap } from "react-leaflet";
 
 import "leaflet/dist/leaflet.css";
 
@@ -139,7 +139,7 @@ export default function ProspectMapLeaflet({
               click: () => onSelect?.(id),
             }}
           >
-            <Popup>
+            <Tooltip permanent direction="top" offset={[0, -28]} opacity={1}>
               <div className="text-xs">
                 <div className="font-semibold text-sm">{prospect.name}</div>
                 {prospect.address && <div className="text-muted-foreground">{prospect.address}</div>}
@@ -149,7 +149,7 @@ export default function ProspectMapLeaflet({
                     : prospect.status}
                 </div>
               </div>
-            </Popup>
+            </Tooltip>
           </Marker>
         );
       })}
