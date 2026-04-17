@@ -7,6 +7,7 @@ import 'features/auth/presentation/bloc/auth_bloc.dart';
 import 'features/auth/presentation/bloc/auth_event.dart';
 import 'features/auth/presentation/bloc/auth_state.dart';
 import 'features/auth/presentation/pages/login_page.dart';
+import 'features/prospects/presentation/pages/prospects_page.dart';
 
 class RoofAidApp extends StatelessWidget {
   const RoofAidApp({super.key});
@@ -72,7 +73,7 @@ class _AppViewState extends State<_AppView> {
         ),
         GoRoute(
           path: '/dashboard',
-          builder: (context, state) => const _DashboardPlaceholder(),
+          builder: (context, state) => const ProspectsPage(),
         ),
       ],
     );
@@ -94,51 +95,6 @@ class _AppViewState extends State<_AppView> {
         ),
       ),
       routerConfig: _router,
-    );
-  }
-}
-
-/// Temporary dashboard screen — will be replaced with real implementation.
-class _DashboardPlaceholder extends StatelessWidget {
-  const _DashboardPlaceholder();
-
-  @override
-  Widget build(BuildContext context) {
-    final user = context.read<AuthBloc>().state;
-    final theme = Theme.of(context);
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Roof-Aid'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () =>
-                context.read<AuthBloc>().add(const AuthSignOutRequested()),
-          ),
-        ],
-      ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.check_circle, size: 64, color: theme.colorScheme.primary),
-            const SizedBox(height: 16),
-            Text(
-              'Welcome to Roof-Aid',
-              style: theme.textTheme.headlineSmall,
-            ),
-            const SizedBox(height: 8),
-            if (user is AuthAuthenticated)
-              Text(
-                'Signed in as ${user.user.role}',
-                style: theme.textTheme.bodyLarge?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-          ],
-        ),
-      ),
     );
   }
 }
