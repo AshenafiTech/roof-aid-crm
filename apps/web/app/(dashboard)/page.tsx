@@ -1,44 +1,92 @@
-import { createClient } from "@/lib/supabase/server";
+import Link from "next/link";
+import { ArrowRight, Upload } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { getCurrentUser } from "@/lib/auth/current-user";
+import {
+  getPipelineCounts,
+  getRecentActivity,
+  getTodayAppointmentsCount,
+  getUnreadNotificationCount,
+} from "@/lib/queries/dashboard";
+import { listAppointments } from "@/lib/queries/appointments";
+
+import { DashboardRealtime } from "./dashboard-realtime";
+import { MetricsCards } from "./metrics-cards";
+import { PipelineBreakdown } from "./pipeline-breakdown";
+import { RecentActivity } from "./recent-activity";
+import { UpcomingAppointments } from "./upcoming-appointments";
 
 export const metadata = {
   title: "Dashboard — Roof-Aid CRM",
 };
 
 export default async function DashboardPage() {
-  const supabase = await createClient();
+  const user = await getCurrentUser();
+  const scope = user.role === "rufero" ? { assignedTo: user.id } : {};
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const [pipeline, todayAppts, unread, activity, appointments] =
+    await Promise.all([
+      getPipelineCounts(scope),
+      getTodayAppointmentsCount(scope),
+      getUnreadNotificationCount(user.id),
+      getRecentActivity(10, scope),
+      listAppointments({
+        timeRange: "upcoming",
+        assignedTo: scope.assignedTo,
+        pageSize: 5,
+      }),
+    ]);
 
-  const role = user?.user_metadata?.role ?? "unknown";
+  const greeting = user.firstName
+    ? `Welcome back, ${user.firstName}`
+    : "Welcome back";
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-muted-foreground">
-          Welcome back. You are signed in as{" "}
-          <span className="font-medium text-foreground">{role}</span>.
-        </p>
+      <div className="flex items-end justify-between gap-4">
+        <div>
+          <h1 className="text-lg font-semibold">{greeting}</h1>
+          <p className="text-sm text-muted-foreground">
+            Here&apos;s what&apos;s happening across your pipeline today.
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button asChild variant="outline" size="sm">
+            <Link href="/new-leads/import">
+              <Upload className="mr-1.5 h-3.5 w-3.5" />
+              Import Excel
+            </Link>
+          </Button>
+          <Button asChild variant="outline" size="sm">
+            <Link href="/new-leads">
+              New Leads
+              <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+            </Link>
+          </Button>
+          <Button asChild size="sm">
+            <Link href="/prospects">
+              Prospects
+              <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+            </Link>
+          </Button>
+        </div>
       </div>
 
-      {/* Placeholder cards — will be replaced with real widgets */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {["Prospects", "Appointments", "Documents", "Notifications"].map(
-          (label) => (
-            <div
-              key={label}
-              className="rounded-lg border bg-card p-6 text-card-foreground"
-            >
-              <p className="text-sm font-medium text-muted-foreground">
-                {label}
-              </p>
-              <p className="mt-1 text-2xl font-bold">—</p>
-            </div>
-          )
-        )}
+      <MetricsCards
+        pipeline={pipeline}
+        todayAppointments={todayAppts}
+        unreadNotifications={unread}
+      />
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <PipelineBreakdown pipeline={pipeline} />
+        <UpcomingAppointments appointments={appointments.appointments} />
       </div>
+
+      <RecentActivity items={activity} />
+
+      <DashboardRealtime tenantId={user.tenantId} userId={user.id} />
     </div>
   );
 }
