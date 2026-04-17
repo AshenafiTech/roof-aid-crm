@@ -3,11 +3,12 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
 import 'core/di/injection_container.dart';
+import 'core/theme/app_theme.dart';
 import 'features/auth/presentation/bloc/auth_bloc.dart';
 import 'features/auth/presentation/bloc/auth_event.dart';
 import 'features/auth/presentation/bloc/auth_state.dart';
 import 'features/auth/presentation/pages/login_page.dart';
-import 'features/prospects/presentation/pages/prospects_page.dart';
+import 'features/shell/main_shell.dart';
 
 class RoofAidApp extends StatelessWidget {
   const RoofAidApp({super.key});
@@ -51,17 +52,13 @@ class _AppViewState extends State<_AppView> {
         final authState = context.read<AuthBloc>().state;
         final isOnLogin = state.matchedLocation == '/login';
 
-        // Still loading — don't redirect
         if (authState is AuthInitial || authState is AuthLoading) {
           return null;
         }
 
         final isAuthenticated = authState is AuthAuthenticated;
 
-        // Not logged in and not on login → go to login
         if (!isAuthenticated && !isOnLogin) return '/login';
-
-        // Logged in and on login → go to dashboard
         if (isAuthenticated && isOnLogin) return '/dashboard';
 
         return null;
@@ -73,7 +70,7 @@ class _AppViewState extends State<_AppView> {
         ),
         GoRoute(
           path: '/dashboard',
-          builder: (context, state) => const ProspectsPage(),
+          builder: (context, state) => const MainShell(),
         ),
       ],
     );
@@ -84,16 +81,7 @@ class _AppViewState extends State<_AppView> {
     return MaterialApp.router(
       title: 'Roof-Aid CRM',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorSchemeSeed: Colors.blue,
-        useMaterial3: true,
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-      ),
+      theme: AppTheme.light,
       routerConfig: _router,
     );
   }

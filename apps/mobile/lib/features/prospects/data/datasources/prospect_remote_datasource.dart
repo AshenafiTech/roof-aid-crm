@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../core/error/exceptions.dart';
@@ -8,7 +10,8 @@ abstract class ProspectRemoteDatasource {
   Future<List<ProspectModel>> fetchAssigned();
 
   /// Realtime stream of the current user's assigned prospects.
-  /// Emits the initial snapshot and updates on every DB change.
+  /// On every DB change, re-fetches the full list so filters are always accurate.
+  /// Also polls every 10 seconds to catch unassignment events blocked by RLS.
   Stream<List<ProspectModel>> watchAssigned();
 }
 
@@ -45,24 +48,65 @@ class ProspectRemoteDatasourceImpl implements ProspectRemoteDatasource {
   Stream<List<ProspectModel>> watchAssigned() {
     final userId = client.auth.currentUser?.id;
     if (userId == null) {
-      // No session — emit an empty list and complete. The BLoC's auth flow
-      // will re-subscribe once the user signs back in.
       return Stream.value(const []);
     }
 
-    // Supabase `.stream()` yields the initial snapshot + every realtime
-    // change as a single `List<Map>` stream. Sort locally because the
-    // stream helper only supports ordering by the primary key.
-    return client
-        .from('prospects')
-        .stream(primaryKey: const ['id'])
-        .eq('assigned_to', userId)
-        .map((rows) {
-      final models = rows
-          .map((r) => ProspectModel.fromMap(r))
-          .toList(growable: false)
-        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-      return models;
+    final controller = StreamController<List<ProspectModel>>();
+    List<ProspectModel> lastEmitted = [];
+
+    Future<void> refetch() async {
+      try {
+        final prospects = await fetchAssigned();
+        if (!controller.isClosed) {
+          lastEmitted = prospects;
+          controller.add(prospects);
+        }
+      } catch (e) {
+        if (!controller.isClosed) controller.addError(e);
+      }
+    }
+
+    // Fetch initial data
+    refetch();
+
+    // Listen for realtime changes — catches new assignments
+    final channel = client
+        .channel('prospects_realtime')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'prospects',
+          callback: (_) => refetch(),
+        )
+        .subscribe();
+
+    // Poll every 5 seconds to catch unassignments.
+    // When a prospect is unassigned from this rufero, RLS blocks the
+    // realtime event (the rufero can no longer read that row). Polling
+    // is the only reliable way to detect removals.
+    final timer = Timer.periodic(const Duration(seconds: 5), (_) async {
+      try {
+        final fresh = await fetchAssigned();
+        if (controller.isClosed) return;
+
+        // Compare IDs to detect any change (not just count)
+        final freshIds = fresh.map((p) => p.id).toSet();
+        final lastIds = lastEmitted.map((p) => p.id).toSet();
+
+        if (freshIds.length != lastIds.length || !freshIds.containsAll(lastIds)) {
+          lastEmitted = fresh;
+          controller.add(fresh);
+        }
+      } catch (_) {
+        // Swallow polling errors — realtime + pull-to-refresh still work
+      }
     });
+
+    controller.onCancel = () {
+      timer.cancel();
+      client.removeChannel(channel);
+    };
+
+    return controller.stream;
   }
 }
