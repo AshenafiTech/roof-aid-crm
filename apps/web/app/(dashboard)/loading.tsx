@@ -13,16 +13,21 @@ export default function DashboardLoading() {
           <Skeleton className="h-8 w-24" />
         </div>
       </div>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+
+      <div className="grid gap-4 lg:grid-cols-12">
+        <div className="flex flex-col gap-4 lg:col-span-3">
+          <Skeleton className="h-48 w-full rounded-xl" />
+          <Skeleton className="h-28 w-full rounded-xl" />
+        </div>
+        <Skeleton className="h-[340px] w-full rounded-xl lg:col-span-3" />
+        <Skeleton className="h-[340px] w-full rounded-xl lg:col-span-6" />
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {Array.from({ length: 4 }).map((_, i) => (
-          <Skeleton key={i} className="h-[76px] w-full rounded-xl" />
+          <Skeleton key={i} className="h-[280px] w-full rounded-xl" />
         ))}
       </div>
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Skeleton className="h-72 w-full rounded-xl" />
-        <Skeleton className="h-72 w-full rounded-xl" />
-      </div>
-      <Skeleton className="h-64 w-full rounded-xl" />
     </div>
   );
 }
