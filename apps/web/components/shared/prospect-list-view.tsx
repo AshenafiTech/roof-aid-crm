@@ -171,13 +171,15 @@ export function ProspectListView({
   const router = useRouter();
   const sp = useSearchParams();
   const [pending, start] = useTransition();
-  const [viewMode, setViewMode] = useState<"map" | "list">(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem(VIEW_MODE_KEY);
-      if (saved === "map" || saved === "list") return saved;
-    }
-    return "map";
-  });
+  // Map view temporarily disabled — always start in list mode. Restore when re-enabling map.
+  const [viewMode, setViewMode] = useState<"map" | "list">("list");
+  // const [viewMode, setViewMode] = useState<"map" | "list">(() => {
+  //   if (typeof window !== "undefined") {
+  //     const saved = localStorage.getItem(VIEW_MODE_KEY);
+  //     if (saved === "map" || saved === "list") return saved;
+  //   }
+  //   return "map";
+  // });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [overlayHidden, setOverlayHidden] = useState(false);
   const [showPriceFilter, setShowPriceFilter] = useState(false);
@@ -344,14 +346,15 @@ export function ProspectListView({
                 <X className="mr-1 h-3.5 w-3.5" /> Clear
               </Button>
             )}
-            <div className="flex rounded-md border">
+            {/* Map/List toggle — temporarily disabled while map view is off. Map is only intended for screens larger than mobile (hidden sm:flex). Uncomment when re-enabling. */}
+            {/* <div className="hidden sm:flex rounded-md border">
               <Button variant={viewMode === "map" ? "default" : "ghost"} size="sm" className="h-8 rounded-r-none px-3" onClick={() => persistViewMode("map")}>
                 <Map className="mr-1 h-3.5 w-3.5" /> Map
               </Button>
               <Button variant={viewMode === "list" ? "default" : "ghost"} size="sm" className="h-8 rounded-l-none px-3" onClick={() => persistViewMode("list")}>
                 <LayoutList className="mr-1 h-3.5 w-3.5" /> List
               </Button>
-            </div>
+            </div> */}
             {basePath === "/new-leads" && (
               <Button asChild variant="outline" size="sm" className="h-8">
                 <Link href="/new-leads/import">
