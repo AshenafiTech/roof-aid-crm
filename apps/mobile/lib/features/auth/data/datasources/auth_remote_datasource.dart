@@ -4,10 +4,7 @@ import '../../../../core/error/exceptions.dart';
 import '../models/user_model.dart';
 
 abstract class AuthRemoteDatasource {
-  Future<UserModel> signIn({
-    required String email,
-    required String password,
-  });
+  Future<UserModel> signIn({required String email, required String password});
 
   Future<void> signOut();
 
@@ -64,7 +61,9 @@ class AuthRemoteDatasourceImpl implements AuthRemoteDatasource {
     try {
       final data = await client
           .from('users')
-          .select('id, tenant_id, role, email, first_name, last_name, phone, is_active')
+          .select(
+            'id, tenant_id, role, email, first_name, last_name, phone, is_active',
+          )
           .eq('id', userId)
           .maybeSingle();
 

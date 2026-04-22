@@ -93,7 +93,8 @@ class ProspectRemoteDatasourceImpl implements ProspectRemoteDatasource {
         final freshIds = fresh.map((p) => p.id).toSet();
         final lastIds = lastEmitted.map((p) => p.id).toSet();
 
-        if (freshIds.length != lastIds.length || !freshIds.containsAll(lastIds)) {
+        if (freshIds.length != lastIds.length ||
+            !freshIds.containsAll(lastIds)) {
           lastEmitted = fresh;
           controller.add(fresh);
         }

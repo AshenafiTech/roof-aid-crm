@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../domain/entities/prospect_entity.dart';
 import '../bloc/prospects_bloc.dart';
 import '../bloc/prospects_event.dart';
 import '../bloc/prospects_state.dart';
@@ -16,13 +18,14 @@ class ProspectsBody extends StatelessWidget {
     return BlocBuilder<ProspectsBloc, ProspectsState>(
       builder: (context, state) {
         return switch (state) {
-          ProspectsInitial() ||
-          ProspectsLoading() =>
-            const Center(child: CircularProgressIndicator()),
+          ProspectsInitial() || ProspectsLoading() => const Center(
+            child: CircularProgressIndicator(),
+          ),
           ProspectsError(:final message) => _ErrorView(message: message),
-          ProspectsLoaded(:final prospects) => prospects.isEmpty
-              ? const _EmptyView()
-              : _ProspectsList(prospects: prospects),
+          ProspectsLoaded(:final prospects) =>
+            prospects.isEmpty
+                ? const _EmptyView()
+                : _ProspectsList(prospects: prospects),
         };
       },
     );
@@ -30,7 +33,7 @@ class ProspectsBody extends StatelessWidget {
 }
 
 class _ProspectsList extends StatelessWidget {
-  final List prospects;
+  final List<ProspectEntity> prospects;
 
   const _ProspectsList({required this.prospects});
 
@@ -48,7 +51,13 @@ class _ProspectsList extends StatelessWidget {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.symmetric(vertical: 8),
         itemCount: prospects.length,
-        itemBuilder: (_, i) => ProspectListTile(prospect: prospects[i]),
+        itemBuilder: (_, i) {
+          final p = prospects[i];
+          return ProspectListTile(
+            prospect: p,
+            onTap: () => context.push('/prospects/${p.id}', extra: p),
+          );
+        },
       ),
     );
   }
@@ -141,9 +150,9 @@ class _ErrorView extends StatelessWidget {
             ),
             const SizedBox(height: 24),
             FilledButton.icon(
-              onPressed: () => context
-                  .read<ProspectsBloc>()
-                  .add(const ProspectsLoadRequested()),
+              onPressed: () => context.read<ProspectsBloc>().add(
+                const ProspectsLoadRequested(),
+              ),
               icon: const Icon(Icons.refresh, size: 18),
               label: const Text('Retry'),
             ),

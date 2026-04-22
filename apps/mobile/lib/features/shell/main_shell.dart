@@ -2,13 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../core/di/injection_container.dart';
+import '../../core/theme/theme_controller.dart';
 import '../auth/presentation/bloc/auth_bloc.dart';
 import '../auth/presentation/bloc/auth_event.dart';
 import '../auth/presentation/bloc/auth_state.dart';
 import '../prospects/presentation/bloc/prospects_bloc.dart';
 import '../prospects/presentation/bloc/prospects_event.dart';
+import '../prospects/presentation/pages/prospects_map_view.dart';
 import '../prospects/presentation/pages/prospects_page.dart';
 import 'placeholder_page.dart';
+
+enum _ProspectsViewMode { list, map }
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -27,14 +31,32 @@ class _MainShellState extends State<MainShell> {
     final userName = authState is AuthAuthenticated
         ? authState.user.displayName
         : 'User';
-    final userRole = authState is AuthAuthenticated
-        ? authState.user.role
-        : '';
+    final userRole = authState is AuthAuthenticated ? authState.user.role : '';
 
     return Scaffold(
       appBar: AppBar(
         title: Text(_titles[_currentIndex]),
         actions: [
+          // Temporary light/dark toggle — will be removed once the
+          // Settings screen exposes a proper Light/Dark/System control.
+          ValueListenableBuilder<ThemeMode>(
+            valueListenable: ThemeController.mode,
+            builder: (context, _, _) {
+              final isDark =
+                  ThemeController.resolvedBrightness(context) ==
+                  Brightness.dark;
+              return IconButton(
+                tooltip: isDark
+                    ? 'Switch to light mode'
+                    : 'Switch to dark mode',
+                icon: Icon(
+                  isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
+                  color: isDark ? Colors.amber : theme.colorScheme.primary,
+                ),
+                onPressed: ThemeController.toggle,
+              );
+            },
+          ),
           // User avatar + menu
           PopupMenuButton<String>(
             offset: const Offset(0, 48),
@@ -75,10 +97,10 @@ class _MainShellState extends State<MainShell> {
                   children: [
                     Text(
                       userName,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.w600,
                         fontSize: 14,
-                        color: Colors.black87,
+                        color: theme.colorScheme.onSurface,
                       ),
                     ),
                     const SizedBox(height: 2),
@@ -123,7 +145,7 @@ class _MainShellState extends State<MainShell> {
           BlocProvider<ProspectsBloc>(
             create: (_) =>
                 sl<ProspectsBloc>()..add(const ProspectsLoadRequested()),
-            child: const ProspectsBody(),
+            child: const _ProspectsTab(),
           ),
           const PlaceholderPage(
             icon: Icons.description_outlined,
@@ -207,5 +229,52 @@ class _MainShellState extends State<MainShell> {
       default:
         return role;
     }
+  }
+}
+
+/// Prospects tab body with a list/map toggle. The surrounding BlocProvider
+/// (in [MainShell]) owns the ProspectsBloc, so both views share one fetch
+/// and one realtime subscription.
+class _ProspectsTab extends StatefulWidget {
+  const _ProspectsTab();
+
+  @override
+  State<_ProspectsTab> createState() => _ProspectsTabState();
+}
+
+class _ProspectsTabState extends State<_ProspectsTab> {
+  _ProspectsViewMode _mode = _ProspectsViewMode.list;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: SegmentedButton<_ProspectsViewMode>(
+            segments: const [
+              ButtonSegment(
+                value: _ProspectsViewMode.list,
+                label: Text('List'),
+                icon: Icon(Icons.view_list_outlined, size: 18),
+              ),
+              ButtonSegment(
+                value: _ProspectsViewMode.map,
+                label: Text('Map'),
+                icon: Icon(Icons.map_outlined, size: 18),
+              ),
+            ],
+            selected: {_mode},
+            onSelectionChanged: (s) => setState(() => _mode = s.first),
+          ),
+        ),
+        Expanded(
+          child: IndexedStack(
+            index: _mode == _ProspectsViewMode.list ? 0 : 1,
+            children: const [ProspectsBody(), ProspectsMapView()],
+          ),
+        ),
+      ],
+    );
   }
 }

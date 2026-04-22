@@ -13,6 +13,9 @@ class ProspectEntity {
   final double? hailSize;
   final double? homeValue;
   final bool doNotCall;
+  final String? doNotCallReason;
+  final double? latitude;
+  final double? longitude;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -33,13 +36,20 @@ class ProspectEntity {
     this.hailSize,
     this.homeValue,
     this.doNotCall = false,
+    this.doNotCallReason,
+    this.latitude,
+    this.longitude,
   });
+
+  bool get hasCoordinates => latitude != null && longitude != null;
 
   /// Formatted single-line address for list rows.
   String get displayAddress {
-    final parts = [address, city, state]
-        .where((p) => p != null && p.trim().isNotEmpty)
-        .toList();
+    final parts = [
+      address,
+      city,
+      state,
+    ].where((p) => p != null && p.trim().isNotEmpty).toList();
     return parts.join(', ');
   }
 

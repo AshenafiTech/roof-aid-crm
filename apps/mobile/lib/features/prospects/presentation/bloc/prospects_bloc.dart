@@ -15,9 +15,9 @@ class ProspectsBloc extends Bloc<ProspectsEvent, ProspectsState> {
   ProspectsBloc({
     required GetAssignedProspects getAssigned,
     required WatchAssignedProspects watchAssigned,
-  })  : _getAssigned = getAssigned,
-        _watchAssigned = watchAssigned,
-        super(const ProspectsInitial()) {
+  }) : _getAssigned = getAssigned,
+       _watchAssigned = watchAssigned,
+       super(const ProspectsInitial()) {
     on<ProspectsLoadRequested>(_onLoad);
     on<ProspectsRefreshRequested>(_onRefresh);
     on<ProspectsStreamUpdated>(_onStreamUpdated);
@@ -32,13 +32,12 @@ class ProspectsBloc extends Bloc<ProspectsEvent, ProspectsState> {
 
     final result = await _getAssigned();
 
-    result.fold(
-      (failure) => emit(ProspectsError(failure.message)),
-      (prospects) {
-        emit(ProspectsLoaded(prospects));
-        _subscribe();
-      },
-    );
+    result.fold((failure) => emit(ProspectsError(failure.message)), (
+      prospects,
+    ) {
+      emit(ProspectsLoaded(prospects));
+      _subscribe();
+    });
   }
 
   Future<void> _onRefresh(

@@ -15,10 +15,10 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     required SignIn signIn,
     required SignOut signOut,
     required GetCurrentUser getCurrentUser,
-  })  : _signIn = signIn,
-        _signOut = signOut,
-        _getCurrentUser = getCurrentUser,
-        super(const AuthInitial()) {
+  }) : _signIn = signIn,
+       _signOut = signOut,
+       _getCurrentUser = getCurrentUser,
+       super(const AuthInitial()) {
     on<AuthCheckRequested>(_onCheckRequested);
     on<AuthSignInRequested>(_onSignInRequested);
     on<AuthSignOutRequested>(_onSignOutRequested);
@@ -44,10 +44,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   ) async {
     emit(const AuthLoading());
 
-    final result = await _signIn(
-      email: event.email,
-      password: event.password,
-    );
+    final result = await _signIn(email: event.email, password: event.password);
 
     result.fold(
       (failure) => emit(AuthError(failure.message)),
