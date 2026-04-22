@@ -66,7 +66,13 @@ class AuthRemoteDatasourceImpl implements AuthRemoteDatasource {
           .from('users')
           .select('id, tenant_id, role, email, first_name, last_name, phone, is_active')
           .eq('id', userId)
-          .single();
+          .maybeSingle();
+
+      if (data == null) {
+        throw ServerException(
+          'User profile not found. Please contact your administrator.',
+        );
+      }
 
       return UserModel.fromMap(data);
     } on PostgrestException catch (e) {

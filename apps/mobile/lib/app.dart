@@ -3,10 +3,12 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
 import 'core/di/injection_container.dart';
+import 'core/theme/app_theme.dart';
 import 'features/auth/presentation/bloc/auth_bloc.dart';
 import 'features/auth/presentation/bloc/auth_event.dart';
 import 'features/auth/presentation/bloc/auth_state.dart';
 import 'features/auth/presentation/pages/login_page.dart';
+import 'features/shell/main_shell.dart';
 
 class RoofAidApp extends StatelessWidget {
   const RoofAidApp({super.key});
@@ -50,17 +52,13 @@ class _AppViewState extends State<_AppView> {
         final authState = context.read<AuthBloc>().state;
         final isOnLogin = state.matchedLocation == '/login';
 
-        // Still loading — don't redirect
         if (authState is AuthInitial || authState is AuthLoading) {
           return null;
         }
 
         final isAuthenticated = authState is AuthAuthenticated;
 
-        // Not logged in and not on login → go to login
         if (!isAuthenticated && !isOnLogin) return '/login';
-
-        // Logged in and on login → go to dashboard
         if (isAuthenticated && isOnLogin) return '/dashboard';
 
         return null;
@@ -72,7 +70,7 @@ class _AppViewState extends State<_AppView> {
         ),
         GoRoute(
           path: '/dashboard',
-          builder: (context, state) => const _DashboardPlaceholder(),
+          builder: (context, state) => const MainShell(),
         ),
       ],
     );
@@ -83,62 +81,8 @@ class _AppViewState extends State<_AppView> {
     return MaterialApp.router(
       title: 'Roof-Aid CRM',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorSchemeSeed: Colors.blue,
-        useMaterial3: true,
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-      ),
+      theme: AppTheme.light,
       routerConfig: _router,
-    );
-  }
-}
-
-/// Temporary dashboard screen — will be replaced with real implementation.
-class _DashboardPlaceholder extends StatelessWidget {
-  const _DashboardPlaceholder();
-
-  @override
-  Widget build(BuildContext context) {
-    final user = context.read<AuthBloc>().state;
-    final theme = Theme.of(context);
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Roof-Aid'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () =>
-                context.read<AuthBloc>().add(const AuthSignOutRequested()),
-          ),
-        ],
-      ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.check_circle, size: 64, color: theme.colorScheme.primary),
-            const SizedBox(height: 16),
-            Text(
-              'Welcome to Roof-Aid',
-              style: theme.textTheme.headlineSmall,
-            ),
-            const SizedBox(height: 8),
-            if (user is AuthAuthenticated)
-              Text(
-                'Signed in as ${user.user.role}',
-                style: theme.textTheme.bodyLarge?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-          ],
-        ),
-      ),
     );
   }
 }
