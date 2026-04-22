@@ -183,8 +183,7 @@ Roof-Aid CRM is a **vertical SaaS platform built exclusively for the roofing ind
 
 ---
 
-### M3 — Daflutter pub get -v
-shboard Polish + Maps (Week 4)
+### M3 — Dashboard Polish + Maps (Week 4)
 
 **Purpose:** Add Google Maps integration, proximity search, and polish the prospect profile into a fully functional record view.
 
