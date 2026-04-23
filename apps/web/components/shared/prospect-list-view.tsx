@@ -86,7 +86,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ProspectMap, parseCoordinates } from "./prospect-map";
+import { ProspectMap, parseCoordinates, type ProximitySearch } from "./prospect-map";
 import {
   assignProspect,
   bulkAssign,
@@ -149,6 +149,19 @@ function matchPriceRange(min: string, max: string): string {
 
 const VIEW_MODE_KEY = "roofaid-view-mode";
 
+function haversineKm(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const R = 6371;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(bLat - aLat);
+  const dLng = toRad(bLng - aLng);
+  const lat1 = toRad(aLat);
+  const lat2 = toRad(bLat);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
 export function ProspectListView({
   rows,
   total,
@@ -171,15 +184,14 @@ export function ProspectListView({
   const router = useRouter();
   const sp = useSearchParams();
   const [pending, start] = useTransition();
-  // Map view temporarily disabled — always start in list mode. Restore when re-enabling map.
-  const [viewMode, setViewMode] = useState<"map" | "list">("list");
-  // const [viewMode, setViewMode] = useState<"map" | "list">(() => {
-  //   if (typeof window !== "undefined") {
-  //     const saved = localStorage.getItem(VIEW_MODE_KEY);
-  //     if (saved === "map" || saved === "list") return saved;
-  //   }
-  //   return "map";
-  // });
+  const [viewMode, setViewMode] = useState<"map" | "list">(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem(VIEW_MODE_KEY);
+      if (saved === "map" || saved === "list") return saved;
+    }
+    return "map";
+  });
+  const [proximity, setProximity] = useState<ProximitySearch | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [overlayHidden, setOverlayHidden] = useState(false);
   const [showPriceFilter, setShowPriceFilter] = useState(false);
@@ -191,9 +203,33 @@ export function ProspectListView({
     localStorage.setItem(VIEW_MODE_KEY, mode);
   }, []);
 
+  // Staged (draft) filter state — only committed to the URL when the user clicks "Query Database".
+  const spString = sp.toString();
+  const [draft, setDraft] = useState<URLSearchParams>(() => new URLSearchParams(spString));
+  useEffect(() => {
+    setDraft(new URLSearchParams(spString));
+  }, [spString]);
+
+  function setDraftParam(key: string, value: string | undefined) {
+    setDraft((prev) => {
+      const next = new URLSearchParams(prev);
+      if (value) next.set(key, value);
+      else next.delete(key);
+      return next;
+    });
+  }
+
+  const displayRows = proximity
+    ? rows.filter((r) => {
+        const c = parseCoordinates(r.coordinates);
+        if (!c) return false;
+        return haversineKm(proximity.lat, proximity.lng, c.lat, c.lng) <= proximity.radiusKm;
+      })
+    : rows;
+
   const selected = rows.find((r) => r.id === selectedId) ?? null;
 
-  const allChecked = rows.length > 0 && rows.every((r) => checkedIds.has(r.id));
+  const allChecked = displayRows.length > 0 && displayRows.every((r) => checkedIds.has(r.id));
   const someChecked = checkedIds.size > 0;
 
   function toggleChecked(id: string) {
@@ -209,7 +245,7 @@ export function ProspectListView({
     if (allChecked) {
       setCheckedIds(new Set());
     } else {
-      setCheckedIds(new Set(rows.map((r) => r.id)));
+      setCheckedIds(new Set(displayRows.map((r) => r.id)));
     }
   }
 
@@ -217,15 +253,40 @@ export function ProspectListView({
     setCheckedIds(new Set());
   }
 
-  const city = sp.get("city") ?? "";
-  const stateParam = sp.get("state") ?? "";
-  const status = sp.get("status") ?? "";
-  const q = sp.get("q") ?? "";
-  const priceMin = sp.get("priceMin") ?? "";
-  const priceMax = sp.get("priceMax") ?? "";
+  const city = draft.get("city") ?? "";
+  const stateParam = draft.get("state") ?? "";
+  const status = draft.get("status") ?? "";
+  const q = draft.get("q") ?? "";
+  const priceMin = draft.get("priceMin") ?? "";
+  const priceMax = draft.get("priceMax") ?? "";
   const hasFilters = !!(city || stateParam || status || q || priceMin || priceMax);
 
-  const showing = rows.length;
+  // Normalize (drop "load" pagination param) for dirty comparison against the applied URL.
+  const normalizedDraft = (() => {
+    const n = new URLSearchParams(draft);
+    n.delete("load");
+    return n.toString();
+  })();
+  const normalizedApplied = (() => {
+    const n = new URLSearchParams(sp);
+    n.delete("load");
+    return n.toString();
+  })();
+  const draftDirty = normalizedDraft !== normalizedApplied;
+
+  function applyDraft() {
+    const next = new URLSearchParams(draft);
+    next.delete("load");
+    const qs = next.toString();
+    const currentQs = normalizedApplied;
+    if (qs === currentQs) {
+      start(() => router.refresh());
+    } else {
+      start(() => router.push(qs ? `${basePath}?${qs}` : basePath));
+    }
+  }
+
+  const showing = displayRows.length;
   const hasMore = showing < total;
 
   function push(next: URLSearchParams) {
@@ -235,16 +296,7 @@ export function ProspectListView({
   }
 
   function setParam(key: string, value: string | undefined) {
-    const next = new URLSearchParams(sp);
-    if (value) next.set(key, value);
-    else next.delete(key);
-    push(next);
-  }
-
-  function onSearchSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const form = new FormData(e.currentTarget);
-    setParam("q", (form.get("q") as string)?.trim() || undefined);
+    setDraftParam(key, value);
   }
 
   function loadMore() {
@@ -313,10 +365,8 @@ export function ProspectListView({
                   return;
                 }
                 setShowPriceFilter(false);
-                const next = new URLSearchParams(sp);
-                if (range.min) next.set("priceMin", range.min); else next.delete("priceMin");
-                if (range.max) next.set("priceMax", range.max); else next.delete("priceMax");
-                push(next);
+                setDraftParam("priceMin", range.min || undefined);
+                setDraftParam("priceMax", range.max || undefined);
               }}
             >
               <SelectTrigger className="h-8 w-[160px] text-sm">
@@ -333,28 +383,39 @@ export function ProspectListView({
 
           <div className="h-5 w-px bg-border hidden sm:block" />
 
-          <form onSubmit={onSearchSubmit} className="flex items-center gap-2 flex-1 min-w-[180px]">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              applyDraft();
+            }}
+            className="flex items-center gap-2 flex-1 min-w-[180px]"
+          >
             <div className="relative flex-1">
               <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-              <Input name="q" defaultValue={q} placeholder="Search name, address, phone..." className="h-8 text-sm pl-8" />
+              <Input
+                name="q"
+                value={q}
+                onChange={(e) => setDraftParam("q", e.target.value || undefined)}
+                placeholder="Search name, address, phone..."
+                className="h-8 text-sm pl-8"
+              />
             </div>
           </form>
 
           <div className="flex items-center gap-2 ml-auto">
             {hasFilters && (
-              <Button variant="ghost" size="sm" onClick={() => { setShowPriceFilter(false); push(new URLSearchParams()); }} disabled={pending}>
+              <Button variant="ghost" size="sm" onClick={() => { setShowPriceFilter(false); setDraft(new URLSearchParams()); }} disabled={pending}>
                 <X className="mr-1 h-3.5 w-3.5" /> Clear
               </Button>
             )}
-            {/* Map/List toggle — temporarily disabled while map view is off. Map is only intended for screens larger than mobile (hidden sm:flex). Uncomment when re-enabling. */}
-            {/* <div className="hidden sm:flex rounded-md border">
+            <div className="hidden sm:flex rounded-md border">
               <Button variant={viewMode === "map" ? "default" : "ghost"} size="sm" className="h-8 rounded-r-none px-3" onClick={() => persistViewMode("map")}>
                 <Map className="mr-1 h-3.5 w-3.5" /> Map
               </Button>
               <Button variant={viewMode === "list" ? "default" : "ghost"} size="sm" className="h-8 rounded-l-none px-3" onClick={() => persistViewMode("list")}>
                 <LayoutList className="mr-1 h-3.5 w-3.5" /> List
               </Button>
-            </div> */}
+            </div>
             {basePath === "/new-leads" && (
               <Button asChild variant="outline" size="sm" className="h-8">
                 <Link href="/new-leads/import">
@@ -362,9 +423,15 @@ export function ProspectListView({
                 </Link>
               </Button>
             )}
-            <Button size="sm" onClick={() => start(() => router.refresh())} disabled={pending}>
+            <Button
+              size="sm"
+              onClick={applyDraft}
+              disabled={pending}
+              className={cn(draftDirty && "ring-2 ring-primary ring-offset-2 ring-offset-background")}
+            >
               {pending ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-2 h-3.5 w-3.5" />}
               Query Database
+              {draftDirty && <span className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-yellow-300" aria-hidden />}
             </Button>
           </div>
         </div>
@@ -376,12 +443,10 @@ export function ProspectListView({
             onSubmit={(e) => {
               e.preventDefault();
               const fd = new FormData(e.currentTarget);
-              const next = new URLSearchParams(sp);
               const min = (fd.get("priceMin") as string)?.trim();
               const max = (fd.get("priceMax") as string)?.trim();
-              if (min) next.set("priceMin", min); else next.delete("priceMin");
-              if (max) next.set("priceMax", max); else next.delete("priceMax");
-              push(next);
+              setDraftParam("priceMin", min || undefined);
+              setDraftParam("priceMax", max || undefined);
             }}
           >
             <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
@@ -406,10 +471,8 @@ export function ProspectListView({
             </Button>
             <Button type="button" variant="ghost" size="sm" className="h-7 text-xs px-2" onClick={() => {
               setShowPriceFilter(false);
-              const next = new URLSearchParams(sp);
-              next.delete("priceMin");
-              next.delete("priceMax");
-              push(next);
+              setDraftParam("priceMin", undefined);
+              setDraftParam("priceMax", undefined);
             }}>
               <X className="h-3 w-3 mr-1" /> Clear
             </Button>
@@ -451,8 +514,26 @@ export function ProspectListView({
                 {bulkPending && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
               </div>
             ) : (
-              <p className="text-xs text-muted-foreground font-medium">
-                {showing} of {total} {statusFilter ? PROSPECT_STATUS_LABELS[statusFilter].toLowerCase() : "records"}
+              <p className="text-xs text-muted-foreground font-medium flex items-center gap-2">
+                {proximity ? (
+                  <>
+                    <span>
+                      {showing} within {proximity.radiusKm.toFixed(1)} km of pinned point
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-5 text-[11px] px-1.5"
+                      onClick={() => setProximity(null)}
+                    >
+                      <X className="h-3 w-3 mr-0.5" /> Clear radius
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    {showing} of {total} {statusFilter ? PROSPECT_STATUS_LABELS[statusFilter].toLowerCase() : "records"}
+                  </>
+                )}
               </p>
             )}
             {selectedId && !someChecked && (
@@ -463,7 +544,7 @@ export function ProspectListView({
           </div>
 
           <div className="flex-1 overflow-y-auto">
-            {rows.length === 0 ? (
+            {displayRows.length === 0 ? (
               <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
                 <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
                   <Search className="h-7 w-7 text-primary" />
@@ -475,7 +556,7 @@ export function ProspectListView({
               </div>
             ) : viewMode === "map" ? (
               <div className="divide-y">
-                {rows.map((row) => (
+                {displayRows.map((row) => (
                   <MapCardItem
                     key={row.id}
                     prospect={row}
@@ -495,7 +576,7 @@ export function ProspectListView({
             ) : (
               <div>
                 {/* Column header */}
-                <div className="flex items-center gap-3 px-4 py-1.5 border-b bg-muted/40 sticky top-0 z-10">
+                <div className="flex items-center gap-3 px-4 py-1.5 border-b bg-muted sticky top-0 z-10">
                   <button type="button" onClick={toggleAll} className="shrink-0 flex items-center justify-center w-4 h-4 text-muted-foreground hover:text-primary transition-colors">
                     {allChecked ? <CheckSquare className="h-4 w-4 text-primary" /> : <Square className="h-4 w-4" />}
                   </button>
@@ -515,7 +596,7 @@ export function ProspectListView({
                   )}
                 </div>
                 <div className="divide-y">
-                  {rows.map((row) => (
+                  {displayRows.map((row) => (
                     <ListRowItem
                       key={row.id}
                       prospect={row}
@@ -544,14 +625,22 @@ export function ProspectListView({
         {viewMode === "map" && (
           <div className="hidden sm:flex flex-1 flex-col relative">
             <ProspectMap
-              prospects={rows}
+              prospects={displayRows}
               focused={selected}
               onSelect={(id) => {
                 setSelectedId(id);
                 setOverlayHidden(false);
               }}
+              proximity={proximity}
+              onProximityChange={setProximity}
+              tabLabel={basePath === "/new-leads" ? "leads" : "prospects"}
               className="absolute inset-0"
             />
+            {!proximity && (
+              <div className="pointer-events-none absolute left-3 top-3 z-[500] rounded-md bg-background/90 backdrop-blur-sm px-2.5 py-1 text-[11px] text-muted-foreground shadow-sm border">
+                Right-click the map to search by radius
+              </div>
+            )}
 
             {selected && !overlayHidden && (
               <div className="absolute bottom-0 inset-x-0 bg-background/95 backdrop-blur-sm border-t shadow-2xl max-h-[50%] overflow-y-auto">
