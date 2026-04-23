@@ -35,20 +35,35 @@ const LeafletMap = dynamic(() => import("./prospect-map-leaflet"), {
   ),
 });
 
+export type ProximitySearch = { lat: number; lng: number; radiusKm: number };
+
 export function ProspectMap({
   prospects,
   focused,
   onSelect,
   className,
+  proximity,
+  onProximityChange,
+  tabLabel,
 }: {
   prospects: ProspectListItem[];
   focused?: ProspectListItem | null;
   onSelect?: (id: string) => void;
   className?: string;
+  proximity?: ProximitySearch | null;
+  onProximityChange?: (p: ProximitySearch | null) => void;
+  tabLabel?: string;
 }) {
   return (
     <div className={className} style={{ isolation: "isolate", zIndex: 0 }}>
-      <LeafletMap prospects={prospects} focused={focused ?? null} onSelect={onSelect} />
+      <LeafletMap
+        prospects={prospects}
+        focused={focused ?? null}
+        onSelect={onSelect}
+        proximity={proximity ?? null}
+        onProximityChange={onProximityChange ?? (() => {})}
+        tabLabel={tabLabel ?? "records"}
+      />
     </div>
   );
 }

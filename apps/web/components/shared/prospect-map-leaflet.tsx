@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
-import { LayersControl, MapContainer, Marker, TileLayer, Tooltip, useMap } from "react-leaflet";
+import { Circle, LayersControl, MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents } from "react-leaflet";
 
 import "leaflet/dist/leaflet.css";
 
@@ -55,6 +55,16 @@ function pinForProspect(p: ProspectListItem, isSelected: boolean): L.DivIcon {
   return buildPinIcon(color, isSelected);
 }
 
+/* ── Right-click capture — emits the clicked point up ── */
+function ContextMenuCapture({ onContext }: { onContext: (lat: number, lng: number) => void }) {
+  useMapEvents({
+    contextmenu(e) {
+      onContext(e.latlng.lat, e.latlng.lng);
+    },
+  });
+  return null;
+}
+
 /* ── Camera controller — recenters when focused changes ── */
 function CameraController({
   focused,
@@ -86,18 +96,26 @@ export default function ProspectMapLeaflet({
   prospects,
   focused,
   onSelect,
+  proximity,
+  onProximityChange,
+  tabLabel,
 }: {
   prospects: ProspectListItem[];
   focused: ProspectListItem | null;
   onSelect?: (id: string) => void;
+  proximity: { lat: number; lng: number; radiusKm: number } | null;
+  onProximityChange: (p: { lat: number; lng: number; radiusKm: number } | null) => void;
+  tabLabel: string;
 }) {
+  const [pendingPoint, setPendingPoint] = useState<{ lat: number; lng: number; radiusKm: number } | null>(null);
   const points = useMemo(() => {
     const arr: { id: string; lat: number; lng: number; prospect: ProspectListItem }[] = [];
-    if (!focused) return arr;
-    const c = parseCoordinates(focused.coordinates);
-    if (c) arr.push({ id: focused.id, lat: c.lat, lng: c.lng, prospect: focused });
+    for (const p of prospects) {
+      const c = parseCoordinates(p.coordinates);
+      if (c) arr.push({ id: p.id, lat: c.lat, lng: c.lng, prospect: p });
+    }
     return arr;
-  }, [focused]);
+  }, [prospects]);
 
   const center: [number, number] = useMemo(() => {
     if (focused) {
@@ -138,6 +156,79 @@ export default function ProspectMapLeaflet({
         </LayersControl.BaseLayer>
       </LayersControl>
       <CameraController focused={focused} points={points} />
+      <ContextMenuCapture
+        onContext={(lat, lng) =>
+          setPendingPoint({ lat, lng, radiusKm: proximity?.radiusKm ?? 5 })
+        }
+      />
+
+      {proximity && (
+        <Circle
+          center={[proximity.lat, proximity.lng]}
+          radius={proximity.radiusKm * 1000}
+          pathOptions={{ color: "#2563EB", fillColor: "#3B82F6", fillOpacity: 0.12, weight: 2 }}
+          interactive={false}
+        />
+      )}
+
+      {pendingPoint && (
+        <Popup
+          position={[pendingPoint.lat, pendingPoint.lng]}
+          eventHandlers={{ remove: () => setPendingPoint(null) }}
+        >
+          <div className="min-w-[220px] text-xs">
+            <div className="font-semibold text-sm mb-1">Search {tabLabel}</div>
+            <div className="text-muted-foreground mb-2">
+              Within{" "}
+              <span className="font-semibold text-foreground">
+                {pendingPoint.radiusKm.toFixed(1)} km
+              </span>{" "}
+              of this point
+            </div>
+            <input
+              type="range"
+              min={0.5}
+              max={50}
+              step={0.5}
+              value={pendingPoint.radiusKm}
+              onChange={(e) =>
+                setPendingPoint((prev) =>
+                  prev ? { ...prev, radiusKm: Number(e.target.value) } : prev,
+                )
+              }
+              className="w-full"
+            />
+            <div className="mt-2 flex gap-2 justify-end">
+              {proximity && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onProximityChange(null);
+                    setPendingPoint(null);
+                  }}
+                  className="rounded border px-2 py-1 text-[11px] hover:bg-muted"
+                >
+                  Clear
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  onProximityChange({
+                    lat: pendingPoint.lat,
+                    lng: pendingPoint.lng,
+                    radiusKm: pendingPoint.radiusKm,
+                  });
+                  setPendingPoint(null);
+                }}
+                className="rounded bg-primary px-2 py-1 text-[11px] font-medium text-primary-foreground hover:opacity-90"
+              >
+                Search
+              </button>
+            </div>
+          </div>
+        </Popup>
+      )}
       {points.map(({ id, lat, lng, prospect }) => {
         const isSelected = focused?.id === id;
         return (
@@ -150,7 +241,7 @@ export default function ProspectMapLeaflet({
               click: () => onSelect?.(id),
             }}
           >
-            <Tooltip permanent direction="top" offset={[0, -28]} opacity={1}>
+            <Popup offset={[0, -28]}>
               <div className="text-xs">
                 <div className="font-semibold text-sm">{prospect.name}</div>
                 {prospect.address && <div className="text-muted-foreground">{prospect.address}</div>}
@@ -160,7 +251,7 @@ export default function ProspectMapLeaflet({
                     : prospect.status}
                 </div>
               </div>
-            </Tooltip>
+            </Popup>
           </Marker>
         );
       })}
