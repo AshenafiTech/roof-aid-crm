@@ -12,6 +12,7 @@ const FUNNEL_STAGES: ProspectStatus[] = [
   "new_leads",
   "prospects",
   "contacted",
+  "follow_up",
   "scheduled",
   "closed_customer",
 ];

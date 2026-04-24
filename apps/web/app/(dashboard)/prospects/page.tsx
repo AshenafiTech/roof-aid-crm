@@ -22,6 +22,10 @@ type SearchParams = {
   state?: string;
   status?: string;
   q?: string;
+  street?: string;
+  lat?: string;
+  lng?: string;
+  radiusKm?: string;
   load?: string;
   priceMin?: string;
   priceMax?: string;
@@ -44,11 +48,19 @@ export default async function ProspectsPage({
   const priceMin = params.priceMin ? Number(params.priceMin) : undefined;
   const priceMax = params.priceMax ? Number(params.priceMax) : undefined;
 
+  const lat = params.lat ? Number(params.lat) : undefined;
+  const lng = params.lng ? Number(params.lng) : undefined;
+  const radiusKm = params.radiusKm ? Number(params.radiusKm) : undefined;
+
   const filters: ProspectFilters = {
     city: params.city?.trim() || undefined,
     state: params.state?.trim() || undefined,
     status: "prospects",
     search: params.q?.trim() || undefined,
+    street: params.street?.trim() || undefined,
+    lat: Number.isFinite(lat) ? lat : undefined,
+    lng: Number.isFinite(lng) ? lng : undefined,
+    radiusKm: Number.isFinite(radiusKm) ? radiusKm : undefined,
     offset: 0,
     pageSize: effectiveSize,
     assignedTo: user.role === "rufero" ? user.id : undefined,
