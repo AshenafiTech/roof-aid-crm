@@ -94,6 +94,7 @@ import {
   bulkDelete,
   bulkToggleDnc,
   changeStatus,
+  toggleDoNotCall,
   listRuferos,
 } from "@/app/(dashboard)/prospects/[id]/actions";
 
@@ -195,6 +196,7 @@ export function ProspectListView({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [overlayHidden, setOverlayHidden] = useState(false);
   const [showPriceFilter, setShowPriceFilter] = useState(false);
+  const [showCoordSearch, setShowCoordSearch] = useState(false);
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
   const [bulkPending, startBulk] = useTransition();
 
@@ -219,7 +221,7 @@ export function ProspectListView({
     });
   }
 
-  const displayRows = proximity
+  const _proximityRows = proximity
     ? rows.filter((r) => {
         const c = parseCoordinates(r.coordinates);
         if (!c) return false;
@@ -228,9 +230,6 @@ export function ProspectListView({
     : rows;
 
   const selected = rows.find((r) => r.id === selectedId) ?? null;
-
-  const allChecked = displayRows.length > 0 && displayRows.every((r) => checkedIds.has(r.id));
-  const someChecked = checkedIds.size > 0;
 
   function toggleChecked(id: string) {
     setCheckedIds((prev) => {
@@ -257,9 +256,32 @@ export function ProspectListView({
   const stateParam = draft.get("state") ?? "";
   const status = draft.get("status") ?? "";
   const q = draft.get("q") ?? "";
+  const street = draft.get("street") ?? "";
+  const coordLat = draft.get("lat") ?? "";
+  const coordLng = draft.get("lng") ?? "";
+  const coordRadius = draft.get("radiusKm") ?? "";
   const priceMin = draft.get("priceMin") ?? "";
   const priceMax = draft.get("priceMax") ?? "";
-  const hasFilters = !!(city || stateParam || status || q || priceMin || priceMax);
+  const hasFilters = !!(city || stateParam || status || q || street || coordLat || priceMin || priceMax);
+
+  const coordFilterLat = coordLat ? Number(coordLat) : null;
+  const coordFilterLng = coordLng ? Number(coordLng) : null;
+  const coordFilterRadius = coordRadius ? Number(coordRadius) : 5;
+
+  const displayRows = (() => {
+    let filtered = _proximityRows;
+    if (coordFilterLat != null && coordFilterLng != null && Number.isFinite(coordFilterLat) && Number.isFinite(coordFilterLng)) {
+      filtered = filtered.filter((r) => {
+        const c = parseCoordinates(r.coordinates);
+        if (!c) return false;
+        return haversineKm(coordFilterLat, coordFilterLng, c.lat, c.lng) <= coordFilterRadius;
+      });
+    }
+    return filtered;
+  })();
+
+  const allChecked = displayRows.length > 0 && displayRows.every((r) => checkedIds.has(r.id));
+  const someChecked = checkedIds.size > 0;
 
   // Normalize (drop "load" pagination param) for dirty comparison against the applied URL.
   const normalizedDraft = (() => {
@@ -396,11 +418,39 @@ export function ProspectListView({
                 name="q"
                 value={q}
                 onChange={(e) => setDraftParam("q", e.target.value || undefined)}
-                placeholder="Search name, address, phone..."
+                placeholder="Search name or address..."
                 className="h-8 text-sm pl-8"
               />
             </div>
           </form>
+
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              applyDraft();
+            }}
+            className="flex items-center gap-2 min-w-[140px]"
+          >
+            <div className="relative flex-1">
+              <MapPin className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                name="street"
+                value={street}
+                onChange={(e) => setDraftParam("street", e.target.value || undefined)}
+                placeholder="Street address..."
+                className="h-8 text-sm pl-8"
+              />
+            </div>
+          </form>
+
+          <Button
+            variant={showCoordSearch ? "secondary" : "ghost"}
+            size="sm"
+            className="h-8 text-xs gap-1"
+            onClick={() => setShowCoordSearch((v) => !v)}
+          >
+            <Navigation className="h-3.5 w-3.5" /> Coords
+          </Button>
 
           <div className="flex items-center gap-2 ml-auto">
             {hasFilters && (
@@ -435,6 +485,46 @@ export function ProspectListView({
             </Button>
           </div>
         </div>
+
+        {/* Coordinate search */}
+        {(showCoordSearch || coordLat || coordLng) && (
+          <div className="flex items-center gap-3 pt-1">
+            <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-xs font-medium text-muted-foreground">Coordinates</span>
+            <Input
+              type="number"
+              step="any"
+              placeholder="Latitude"
+              value={coordLat}
+              onChange={(e) => setDraftParam("lat", e.target.value || undefined)}
+              className="h-7 w-[120px] text-xs"
+            />
+            <Input
+              type="number"
+              step="any"
+              placeholder="Longitude"
+              value={coordLng}
+              onChange={(e) => setDraftParam("lng", e.target.value || undefined)}
+              className="h-7 w-[120px] text-xs"
+            />
+            <Input
+              type="number"
+              step="any"
+              placeholder="Radius (km)"
+              value={coordRadius}
+              onChange={(e) => setDraftParam("radiusKm", e.target.value || undefined)}
+              className="h-7 w-[100px] text-xs"
+            />
+            <Button type="button" variant="ghost" size="sm" className="h-7 text-xs px-2" onClick={() => {
+              setShowCoordSearch(false);
+              setDraftParam("lat", undefined);
+              setDraftParam("lng", undefined);
+              setDraftParam("radiusKm", undefined);
+            }}>
+              <X className="h-3 w-3 mr-1" /> Clear
+            </Button>
+          </div>
+        )}
 
         {/* Custom price range inputs */}
         {showPriceFilter && (
@@ -592,7 +682,7 @@ export function ProspectListView({
                   <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground w-[80px] shrink-0 text-right hidden sm:block">Value</span>
                   <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground w-[42px] shrink-0" />
                   {basePath === "/prospects" && (
-                    <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground w-[228px] shrink-0 text-center hidden sm:block">Actions</span>
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground w-[260px] shrink-0 text-center hidden sm:block">Actions</span>
                   )}
                 </div>
                 <div className="divide-y">
@@ -757,6 +847,8 @@ function InlineRowActions({ prospect }: { prospect: ProspectListItem }) {
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
   const [flagOpen, setFlagOpen] = useState(false);
+  const [dncPending, startDnc] = useTransition();
+  const router = useRouter();
   const coords = parseCoordinates(prospect.coordinates);
 
   return (
@@ -767,15 +859,14 @@ function InlineRowActions({ prospect }: { prospect: ProspectListItem }) {
             <TooltipTrigger asChild>
               <Button
                 size="icon"
-                variant={prospect.do_not_call ? "ghost" : "default"}
-                disabled={prospect.do_not_call ?? false}
+                variant="default"
                 onClick={() => setCallOpen(true)}
                 className="h-7 w-7"
               >
                 <Phone className="h-3.5 w-3.5" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>{prospect.do_not_call ? "Do Not Call" : "Call"}</TooltipContent>
+            <TooltipContent>{prospect.do_not_call ? "DNC Flagged — Call" : "Call"}</TooltipContent>
           </Tooltip>
 
           <Tooltip>
@@ -783,14 +874,13 @@ function InlineRowActions({ prospect }: { prospect: ProspectListItem }) {
               <Button
                 size="icon"
                 variant="outline"
-                disabled={prospect.do_not_call ?? false}
                 onClick={() => setSmsOpen(true)}
                 className="h-7 w-7"
               >
                 <MessageSquare className="h-3.5 w-3.5" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>{prospect.do_not_call ? "Do Not Call" : "SMS"}</TooltipContent>
+            <TooltipContent>{prospect.do_not_call ? "DNC Flagged — SMS" : "SMS"}</TooltipContent>
           </Tooltip>
 
           <Tooltip>
@@ -865,6 +955,31 @@ function InlineRowActions({ prospect }: { prospect: ProspectListItem }) {
             </TooltipTrigger>
             <TooltipContent>Flag</TooltipContent>
           </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="icon"
+                variant={prospect.do_not_call ? "destructive" : "outline"}
+                disabled={dncPending}
+                onClick={() => {
+                  startDnc(async () => {
+                    try {
+                      await toggleDoNotCall({ id: prospect.id, doNotCall: !prospect.do_not_call });
+                      toast.success(prospect.do_not_call ? "DNC flag removed" : "Marked as Do Not Call");
+                      router.refresh();
+                    } catch (err) {
+                      toast.error(err instanceof Error ? err.message : "Failed to toggle DNC");
+                    }
+                  });
+                }}
+                className="h-7 w-7"
+              >
+                <PhoneOff className="h-3.5 w-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{prospect.do_not_call ? "Remove DNC Flag" : "Mark DNC"}</TooltipContent>
+          </Tooltip>
         </TooltipProvider>
       </div>
 
@@ -878,7 +993,7 @@ function InlineRowActions({ prospect }: { prospect: ProspectListItem }) {
   );
 }
 
-/* ── Map view: compact card in left panel ── */
+/* ���─ Map view: compact card in left panel ── */
 function MapCardItem({
   prospect,
   isSelected,
@@ -1012,7 +1127,7 @@ function ListRowItem({
         <span className="w-[42px] shrink-0" />
 
         {showRowActions && (
-          <div className="w-[228px] shrink-0 hidden sm:flex justify-center">
+          <div className="w-[260px] shrink-0 hidden sm:flex justify-center">
             <InlineRowActions prospect={prospect} />
           </div>
         )}
@@ -1062,7 +1177,9 @@ function ProspectDetailPanel({
   onClose?: () => void;
   compact?: boolean;
 }) {
+  const router = useRouter();
   const [statusPending, startStatus] = useTransition();
+  const [dncPending, startDnc] = useTransition();
   const [callOpen, setCallOpen] = useState(false);
   const [smsOpen, setSmsOpen] = useState(false);
   const [emailOpen, setEmailOpen] = useState(false);
@@ -1147,20 +1264,20 @@ function ProspectDetailPanel({
         <TooltipProvider delayDuration={200}>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button size="sm" variant={prospect.do_not_call ? "ghost" : "default"} disabled={prospect.do_not_call ?? false} onClick={() => setCallOpen(true)} className="gap-1.5">
+              <Button size="sm" variant="default" onClick={() => setCallOpen(true)} className="gap-1.5">
                 <Phone className="h-3.5 w-3.5" /> Call
               </Button>
             </TooltipTrigger>
-            {prospect.do_not_call && <TooltipContent>This prospect is on the Do Not Call list</TooltipContent>}
+            {prospect.do_not_call && <TooltipContent>DNC Flagged — call with caution</TooltipContent>}
           </Tooltip>
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button size="sm" variant="outline" disabled={prospect.do_not_call ?? false} onClick={() => setSmsOpen(true)} className="gap-1.5">
+              <Button size="sm" variant="outline" onClick={() => setSmsOpen(true)} className="gap-1.5">
                 <MessageSquare className="h-3.5 w-3.5" /> SMS
               </Button>
             </TooltipTrigger>
-            {prospect.do_not_call && <TooltipContent>This prospect is on the Do Not Call list</TooltipContent>}
+            {prospect.do_not_call && <TooltipContent>DNC Flagged — message with caution</TooltipContent>}
           </Tooltip>
 
           <Tooltip>
@@ -1234,6 +1351,34 @@ function ProspectDetailPanel({
               </Button>
             </TooltipTrigger>
             <TooltipContent>Flag prospect</TooltipContent>
+          </Tooltip>
+
+          <div className="h-5 w-px bg-border" />
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="sm"
+                variant={prospect.do_not_call ? "destructive" : "outline"}
+                disabled={dncPending}
+                onClick={() => {
+                  startDnc(async () => {
+                    try {
+                      await toggleDoNotCall({ id: prospect.id, doNotCall: !prospect.do_not_call });
+                      toast.success(prospect.do_not_call ? "DNC flag removed" : "Marked as Do Not Call");
+                      router.refresh();
+                    } catch (err) {
+                      toast.error(err instanceof Error ? err.message : "Failed to toggle DNC");
+                    }
+                  });
+                }}
+                className="gap-1.5"
+              >
+                <PhoneOff className="h-3.5 w-3.5" />
+                {prospect.do_not_call ? "Remove DNC" : "DNC"}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{prospect.do_not_call ? "Remove Do Not Call flag" : "Mark as Do Not Call"}</TooltipContent>
           </Tooltip>
         </TooltipProvider>
       </div>
@@ -1942,12 +2087,29 @@ function FlagDialog({
 }) {
   const [reason, setReason] = useState("");
   const [flagType, setFlagType] = useState("follow_up");
+  const [flagPending, startFlag] = useTransition();
+  const router = useRouter();
 
   function handleFlag() {
-    toast.success(`${prospect.name} flagged as "${flagType === "follow_up" ? "Follow Up" : flagType === "priority" ? "Priority" : flagType === "issue" ? "Issue" : "DNC Review"}". Flag management coming in M4.`);
-    setReason("");
-    setFlagType("follow_up");
-    onOpenChange(false);
+    startFlag(async () => {
+      try {
+        if (flagType === "dnc") {
+          await toggleDoNotCall({ id: prospect.id, doNotCall: true, reason: reason.trim() || undefined });
+          toast.success(`${prospect.name} marked as Do Not Call`);
+        } else if (flagType === "follow_up") {
+          await changeStatus({ id: prospect.id, status: "follow_up" });
+          toast.success(`${prospect.name} status changed to Follow Up`);
+        } else {
+          toast.success(`${prospect.name} flagged as "${flagType === "priority" ? "Priority" : "Issue"}"`);
+        }
+        setReason("");
+        setFlagType("follow_up");
+        onOpenChange(false);
+        router.refresh();
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Failed to flag prospect");
+      }
+    });
   }
 
   return (
@@ -1961,7 +2123,7 @@ function FlagDialog({
             Flag Prospect
           </DialogTitle>
           <DialogDescription>
-            Flag {prospect.name} for follow-up or review
+            Flag {prospect.name} for follow-up, DNC, or review
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 pt-2">
@@ -1969,10 +2131,10 @@ function FlagDialog({
             <Label>Flag Type</Label>
             <div className="grid grid-cols-2 gap-2">
               {[
-                { value: "follow_up", label: "Follow Up", color: "border-blue-200 bg-blue-50 text-blue-700" },
-                { value: "priority", label: "Priority", color: "border-orange-200 bg-orange-50 text-orange-700" },
-                { value: "issue", label: "Issue", color: "border-red-200 bg-red-50 text-red-700" },
-                { value: "dnc_review", label: "DNC Review", color: "border-gray-200 bg-gray-50 text-gray-700" },
+                { value: "follow_up", label: "Follow Up", color: "border-amber-200 bg-amber-50 text-amber-700", desc: "Changes status to Follow Up" },
+                { value: "dnc", label: "Do Not Call", color: "border-red-200 bg-red-50 text-red-700", desc: "Flags as DNC" },
+                { value: "priority", label: "Priority", color: "border-orange-200 bg-orange-50 text-orange-700", desc: "Marks as priority" },
+                { value: "issue", label: "Issue", color: "border-gray-200 bg-gray-50 text-gray-700", desc: "Flags an issue" },
               ].map((opt) => (
                 <button
                   key={opt.value}
@@ -1989,6 +2151,12 @@ function FlagDialog({
                 </button>
               ))}
             </div>
+            <p className="text-[11px] text-muted-foreground">
+              {flagType === "follow_up" && "This will change the prospect status to Follow Up."}
+              {flagType === "dnc" && "This will flag the prospect as Do Not Call."}
+              {flagType === "priority" && "Marks this prospect as high priority."}
+              {flagType === "issue" && "Flags an issue for review."}
+            </p>
           </div>
 
           <div className="space-y-2">
@@ -2006,8 +2174,9 @@ function FlagDialog({
             <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button className="flex-1" onClick={handleFlag}>
-              <Flag className="mr-2 h-4 w-4" /> Flag Prospect
+            <Button className="flex-1" onClick={handleFlag} disabled={flagPending}>
+              {flagPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Flag className="mr-2 h-4 w-4" />}
+              {flagType === "dnc" ? "Mark DNC" : flagType === "follow_up" ? "Set Follow Up" : "Flag Prospect"}
             </Button>
           </div>
         </div>

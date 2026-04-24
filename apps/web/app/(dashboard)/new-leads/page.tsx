@@ -18,6 +18,7 @@ type SearchParams = {
   city?: string;
   state?: string;
   q?: string;
+  street?: string;
   load?: string;
   priceMin?: string;
   priceMax?: string;
@@ -45,6 +46,7 @@ export default async function NewLeadsPage({
     state: params.state?.trim() || undefined,
     status: "new_leads",
     search: params.q?.trim() || undefined,
+    street: params.street?.trim() || undefined,
     offset: 0,
     pageSize: effectiveSize,
     assignedTo: user.role === "rufero" ? user.id : undefined,

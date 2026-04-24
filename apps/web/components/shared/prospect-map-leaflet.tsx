@@ -20,6 +20,7 @@ const STATUS_PIN_COLORS: Record<ProspectStatus, string> = {
   new_leads: "#3B82F6",
   prospects: "#6366F1",
   contacted: "#0EA5E9",
+  follow_up: "#F59E0B",
   scheduled: "#A855F7",
   closed_customer: "#10B981",
   not_viable: "#9CA3AF",
