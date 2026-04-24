@@ -19,7 +19,7 @@ class QuickActionsBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final canContact = !prospect.doNotCall;
+    // final canContact = !prospect.doNotCall;
     final phone = prospect.primaryPhone;
     final hasPhone = phone != null && phone.isNotEmpty;
     final hasCoords = prospect.hasCoordinates;
@@ -64,7 +64,7 @@ class QuickActionsBar extends StatelessWidget {
                     style: styleFor(AppTheme.iconPhone),
                     icon: const Icon(Icons.phone, size: 18),
                     label: const _ActionLabel('Call'),
-                    onPressed: (canContact && hasPhone)
+                    onPressed: (hasPhone)
                         ? () => _dial(context, phone)
                         : null,
                   ),
@@ -75,7 +75,7 @@ class QuickActionsBar extends StatelessWidget {
                     style: styleFor(AppTheme.iconSms),
                     icon: const Icon(Icons.sms_outlined, size: 18),
                     label: const _ActionLabel('SMS'),
-                    onPressed: (canContact && hasPhone)
+                    onPressed: (hasPhone)
                         ? () => _sms(context, phone)
                         : null,
                   ),
