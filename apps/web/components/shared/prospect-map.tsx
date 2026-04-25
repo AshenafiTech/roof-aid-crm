@@ -26,7 +26,7 @@ export function parseCoordinates(coordinates: unknown): Coords | null {
   return null;
 }
 
-const LeafletMap = dynamic(() => import("./prospect-map-leaflet"), {
+const GoogleMap = dynamic(() => import("./prospect-map-google"), {
   ssr: false,
   loading: () => (
     <div className="flex h-full w-full items-center justify-center bg-muted/30 text-sm text-muted-foreground">
@@ -56,7 +56,7 @@ export function ProspectMap({
 }) {
   return (
     <div className={className} style={{ isolation: "isolate", zIndex: 0 }}>
-      <LeafletMap
+      <GoogleMap
         prospects={prospects}
         focused={focused ?? null}
         onSelect={onSelect}
