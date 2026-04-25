@@ -97,6 +97,10 @@ import {
   toggleDoNotCall,
   listRuferos,
 } from "@/app/(dashboard)/prospects/[id]/actions";
+import {
+  rememberLastViewedProspect,
+  useRestoreLastViewedProspect,
+} from "@/lib/hooks/use-last-viewed-prospect";
 
 const ALL = "__all__";
 
@@ -282,6 +286,8 @@ export function ProspectListView({
 
   const allChecked = displayRows.length > 0 && displayRows.every((r) => checkedIds.has(r.id));
   const someChecked = checkedIds.size > 0;
+
+  useRestoreLastViewedProspect([displayRows.length, viewMode]);
 
   // Normalize (drop "load" pagination param) for dirty comparison against the applied URL.
   const normalizedDraft = (() => {
@@ -1018,6 +1024,7 @@ function MapCardItem({
     <button
       ref={ref}
       type="button"
+      data-prospect-id={prospect.id}
       onClick={onSelect}
       aria-pressed={isSelected}
       className={cn(
@@ -1083,7 +1090,7 @@ function ListRowItem({
   const phone = prospect.phones?.[0] ?? "";
 
   return (
-    <div className={cn("border-l-4 transition-colors", accent, isExpanded && "bg-accent/20", isChecked && "bg-primary/5")}>
+    <div data-prospect-id={prospect.id} className={cn("border-l-4 transition-colors", accent, isExpanded && "bg-accent/20", isChecked && "bg-primary/5")}>
       <div
         className={cn(
           "w-full text-left px-4 py-2 transition-colors flex items-center gap-3",
@@ -1242,7 +1249,10 @@ function ProspectDetailPanel({
           <TooltipProvider delayDuration={200}>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Link href={`/prospects/${prospect.id}`}>
+                <Link
+                  href={`/prospects/${prospect.id}`}
+                  onClick={() => rememberLastViewedProspect(prospect.id)}
+                >
                   <Button variant="outline" size="icon" className="h-8 w-8">
                     <ExternalLink className="h-3.5 w-3.5" />
                   </Button>
@@ -1302,7 +1312,10 @@ function ProspectDetailPanel({
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <Link href={`/prospects/${prospect.id}`}>
+              <Link
+                href={`/prospects/${prospect.id}`}
+                onClick={() => rememberLastViewedProspect(prospect.id)}
+              >
                 <Button size="sm" variant="ghost" className="gap-1.5">
                   <Pencil className="h-3.5 w-3.5" /> Edit
                 </Button>
@@ -1335,7 +1348,10 @@ function ProspectDetailPanel({
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <Link href={`/prospects/${prospect.id}?tab=notes`}>
+              <Link
+                href={`/prospects/${prospect.id}?tab=notes`}
+                onClick={() => rememberLastViewedProspect(prospect.id)}
+              >
                 <Button size="sm" variant="ghost" className="gap-1.5">
                   <StickyNote className="h-3.5 w-3.5" />
                 </Button>

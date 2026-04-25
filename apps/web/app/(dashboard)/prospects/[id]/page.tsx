@@ -5,6 +5,7 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { createClient } from "@/lib/supabase/server";
 
+import { BackToProspectsButton } from "./back-button";
 import { ProspectTabs } from "./tabs";
 import { RealtimeRefresh } from "./realtime-refresh";
 import type {
@@ -71,11 +72,14 @@ export default async function ProspectDetailPage({
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title={prospect.name}
-        description={locationParts || "No address on file"}
-        action={<StatusBadge status={prospect.status} />}
-      />
+      <div className="space-y-2">
+        <BackToProspectsButton />
+        <PageHeader
+          title={prospect.name}
+          description={locationParts || "No address on file"}
+          action={<StatusBadge status={prospect.status} />}
+        />
+      </div>
       <ProspectTabs
         prospect={prospect}
         activities={activities}
