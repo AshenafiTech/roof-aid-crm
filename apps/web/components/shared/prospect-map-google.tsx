@@ -59,9 +59,11 @@ function pinIcon(prospect: ProspectListItem, isSelected: boolean): google.maps.I
 function CameraController({
   focused,
   points,
+  proximity,
 }: {
   focused: ProspectListItem | null;
   points: { id: string; lat: number; lng: number }[];
+  proximity: { lat: number; lng: number; radiusKm: number } | null;
 }) {
   const map = useMap();
   const didInitialFit = useRef(false);
@@ -89,6 +91,16 @@ function CameraController({
       return () => google.maps.event.removeListener(listener);
     }
   }, [map, focused, points]);
+
+  useEffect(() => {
+    if (!map || !proximity || focused) return;
+    const tmp = new google.maps.Circle({
+      center: { lat: proximity.lat, lng: proximity.lng },
+      radius: proximity.radiusKm * 1000,
+    });
+    const b = tmp.getBounds();
+    if (b) map.fitBounds(b, 60);
+  }, [map, focused, proximity?.lat, proximity?.lng, proximity?.radiusKm]);
 
   return null;
 }
@@ -167,7 +179,7 @@ function GoogleMapInner({
       }}
       style={{ width: "100%", height: "100%" }}
     >
-      <CameraController focused={focused} points={points} />
+      <CameraController focused={focused} points={points} proximity={proximity} />
 
       {proximity && (
         <Circle
@@ -187,11 +199,11 @@ function GoogleMapInner({
           position={{ lat: pendingPoint.lat, lng: pendingPoint.lng }}
           onCloseClick={() => setPendingPoint(null)}
         >
-          <div className="min-w-[220px] text-xs">
+          <div className="min-w-[220px] text-xs text-gray-900">
             <div className="font-semibold text-sm mb-1">Search {tabLabel}</div>
-            <div className="text-muted-foreground mb-2">
+            <div className="text-gray-600 mb-2">
               Within{" "}
-              <span className="font-semibold text-foreground">
+              <span className="font-semibold text-gray-900">
                 {pendingPoint.radiusKm.toFixed(1)} km
               </span>{" "}
               of this point
@@ -217,7 +229,7 @@ function GoogleMapInner({
                     onProximityChange(null);
                     setPendingPoint(null);
                   }}
-                  className="rounded border px-2 py-1 text-[11px] hover:bg-muted"
+                  className="rounded border border-gray-300 bg-white px-2 py-1 text-[11px] text-gray-900 hover:bg-gray-100"
                 >
                   Clear
                 </button>
@@ -232,7 +244,7 @@ function GoogleMapInner({
                   });
                   setPendingPoint(null);
                 }}
-                className="rounded bg-primary px-2 py-1 text-[11px] font-medium text-primary-foreground hover:opacity-90"
+                className="rounded bg-blue-600 px-2 py-1 text-[11px] font-medium text-white hover:bg-blue-700"
               >
                 Search
               </button>
@@ -264,12 +276,12 @@ function GoogleMapInner({
           pixelOffset={[0, -32]}
           onCloseClick={() => setPopupId(null)}
         >
-          <div className="text-xs">
+          <div className="text-xs text-gray-900">
             <div className="font-semibold text-sm">{popupProspect.prospect.name}</div>
             {popupProspect.prospect.address && (
-              <div className="text-muted-foreground">{popupProspect.prospect.address}</div>
+              <div className="text-gray-600">{popupProspect.prospect.address}</div>
             )}
-            <div className="mt-1 text-muted-foreground">
+            <div className="mt-1 text-gray-600">
               {isProspectStatus(popupProspect.prospect.status)
                 ? PROSPECT_STATUS_LABELS[popupProspect.prospect.status]
                 : popupProspect.prospect.status}
