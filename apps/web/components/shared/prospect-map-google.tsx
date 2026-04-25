@@ -9,6 +9,7 @@ import {
   InfoWindow,
   Map,
   Marker,
+  useApiIsLoaded,
   useMap,
 } from "@vis.gl/react-google-maps";
 
@@ -139,6 +140,7 @@ function GoogleMapInner({
   const initialZoom = focused ? 15 : points.length === 1 ? 14 : 11;
 
   const popupProspect = popupId ? points.find((p) => p.id === popupId) : null;
+  const apiLoaded = useApiIsLoaded();
 
   return (
     <Map
@@ -239,21 +241,22 @@ function GoogleMapInner({
         </InfoWindow>
       )}
 
-      {points.map(({ id, lat, lng, prospect }) => {
-        const isSelected = focused?.id === id;
-        return (
-          <Marker
-            key={id}
-            position={{ lat, lng }}
-            icon={pinIcon(prospect, isSelected)}
-            zIndex={isSelected ? 1000 : undefined}
-            onClick={() => {
-              onSelect?.(id);
-              setPopupId(id);
-            }}
-          />
-        );
-      })}
+      {apiLoaded &&
+        points.map(({ id, lat, lng, prospect }) => {
+          const isSelected = focused?.id === id;
+          return (
+            <Marker
+              key={id}
+              position={{ lat, lng }}
+              icon={pinIcon(prospect, isSelected)}
+              zIndex={isSelected ? 1000 : undefined}
+              onClick={() => {
+                onSelect?.(id);
+                setPopupId(id);
+              }}
+            />
+          );
+        })}
 
       {popupProspect && (
         <InfoWindow
