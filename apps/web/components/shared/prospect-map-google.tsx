@@ -56,14 +56,30 @@ function pinIcon(prospect: ProspectListItem, isSelected: boolean): google.maps.I
   };
 }
 
+function fitToCircle(
+  map: google.maps.Map,
+  center: { lat: number; lng: number },
+  radiusKm: number,
+  padding: number,
+) {
+  const tmp = new google.maps.Circle({
+    center,
+    radius: radiusKm * 1000,
+  });
+  const b = tmp.getBounds();
+  if (b) map.fitBounds(b, padding);
+}
+
 function CameraController({
   focused,
   points,
-  preview,
+  pendingPoint,
+  proximity,
 }: {
   focused: ProspectListItem | null;
   points: { id: string; lat: number; lng: number }[];
-  preview: { lat: number; lng: number; radiusKm: number } | null;
+  pendingPoint: { lat: number; lng: number; radiusKm: number } | null;
+  proximity: { lat: number; lng: number; radiusKm: number } | null;
 }) {
   const map = useMap();
   const didInitialFit = useRef(false);
@@ -79,7 +95,7 @@ function CameraController({
       }
       return;
     }
-    if (!didInitialFit.current && points.length > 0) {
+    if (!didInitialFit.current && points.length > 0 && !proximity && !pendingPoint) {
       didInitialFit.current = true;
       const bounds = new google.maps.LatLngBounds();
       for (const p of points) bounds.extend({ lat: p.lat, lng: p.lng });
@@ -90,17 +106,18 @@ function CameraController({
       });
       return () => google.maps.event.removeListener(listener);
     }
-  }, [map, focused, points]);
+  }, [map, focused, points, proximity, pendingPoint]);
 
   useEffect(() => {
-    if (!map || !preview || focused) return;
-    const tmp = new google.maps.Circle({
-      center: { lat: preview.lat, lng: preview.lng },
-      radius: preview.radiusKm * 1000,
-    });
-    const b = tmp.getBounds();
-    if (b) map.fitBounds(b, 60);
-  }, [map, focused, preview?.lat, preview?.lng, preview?.radiusKm]);
+    if (!map || !pendingPoint || focused) return;
+    fitToCircle(map, { lat: pendingPoint.lat, lng: pendingPoint.lng }, pendingPoint.radiusKm, 60);
+  }, [map, focused, pendingPoint?.lat, pendingPoint?.lng, pendingPoint?.radiusKm]);
+
+  useEffect(() => {
+    if (!map || !proximity || focused) return;
+    didInitialFit.current = true;
+    fitToCircle(map, { lat: proximity.lat, lng: proximity.lng }, proximity.radiusKm, 80);
+  }, [map, focused, proximity?.lat, proximity?.lng, proximity?.radiusKm]);
 
   return null;
 }
@@ -182,7 +199,8 @@ function GoogleMapInner({
       <CameraController
         focused={focused}
         points={points}
-        preview={pendingPoint ?? proximity}
+        pendingPoint={pendingPoint}
+        proximity={proximity}
       />
 
       {proximity && !pendingPoint && (
