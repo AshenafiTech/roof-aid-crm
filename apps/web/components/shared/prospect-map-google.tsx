@@ -59,11 +59,11 @@ function pinIcon(prospect: ProspectListItem, isSelected: boolean): google.maps.I
 function CameraController({
   focused,
   points,
-  proximity,
+  preview,
 }: {
   focused: ProspectListItem | null;
   points: { id: string; lat: number; lng: number }[];
-  proximity: { lat: number; lng: number; radiusKm: number } | null;
+  preview: { lat: number; lng: number; radiusKm: number } | null;
 }) {
   const map = useMap();
   const didInitialFit = useRef(false);
@@ -93,14 +93,14 @@ function CameraController({
   }, [map, focused, points]);
 
   useEffect(() => {
-    if (!map || !proximity || focused) return;
+    if (!map || !preview || focused) return;
     const tmp = new google.maps.Circle({
-      center: { lat: proximity.lat, lng: proximity.lng },
-      radius: proximity.radiusKm * 1000,
+      center: { lat: preview.lat, lng: preview.lng },
+      radius: preview.radiusKm * 1000,
     });
     const b = tmp.getBounds();
     if (b) map.fitBounds(b, 60);
-  }, [map, focused, proximity?.lat, proximity?.lng, proximity?.radiusKm]);
+  }, [map, focused, preview?.lat, preview?.lng, preview?.radiusKm]);
 
   return null;
 }
@@ -179,9 +179,13 @@ function GoogleMapInner({
       }}
       style={{ width: "100%", height: "100%" }}
     >
-      <CameraController focused={focused} points={points} proximity={proximity} />
+      <CameraController
+        focused={focused}
+        points={points}
+        preview={pendingPoint ?? proximity}
+      />
 
-      {proximity && (
+      {proximity && !pendingPoint && (
         <Circle
           center={{ lat: proximity.lat, lng: proximity.lng }}
           radius={proximity.radiusKm * 1000}
@@ -190,6 +194,19 @@ function GoogleMapInner({
           strokeWeight={2}
           fillColor="#3B82F6"
           fillOpacity={0.12}
+          clickable={false}
+        />
+      )}
+
+      {pendingPoint && (
+        <Circle
+          center={{ lat: pendingPoint.lat, lng: pendingPoint.lng }}
+          radius={pendingPoint.radiusKm * 1000}
+          strokeColor="#2563EB"
+          strokeOpacity={1}
+          strokeWeight={2}
+          fillColor="#3B82F6"
+          fillOpacity={0.18}
           clickable={false}
         />
       )}
