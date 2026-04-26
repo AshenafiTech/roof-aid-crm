@@ -13,6 +13,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { ScheduleAppointmentDialog } from "@/components/shared/schedule-appointment-dialog";
+import { openGoogleMapsDirections } from "@/lib/utils/navigation";
 
 import { NotesDialog } from "./notes-dialog";
 
@@ -26,12 +27,14 @@ export function ProspectRowActions({
   doNotCall,
   assignedTo,
   prospectLocation,
+  coordinates,
 }: {
   prospectId: string;
   prospectName: string;
   doNotCall: boolean;
   assignedTo?: string | null;
   prospectLocation?: string;
+  coordinates?: unknown;
 }) {
   const [scheduleOpen, setScheduleOpen] = useState(false);
 
@@ -79,8 +82,11 @@ export function ProspectRowActions({
         variant="ghost"
         size="icon"
         className="h-8 w-8"
-        aria-label="Navigate"
-        onClick={() => comingSoon("Navigation", "M5")}
+        aria-label="Navigate in Google Maps"
+        title="Open directions in Google Maps"
+        onClick={() =>
+          openGoogleMapsDirections({ coordinates, address: prospectLocation })
+        }
       >
         <Navigation className="h-4 w-4" />
       </Button>
