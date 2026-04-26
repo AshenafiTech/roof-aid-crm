@@ -154,6 +154,7 @@ export function ProspectTable({ rows }: { rows: ProspectListItem[] }) {
                       prospectLocation={[row.address, row.city, row.state]
                         .filter(Boolean)
                         .join(", ")}
+                      coordinates={row.coordinates}
                     />
                   </TableCell>
                 </TableRow>

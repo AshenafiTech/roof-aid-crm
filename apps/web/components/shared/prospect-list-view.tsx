@@ -89,6 +89,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ProspectMap, parseCoordinates, type ProximitySearch } from "./prospect-map";
+import { openGoogleMapsDirections } from "@/lib/utils/navigation";
 import {
   assignProspect,
   bulkAssign,
@@ -426,7 +427,8 @@ export function ProspectListView({
                 name="q"
                 value={q}
                 onChange={(e) => setDraftParam("q", e.target.value || undefined)}
-                placeholder="Search name or address..."
+                placeholder="Search by name..."
+                aria-label="Search prospects by name"
                 className="h-8 text-sm pl-8"
               />
             </div>
@@ -445,7 +447,8 @@ export function ProspectListView({
                 name="street"
                 value={street}
                 onChange={(e) => setDraftParam("street", e.target.value || undefined)}
-                placeholder="Street address..."
+                placeholder="Search by address..."
+                aria-label="Search prospects by street address"
                 className="h-8 text-sm pl-8"
               />
             </div>
@@ -858,7 +861,6 @@ function InlineRowActions({ prospect }: { prospect: ProspectListItem }) {
   const [flagOpen, setFlagOpen] = useState(false);
   const [dncPending, startDnc] = useTransition();
   const router = useRouter();
-  const coords = parseCoordinates(prospect.coordinates);
 
   return (
     <>
@@ -939,10 +941,14 @@ function InlineRowActions({ prospect }: { prospect: ProspectListItem }) {
               <Button
                 size="icon"
                 variant="outline"
-                onClick={() => {
-                  if (coords) window.open(`https://www.google.com/maps/dir/?api=1&destination=${coords.lat},${coords.lng}`, "_blank");
-                  else toast("No coordinates available");
-                }}
+                onClick={() =>
+                  openGoogleMapsDirections({
+                    coordinates: prospect.coordinates,
+                    address: [prospect.address, prospect.city, prospect.state]
+                      .filter(Boolean)
+                      .join(", "),
+                  })
+                }
                 className="h-7 w-7"
               >
                 <Navigation className="h-3.5 w-3.5" />
@@ -1357,11 +1363,19 @@ function ProspectDetailPanel({
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button size="sm" variant="ghost" className="gap-1.5" onClick={() => {
-                const c = parseCoordinates(prospect.coordinates);
-                if (c) window.open(`https://www.google.com/maps/dir/?api=1&destination=${c.lat},${c.lng}`, "_blank");
-                else toast("No coordinates available for this prospect");
-              }}>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="gap-1.5"
+                onClick={() =>
+                  openGoogleMapsDirections({
+                    coordinates: prospect.coordinates,
+                    address: [prospect.address, prospect.city, prospect.state]
+                      .filter(Boolean)
+                      .join(", "),
+                  })
+                }
+              >
                 <Navigation className="h-3.5 w-3.5" />
               </Button>
             </TooltipTrigger>

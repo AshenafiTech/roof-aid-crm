@@ -16,7 +16,9 @@ export type ProspectFilters = {
   city?: string;
   state?: string;
   status?: ProspectStatus;
+  /** Free-text match against the prospect's NAME only. */
   search?: string;
+  /** Free-text match against the prospect's ADDRESS only. */
   street?: string;
   lat?: number;
   lng?: number;
@@ -28,6 +30,11 @@ export type ProspectFilters = {
   pageSize?: number;
   offset?: number;
 };
+
+// Escape PostgREST/SQL ilike wildcards so user input is treated as a literal substring.
+function escapeIlike(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/[%_]/g, (c) => `\\${c}`);
+}
 
 export async function listProspects(filters: ProspectFilters) {
   const supabase = await createClient();
@@ -47,12 +54,18 @@ export async function listProspects(filters: ProspectFilters) {
   if (filters.city) query = query.eq("city", filters.city);
   if (filters.state) query = query.eq("state", filters.state);
   if (filters.status) query = query.eq("status", filters.status);
-  if (filters.search) {
-    query = query.or(
-      `name.ilike.%${filters.search}%,address.ilike.%${filters.search}%`,
-    );
+
+  // Separation of concerns:
+  //   `search` → NAME only.   `street` → ADDRESS only.
+  const nameTerm = filters.search?.trim();
+  if (nameTerm) {
+    query = query.ilike("name", `%${escapeIlike(nameTerm)}%`);
   }
-  if (filters.street) query = query.ilike("address", `%${filters.street}%`);
+  const streetTerm = filters.street?.trim();
+  if (streetTerm) {
+    query = query.ilike("address", `%${escapeIlike(streetTerm)}%`);
+  }
+
   if (filters.assignedTo) query = query.eq("assigned_to", filters.assignedTo);
   if (filters.priceMin != null) query = query.gte("home_value", filters.priceMin);
   if (filters.priceMax != null) query = query.lte("home_value", filters.priceMax);
