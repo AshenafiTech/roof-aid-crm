@@ -170,6 +170,11 @@ function haversineKm(aLat: number, aLng: number, bLat: number, bLng: number): nu
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
+export type LatestNoteByProspectId = Record<
+  string,
+  { body: string; created_at: string; author_name: string | null }
+>;
+
 export function ProspectListView({
   rows,
   total,
@@ -179,6 +184,7 @@ export function ProspectListView({
   basePath,
   statusFilter,
   showStatusFilter = true,
+  latestNotesByProspectId,
 }: {
   rows: ProspectListItem[];
   total: number;
@@ -188,6 +194,7 @@ export function ProspectListView({
   basePath: string;
   statusFilter?: ProspectStatus;
   showStatusFilter?: boolean;
+  latestNotesByProspectId?: LatestNoteByProspectId;
 }) {
   const router = useRouter();
   const sp = useSearchParams();
@@ -663,6 +670,7 @@ export function ProspectListView({
                     prospect={row}
                     isSelected={selectedId === row.id}
                     onSelect={() => toggleSelect(row.id)}
+                    latestNote={latestNotesByProspectId?.[row.id]}
                   />
                 ))}
                 {hasMore && (
@@ -692,9 +700,7 @@ export function ProspectListView({
                   <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground w-[40px] shrink-0 text-right hidden sm:block">Hail</span>
                   <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground w-[80px] shrink-0 text-right hidden sm:block">Value</span>
                   <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground w-[42px] shrink-0" />
-                  {basePath === "/prospects" && (
-                    <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground w-[260px] shrink-0 text-center hidden sm:block">Actions</span>
-                  )}
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground w-[260px] shrink-0 text-center hidden sm:block">Actions</span>
                 </div>
                 <div className="divide-y">
                   {displayRows.map((row) => (
@@ -703,9 +709,10 @@ export function ProspectListView({
                       prospect={row}
                       isExpanded={selectedId === row.id}
                       onToggle={() => toggleSelect(row.id)}
-                      showRowActions={basePath === "/prospects"}
+                      showRowActions
                       isChecked={checkedIds.has(row.id)}
                       onCheck={() => toggleChecked(row.id)}
+                      latestNote={latestNotesByProspectId?.[row.id]}
                     />
                   ))}
                   {hasMore && (
@@ -859,8 +866,11 @@ function InlineRowActions({ prospect }: { prospect: ProspectListItem }) {
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
   const [flagOpen, setFlagOpen] = useState(false);
+  const [followUpOpen, setFollowUpOpen] = useState(false);
+  const [followUpPending, startFollowUp] = useTransition();
   const [dncPending, startDnc] = useTransition();
   const router = useRouter();
+  const isFollowUp = prospect.status === "follow_up";
 
   return (
     <>
@@ -961,6 +971,23 @@ function InlineRowActions({ prospect }: { prospect: ProspectListItem }) {
             <TooltipTrigger asChild>
               <Button
                 size="icon"
+                variant={isFollowUp ? "secondary" : "outline"}
+                disabled={isFollowUp || followUpPending}
+                onClick={() => setFollowUpOpen(true)}
+                className="h-7 w-7"
+              >
+                <Clock className="h-3.5 w-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {isFollowUp ? "Already in Follow Up" : "Mark as Follow Up"}
+            </TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="icon"
                 variant="outline"
                 onClick={() => setFlagOpen(true)}
                 className="h-7 w-7"
@@ -1013,6 +1040,32 @@ function InlineRowActions({ prospect }: { prospect: ProspectListItem }) {
       />
       <AssignDialog open={assignOpen} onOpenChange={setAssignOpen} prospect={prospect} />
       <FlagDialog open={flagOpen} onOpenChange={setFlagOpen} prospect={prospect} />
+      <FollowUpNoteDialog
+        open={followUpOpen}
+        onOpenChange={(o) => {
+          if (!followUpPending) setFollowUpOpen(o);
+        }}
+        prospectName={prospect.name}
+        pending={followUpPending}
+        onSave={(note) => {
+          startFollowUp(async () => {
+            try {
+              await changeStatus({
+                id: prospect.id,
+                status: "follow_up",
+                followUpNote: note,
+              });
+              toast.success("Marked as Follow Up");
+              setFollowUpOpen(false);
+              router.refresh();
+            } catch (err) {
+              toast.error(
+                err instanceof Error ? err.message : "Failed to mark as Follow Up",
+              );
+            }
+          });
+        }}
+      />
     </>
   );
 }
@@ -1022,10 +1075,12 @@ function MapCardItem({
   prospect,
   isSelected,
   onSelect,
+  latestNote,
 }: {
   prospect: ProspectListItem;
   isSelected: boolean;
   onSelect: () => void;
+  latestNote?: { body: string; created_at: string; author_name: string | null };
 }) {
   const status = isProspectStatus(prospect.status) ? prospect.status : null;
   const accent = status ? PROSPECT_STATUS_ACCENTS[status] : "border-l-transparent";
@@ -1081,6 +1136,17 @@ function MapCardItem({
           ) : null}
         </div>
       </div>
+      {latestNote && latestNote.body.trim() && (
+        <div className="mt-1.5 flex items-start gap-1 text-[11px] italic text-muted-foreground">
+          <Clock className="h-2.5 w-2.5 mt-0.5 shrink-0 text-amber-600" />
+          <span className="line-clamp-2 text-left">
+            <span className="not-italic font-medium text-foreground/70">
+              {latestNote.author_name ?? "Note"}:
+            </span>{" "}
+            {latestNote.body}
+          </span>
+        </div>
+      )}
     </button>
   );
 }
@@ -1093,6 +1159,7 @@ function ListRowItem({
   showRowActions,
   isChecked,
   onCheck,
+  latestNote,
 }: {
   prospect: ProspectListItem;
   isExpanded: boolean;
@@ -1100,6 +1167,7 @@ function ListRowItem({
   showRowActions?: boolean;
   isChecked?: boolean;
   onCheck?: () => void;
+  latestNote?: { body: string; created_at: string; author_name: string | null };
 }) {
   const status = isProspectStatus(prospect.status) ? prospect.status : null;
   const accent = status ? PROSPECT_STATUS_ACCENTS[status] : "border-l-transparent";
@@ -1157,6 +1225,20 @@ function ListRowItem({
           </div>
         )}
       </div>
+
+      {latestNote && latestNote.body.trim() && (
+        <div className="px-4 pb-2 -mt-1">
+          <div className="flex items-start gap-1.5 text-xs italic text-muted-foreground">
+            <Clock className="h-3 w-3 mt-0.5 shrink-0 text-amber-600" />
+            <span className="line-clamp-2">
+              <span className="not-italic font-medium text-foreground/70">
+                {latestNote.author_name ?? "Note"}:
+              </span>{" "}
+              {latestNote.body}
+            </span>
+          </div>
+        </div>
+      )}
 
       {isExpanded && (
         <div className="border-t bg-muted/10">
@@ -1394,6 +1476,26 @@ function ProspectDetailPanel({
               </Link>
             </TooltipTrigger>
             <TooltipContent>Add note</TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="sm"
+                variant={prospect.status === "follow_up" ? "secondary" : "ghost"}
+                disabled={prospect.status === "follow_up" || statusPending}
+                onClick={() => setFollowUpOpen(true)}
+                className="gap-1.5"
+              >
+                <Clock className="h-3.5 w-3.5" />
+                Follow Up
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {prospect.status === "follow_up"
+                ? "Already in Follow Up"
+                : "Mark as Follow Up (note required)"}
+            </TooltipContent>
           </Tooltip>
 
           <Tooltip>
