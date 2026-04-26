@@ -727,12 +727,13 @@ export function ProspectListView({
               focused={selected}
               onSelect={(id) => {
                 setSelectedId(id);
-                setOverlayHidden(false);
+                if (id != null) setOverlayHidden(false);
               }}
               proximity={proximity}
               onProximityChange={setProximity}
               tabLabel={basePath === "/new-leads" ? "leads" : "prospects"}
               className="absolute inset-0"
+              bottomInset={selected && !overlayHidden ? 280 : 0}
             />
             {!proximity && (
               <div className="pointer-events-none absolute left-3 top-3 z-[500] rounded-md bg-background/90 backdrop-blur-sm px-2.5 py-1 text-[11px] text-muted-foreground shadow-sm border">
