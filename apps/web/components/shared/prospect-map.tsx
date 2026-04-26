@@ -45,14 +45,16 @@ export function ProspectMap({
   proximity,
   onProximityChange,
   tabLabel,
+  bottomInset,
 }: {
   prospects: ProspectListItem[];
   focused?: ProspectListItem | null;
-  onSelect?: (id: string) => void;
+  onSelect?: (id: string | null) => void;
   className?: string;
   proximity?: ProximitySearch | null;
   onProximityChange?: (p: ProximitySearch | null) => void;
   tabLabel?: string;
+  bottomInset?: number;
 }) {
   return (
     <div className={className} style={{ isolation: "isolate", zIndex: 0 }}>
@@ -63,6 +65,7 @@ export function ProspectMap({
         proximity={proximity ?? null}
         onProximityChange={onProximityChange ?? (() => {})}
         tabLabel={tabLabel ?? "records"}
+        bottomInset={bottomInset ?? 0}
       />
     </div>
   );

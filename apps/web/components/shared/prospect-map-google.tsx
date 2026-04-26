@@ -75,23 +75,38 @@ function CameraController({
   points,
   pendingPoint,
   proximity,
+  bottomInset,
 }: {
   focused: ProspectListItem | null;
   points: { id: string; lat: number; lng: number }[];
   pendingPoint: { lat: number; lng: number; radiusKm: number } | null;
   proximity: { lat: number; lng: number; radiusKm: number } | null;
+  bottomInset: number;
 }) {
   const map = useMap();
   const didInitialFit = useRef(false);
+  // Read the latest bottomInset without retriggering the centering effect when
+  // the user toggles the detail overlay open/closed.
+  const bottomInsetRef = useRef(bottomInset);
+  useEffect(() => {
+    bottomInsetRef.current = bottomInset;
+  }, [bottomInset]);
 
   useEffect(() => {
     if (!map) return;
     if (focused) {
       const c = parseCoordinates(focused.coordinates);
       if (c) {
-        map.panTo({ lat: c.lat, lng: c.lng });
         const z = map.getZoom() ?? 0;
         if (z < 15) map.setZoom(15);
+        map.setCenter({ lat: c.lat, lng: c.lng });
+        // Shift the view so the marker lands in the visible area above the
+        // bottom detail overlay rather than under it. panBy(0, +y) shifts the
+        // map's center south by y px, which moves the marker up on screen.
+        const inset = bottomInsetRef.current;
+        if (inset > 0) {
+          requestAnimationFrame(() => map.panBy(0, inset / 2));
+        }
       }
       return;
     }
@@ -129,18 +144,26 @@ function GoogleMapInner({
   proximity,
   onProximityChange,
   tabLabel,
+  bottomInset,
 }: {
   prospects: ProspectListItem[];
   focused: ProspectListItem | null;
-  onSelect?: (id: string) => void;
+  onSelect?: (id: string | null) => void;
   proximity: { lat: number; lng: number; radiusKm: number } | null;
   onProximityChange: (p: { lat: number; lng: number; radiusKm: number } | null) => void;
   tabLabel: string;
+  bottomInset: number;
 }) {
   const [pendingPoint, setPendingPoint] = useState<
     { lat: number; lng: number; radiusKm: number } | null
   >(null);
   const [popupId, setPopupId] = useState<string | null>(null);
+
+  // Mirror external focus changes (e.g. clicking a row in the prospect list)
+  // into the on-marker InfoWindow so the detail bubble opens at the pin.
+  useEffect(() => {
+    setPopupId(focused?.id ?? null);
+  }, [focused?.id]);
 
   const points = useMemo(() => {
     const arr: { id: string; lat: number; lng: number; prospect: ProspectListItem }[] = [];
@@ -188,6 +211,9 @@ function GoogleMapInner({
         const ll = e.detail.latLng;
         if (!ll) return;
         e.domEvent?.preventDefault?.();
+        // Drop any focused prospect so the camera fits to the proximity
+        // circle instead of staying anchored on the previously-selected pin.
+        onSelect?.(null);
         setPendingPoint({
           lat: ll.lat,
           lng: ll.lng,
@@ -201,6 +227,7 @@ function GoogleMapInner({
         points={points}
         pendingPoint={pendingPoint}
         proximity={proximity}
+        bottomInset={bottomInset}
       />
 
       {/* Render exactly one circle — pending overrides committed proximity.
@@ -277,6 +304,7 @@ function GoogleMapInner({
               <button
                 type="button"
                 onClick={() => {
+                  onSelect?.(null);
                   onProximityChange({
                     lat: pendingPoint.lat,
                     lng: pendingPoint.lng,
@@ -336,10 +364,11 @@ function GoogleMapInner({
 export default function ProspectMapGoogle(props: {
   prospects: ProspectListItem[];
   focused: ProspectListItem | null;
-  onSelect?: (id: string) => void;
+  onSelect?: (id: string | null) => void;
   proximity: { lat: number; lng: number; radiusKm: number } | null;
   onProximityChange: (p: { lat: number; lng: number; radiusKm: number } | null) => void;
   tabLabel: string;
+  bottomInset: number;
 }) {
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
