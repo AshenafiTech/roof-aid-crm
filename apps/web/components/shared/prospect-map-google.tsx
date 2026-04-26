@@ -203,21 +203,14 @@ function GoogleMapInner({
         proximity={proximity}
       />
 
-      {proximity && !pendingPoint && (
+      {/* Render exactly one circle — pending overrides committed proximity.
+          The `key` differentiates the two sources so React unmounts/remounts
+          the underlying google.maps.Circle cleanly instead of reusing the
+          instance with stale center/radius (vis.gl's <Circle> only re-creates
+          on map identity change, not on prop change). */}
+      {pendingPoint ? (
         <Circle
-          center={{ lat: proximity.lat, lng: proximity.lng }}
-          radius={proximity.radiusKm * 1000}
-          strokeColor="#2563EB"
-          strokeOpacity={1}
-          strokeWeight={2}
-          fillColor="#3B82F6"
-          fillOpacity={0.12}
-          clickable={false}
-        />
-      )}
-
-      {pendingPoint && (
-        <Circle
+          key="proximity-pending"
           center={{ lat: pendingPoint.lat, lng: pendingPoint.lng }}
           radius={pendingPoint.radiusKm * 1000}
           strokeColor="#2563EB"
@@ -227,7 +220,19 @@ function GoogleMapInner({
           fillOpacity={0.18}
           clickable={false}
         />
-      )}
+      ) : proximity ? (
+        <Circle
+          key="proximity-committed"
+          center={{ lat: proximity.lat, lng: proximity.lng }}
+          radius={proximity.radiusKm * 1000}
+          strokeColor="#2563EB"
+          strokeOpacity={1}
+          strokeWeight={2.5}
+          fillColor="#3B82F6"
+          fillOpacity={0.18}
+          clickable={false}
+        />
+      ) : null}
 
       {pendingPoint && (
         <InfoWindow

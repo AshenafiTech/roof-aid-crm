@@ -111,3 +111,11 @@ dataset, the rep can either:
 - **Camera does not refit** when a proximity search is applied —
   intentional to respect manual pan/zoom. If reps want auto-zoom to
   the circle, add a one-shot `fitBounds` on proximity change.
+
+## Regression fix: radius highlight not appearing after Search
+
+**Symptom:** after the migration to Google Maps, the proximity highlight circle would sometimes fail to appear once the user clicked **Search**, even though the prospect list was correctly filtered. The pending circle (during slider drag) showed fine; the committed circle was missing.
+
+**Cause:** `apps/web/components/shared/prospect-map-google.tsx` rendered two sibling `<Circle>` elements at adjacent JSX positions — one gated on `pendingPoint`, one on `proximity && !pendingPoint`. When the user clicked Search, `pendingPoint` flipped to null and `proximity` became truthy in the same render. React's reconciliation reused the same `Circle` instance across the swap, but vis.gl's `<Circle>` only re-creates the underlying `google.maps.Circle` when the **map** identity changes (its create-effect deps are `[map]`), so the swap left the previous circle's lifecycle in an inconsistent state — it was visually missing on some renders.
+
+**Fix:** rendered exactly one `<Circle>` per render via a ternary (pendingPoint preferred, else proximity), each with a distinct stable `key` (`"proximity-pending"` / `"proximity-committed"`). The keys force React to unmount the old circle and mount a fresh one when the source switches, so the underlying google.maps.Circle is recreated cleanly with the right center/radius. Also bumped the committed circle's `strokeWeight` from 2 to 2.5 and `fillOpacity` from 0.12 to 0.18 to match the pending preview's visibility.

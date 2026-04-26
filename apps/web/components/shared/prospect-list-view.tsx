@@ -65,6 +65,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { FollowUpNoteDialog } from "@/components/shared/follow-up-note-dialog";
+import { ScheduleAppointmentDialog } from "@/components/shared/schedule-appointment-dialog";
 import { StatusBadge } from "@/components/shared/status-badge";
 import {
   PROSPECT_STATUSES,
@@ -465,11 +467,11 @@ export function ProspectListView({
               </Button>
             )}
             <div className="hidden sm:flex rounded-md border">
-              <Button variant={viewMode === "map" ? "default" : "ghost"} size="sm" className="h-8 rounded-r-none px-3" onClick={() => persistViewMode("map")}>
-                <Map className="mr-1 h-3.5 w-3.5" /> Map
-              </Button>
-              <Button variant={viewMode === "list" ? "default" : "ghost"} size="sm" className="h-8 rounded-l-none px-3" onClick={() => persistViewMode("list")}>
+              <Button variant={viewMode === "list" ? "default" : "ghost"} size="sm" className="h-8 rounded-r-none px-3" onClick={() => persistViewMode("list")}>
                 <LayoutList className="mr-1 h-3.5 w-3.5" /> List
+              </Button>
+              <Button variant={viewMode === "map" ? "default" : "ghost"} size="sm" className="h-8 rounded-l-none px-3" onClick={() => persistViewMode("map")}>
+                <Map className="mr-1 h-3.5 w-3.5" /> Map
               </Button>
             </div>
             {basePath === "/new-leads" && (
@@ -992,7 +994,16 @@ function InlineRowActions({ prospect }: { prospect: ProspectListItem }) {
       <CallDialog open={callOpen} onOpenChange={setCallOpen} prospect={prospect} />
       <SmsDialog open={smsOpen} onOpenChange={setSmsOpen} prospect={prospect} />
       <EmailDialog open={emailOpen} onOpenChange={setEmailOpen} prospect={prospect} />
-      <ScheduleDialog open={scheduleOpen} onOpenChange={setScheduleOpen} prospect={prospect} />
+      <ScheduleAppointmentDialog
+        open={scheduleOpen}
+        onOpenChange={setScheduleOpen}
+        prospectId={prospect.id}
+        prospectName={prospect.name}
+        prospectLocation={[prospect.address, prospect.city, prospect.state]
+          .filter(Boolean)
+          .join(", ")}
+        defaultRuferoId={prospect.assigned_to ?? null}
+      />
       <AssignDialog open={assignOpen} onOpenChange={setAssignOpen} prospect={prospect} />
       <FlagDialog open={flagOpen} onOpenChange={setFlagOpen} prospect={prospect} />
     </>
@@ -1193,20 +1204,30 @@ function ProspectDetailPanel({
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
   const [flagOpen, setFlagOpen] = useState(false);
+  const [followUpOpen, setFollowUpOpen] = useState(false);
   const coords = parseCoordinates(prospect.coordinates);
   const location = [prospect.address, prospect.city, prospect.state, prospect.zip].filter(Boolean).join(", ");
   const assignedName = formatAssigned(prospect.assigned_user);
 
-  function onStatusChange(newStatus: string) {
-    if (!isProspectStatus(newStatus)) return;
+  function applyStatus(newStatus: ProspectStatus, followUpNote?: string) {
     startStatus(async () => {
       try {
-        await changeStatus({ id: prospect.id, status: newStatus });
+        await changeStatus({ id: prospect.id, status: newStatus, followUpNote });
         toast.success(`Status changed to ${PROSPECT_STATUS_LABELS[newStatus]}`);
+        setFollowUpOpen(false);
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Failed to change status");
       }
     });
+  }
+
+  function onStatusChange(newStatus: string) {
+    if (!isProspectStatus(newStatus)) return;
+    if (newStatus === "follow_up") {
+      setFollowUpOpen(true);
+      return;
+    }
+    applyStatus(newStatus);
   }
 
   return (
@@ -1568,9 +1589,27 @@ function ProspectDetailPanel({
       <CallDialog open={callOpen} onOpenChange={setCallOpen} prospect={prospect} />
       <SmsDialog open={smsOpen} onOpenChange={setSmsOpen} prospect={prospect} />
       <EmailDialog open={emailOpen} onOpenChange={setEmailOpen} prospect={prospect} />
-      <ScheduleDialog open={scheduleOpen} onOpenChange={setScheduleOpen} prospect={prospect} />
+      <ScheduleAppointmentDialog
+        open={scheduleOpen}
+        onOpenChange={setScheduleOpen}
+        prospectId={prospect.id}
+        prospectName={prospect.name}
+        prospectLocation={[prospect.address, prospect.city, prospect.state]
+          .filter(Boolean)
+          .join(", ")}
+        defaultRuferoId={prospect.assigned_to ?? null}
+      />
       <AssignDialog open={assignOpen} onOpenChange={setAssignOpen} prospect={prospect} />
       <FlagDialog open={flagOpen} onOpenChange={setFlagOpen} prospect={prospect} />
+      <FollowUpNoteDialog
+        open={followUpOpen}
+        onOpenChange={(o) => {
+          if (!statusPending) setFollowUpOpen(o);
+        }}
+        prospectName={prospect.name}
+        pending={statusPending}
+        onSave={(note) => applyStatus("follow_up", note)}
+      />
     </div>
   );
 }
@@ -1989,108 +2028,6 @@ function CallDialog({
   );
 }
 
-/* ── Schedule Appointment Dialog ── */
-function ScheduleDialog({
-  open,
-  onOpenChange,
-  prospect,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  prospect: ProspectListItem;
-}) {
-  const [date, setDate] = useState("");
-  const [time, setTime] = useState("10:00");
-  const [notes, setNotes] = useState("");
-  const location = [prospect.address, prospect.city, prospect.state].filter(Boolean).join(", ");
-
-  function handleSchedule() {
-    if (!date) {
-      toast.error("Please select a date");
-      return;
-    }
-    toast.success(`Appointment scheduled for ${prospect.name} on ${date} at ${time}. Calendar integration coming in M5.`);
-    setDate("");
-    setTime("10:00");
-    setNotes("");
-    onOpenChange(false);
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100 text-blue-700">
-              <CalendarPlus className="h-4 w-4" />
-            </div>
-            Schedule Appointment
-          </DialogTitle>
-          <DialogDescription>
-            Schedule a visit for {prospect.name}
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4 pt-2">
-          <div className="rounded-lg border bg-muted/30 p-3">
-            <p className="text-sm font-medium">{prospect.name}</p>
-            {location && (
-              <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                <MapPin className="h-3 w-3" /> {location}
-              </p>
-            )}
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label htmlFor="appt-date">Date</Label>
-              <Input
-                id="appt-date"
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                min={new Date().toISOString().split("T")[0]}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="appt-time">Time</Label>
-              <Input
-                id="appt-time"
-                type="time"
-                value={time}
-                onChange={(e) => setTime(e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="appt-notes">Notes</Label>
-            <Textarea
-              id="appt-notes"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Any special instructions for the visit..."
-              rows={3}
-            />
-          </div>
-
-          <div className="flex gap-2">
-            <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button className="flex-1" onClick={handleSchedule}>
-              <CalendarPlus className="mr-2 h-4 w-4" /> Schedule
-            </Button>
-          </div>
-
-          <p className="text-[11px] text-center text-muted-foreground">
-            Full calendar integration — coming in Milestone 5
-          </p>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 /* ── Flag Dialog ── */
 function FlagDialog({
   open,
@@ -2113,7 +2050,11 @@ function FlagDialog({
           await toggleDoNotCall({ id: prospect.id, doNotCall: true, reason: reason.trim() || undefined });
           toast.success(`${prospect.name} marked as Do Not Call`);
         } else if (flagType === "follow_up") {
-          await changeStatus({ id: prospect.id, status: "follow_up" });
+          await changeStatus({
+            id: prospect.id,
+            status: "follow_up",
+            followUpNote: reason.trim() || undefined,
+          });
           toast.success(`${prospect.name} status changed to Follow Up`);
         } else {
           toast.success(`${prospect.name} flagged as "${flagType === "priority" ? "Priority" : "Issue"}"`);

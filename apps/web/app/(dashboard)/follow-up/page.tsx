@@ -9,7 +9,7 @@ import {
 } from "@/lib/queries/prospects";
 
 export const metadata = {
-  title: "Scheduled — Roof-Aid CRM",
+  title: "Follow Up — Roof-Aid CRM",
 };
 
 const PAGE_SIZE = 60;
@@ -23,7 +23,7 @@ type SearchParams = {
   priceMax?: string;
 };
 
-export default async function ScheduledPage({
+export default async function FollowUpPage({
   searchParams,
 }: {
   searchParams: Promise<SearchParams>;
@@ -43,7 +43,7 @@ export default async function ScheduledPage({
   const filters: ProspectFilters = {
     city: params.city?.trim() || undefined,
     state: params.state?.trim() || undefined,
-    status: "scheduled",
+    status: "follow_up",
     search: params.q?.trim() || undefined,
     offset: 0,
     pageSize: effectiveSize,
@@ -67,8 +67,8 @@ export default async function ScheduledPage({
       cities={cities}
       states={states}
       pageSize={PAGE_SIZE}
-      basePath="/scheduled"
-      statusFilter="scheduled"
+      basePath="/follow-up"
+      statusFilter="follow_up"
       showStatusFilter={false}
     />
   );
