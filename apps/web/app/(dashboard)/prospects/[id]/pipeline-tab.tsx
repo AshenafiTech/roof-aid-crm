@@ -1,6 +1,6 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { Card } from "@/components/ui/card";
@@ -11,6 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { FollowUpNoteDialog } from "@/components/shared/follow-up-note-dialog";
 import { StatusBadge } from "@/components/shared/status-badge";
 import {
   PROSPECT_STATUSES,
@@ -40,9 +41,24 @@ export function PipelineTab({
   currentUser: AuthUser;
 }) {
   const [pending, start] = useTransition();
+  const [followUpOpen, setFollowUpOpen] = useState(false);
   const current = isProspectStatus(prospect.status) ? prospect.status : null;
 
   const history = activities.filter((a) => a.type === "status_change");
+
+  function applyChange(next: ProspectStatus, followUpNote?: string) {
+    start(async () => {
+      try {
+        await changeStatus({ id: prospect.id, status: next, followUpNote });
+        toast.success(`Status changed to ${PROSPECT_STATUS_LABELS[next]}`);
+        setFollowUpOpen(false);
+      } catch (err) {
+        toast.error(
+          err instanceof Error ? err.message : "Failed to change status",
+        );
+      }
+    });
+  }
 
   function onChange(next: string) {
     if (!isProspectStatus(next)) return;
@@ -51,16 +67,11 @@ export function PipelineTab({
       toast.error("You don't have permission for that status change");
       return;
     }
-    start(async () => {
-      try {
-        await changeStatus({ id: prospect.id, status: next });
-        toast.success(`Status changed to ${PROSPECT_STATUS_LABELS[next]}`);
-      } catch (err) {
-        toast.error(
-          err instanceof Error ? err.message : "Failed to change status",
-        );
-      }
-    });
+    if (next === "follow_up") {
+      setFollowUpOpen(true);
+      return;
+    }
+    applyChange(next);
   }
 
   return (
@@ -96,6 +107,16 @@ export function PipelineTab({
           </div>
         </div>
       </Card>
+
+      <FollowUpNoteDialog
+        open={followUpOpen}
+        onOpenChange={(o) => {
+          if (!pending) setFollowUpOpen(o);
+        }}
+        prospectName={prospect.name}
+        pending={pending}
+        onSave={(note) => applyChange("follow_up", note)}
+      />
 
       <Card className="p-6">
         <h3 className="mb-3 text-sm font-semibold">Status history</h3>

@@ -150,6 +150,10 @@ export function ProspectTable({ rows }: { rows: ProspectListItem[] }) {
                       prospectId={row.id}
                       prospectName={row.name}
                       doNotCall={row.do_not_call ?? false}
+                      assignedTo={row.assigned_to}
+                      prospectLocation={[row.address, row.city, row.state]
+                        .filter(Boolean)
+                        .join(", ")}
                     />
                   </TableCell>
                 </TableRow>

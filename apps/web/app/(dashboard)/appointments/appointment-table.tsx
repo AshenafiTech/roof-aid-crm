@@ -12,11 +12,22 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
+import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { AppointmentListItem } from "@/lib/queries/appointments";
+
+import { assignAppointmentRufero } from "./actions";
+import type { RuferoOption } from "./appointment-filters";
 
 const STATUS_STYLES: Record<string, string> = {
   pending: "bg-amber-50 text-amber-700 border-amber-200",
@@ -48,8 +59,57 @@ function formatTime(iso: string): string {
 function formatName(
   user: { first_name: string | null; last_name: string | null } | null,
 ): string {
-  if (!user) return "Unassigned";
+  if (!user) return "—";
   return [user.first_name, user.last_name].filter(Boolean).join(" ") || "Unknown";
+}
+
+function ruferoLabel(r: RuferoOption): string {
+  return [r.first_name, r.last_name].filter(Boolean).join(" ") || "Unknown";
+}
+
+function RuferoCell({
+  appointment,
+  ruferos,
+}: {
+  appointment: AppointmentListItem;
+  ruferos: RuferoOption[];
+}) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const current = appointment.rufero?.id ?? "";
+
+  function onChange(next: string) {
+    if (next === appointment.rufero?.id) return;
+
+    start(async () => {
+      try {
+        await assignAppointmentRufero({
+          appointmentId: appointment.id,
+          ruferoId: next,
+        });
+        const r = ruferos.find((x) => x.id === next);
+        toast.success(`Assigned to ${r ? ruferoLabel(r) : "rufero"}`);
+        router.refresh();
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Failed to assign");
+      }
+    });
+  }
+
+  return (
+    <Select value={current} onValueChange={onChange} disabled={pending}>
+      <SelectTrigger className="h-8 w-full text-xs">
+        <SelectValue placeholder="Assign rufero" />
+      </SelectTrigger>
+      <SelectContent>
+        {ruferos.map((r) => (
+          <SelectItem key={r.id} value={r.id}>
+            {ruferoLabel(r)}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
 }
 
 export function AppointmentTable({
@@ -57,11 +117,15 @@ export function AppointmentTable({
   total,
   currentPage,
   pageSize,
+  ruferos,
+  canAssign,
 }: {
   appointments: AppointmentListItem[];
   total: number;
   currentPage: number;
   pageSize: number;
+  ruferos: RuferoOption[];
+  canAssign: boolean;
 }) {
   const router = useRouter();
   const sp = useSearchParams();
@@ -97,7 +161,7 @@ export function AppointmentTable({
   return (
     <div className="space-y-3">
       {/* Table header */}
-      <div className="hidden grid-cols-[1fr_140px_120px_120px_100px] items-center gap-3 px-4 text-xs font-medium text-muted-foreground lg:grid">
+      <div className="hidden grid-cols-[1fr_140px_180px_120px_100px] items-center gap-3 px-4 text-xs font-medium text-muted-foreground lg:grid">
         <span>Prospect</span>
         <span>Date & Time</span>
         <span>Rufero</span>
@@ -109,7 +173,7 @@ export function AppointmentTable({
       <div className="space-y-2">
         {appointments.map((appt) => (
           <Card key={appt.id} className="px-4 py-3">
-            <div className="grid items-center gap-3 lg:grid-cols-[1fr_140px_120px_120px_100px]">
+            <div className="grid items-center gap-3 lg:grid-cols-[1fr_140px_180px_120px_100px]">
               {/* Prospect */}
               <div className="min-w-0">
                 {appt.prospect ? (
@@ -152,9 +216,15 @@ export function AppointmentTable({
               </div>
 
               {/* Rufero */}
-              <div className="flex items-center gap-1 text-sm">
-                <User className="h-3 w-3 text-muted-foreground lg:hidden" />
-                <span className="truncate">{formatName(appt.rufero)}</span>
+              <div className="min-w-0">
+                {canAssign ? (
+                  <RuferoCell appointment={appt} ruferos={ruferos} />
+                ) : (
+                  <div className="flex items-center gap-1 text-sm">
+                    <User className="h-3 w-3 text-muted-foreground lg:hidden" />
+                    <span className="truncate">{formatName(appt.rufero)}</span>
+                  </div>
+                )}
               </div>
 
               {/* Duration */}
