@@ -12,7 +12,6 @@ import {
   Clock,
   Copy,
   DollarSign,
-  ExternalLink,
   Flag,
   Home,
   LayoutList,
@@ -23,7 +22,6 @@ import {
   MessageSquare,
   Mic,
   Navigation,
-  Pencil,
   Phone,
   PhoneCall,
   PhoneOff,
@@ -101,10 +99,7 @@ import {
   toggleDoNotCall,
   listRuferos,
 } from "@/app/(dashboard)/prospects/[id]/actions";
-import {
-  rememberLastViewedProspect,
-  useRestoreLastViewedProspect,
-} from "@/lib/hooks/use-last-viewed-prospect";
+import { useRestoreLastViewedProspect } from "@/lib/hooks/use-last-viewed-prospect";
 
 const ALL = "__all__";
 
@@ -171,10 +166,8 @@ function haversineKm(aLat: number, aLng: number, bLat: number, bLng: number): nu
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
-export type LatestNoteByProspectId = Record<
-  string,
-  { body: string; created_at: string; author_name: string | null }
->;
+type NoteSummary = { body: string; created_at: string; author_name: string | null };
+export type NotesByProspectId = Record<string, NoteSummary[]>;
 
 export function ProspectListView({
   rows,
@@ -185,7 +178,7 @@ export function ProspectListView({
   basePath,
   statusFilter,
   showStatusFilter = true,
-  latestNotesByProspectId,
+  notesByProspectId,
 }: {
   rows: ProspectListItem[];
   total: number;
@@ -195,7 +188,7 @@ export function ProspectListView({
   basePath: string;
   statusFilter?: ProspectStatus;
   showStatusFilter?: boolean;
-  latestNotesByProspectId?: LatestNoteByProspectId;
+  notesByProspectId?: NotesByProspectId;
 }) {
   const router = useRouter();
   const sp = useSearchParams();
@@ -671,7 +664,6 @@ export function ProspectListView({
                     prospect={row}
                     isSelected={selectedId === row.id}
                     onSelect={() => toggleSelect(row.id)}
-                    latestNote={latestNotesByProspectId?.[row.id]}
                   />
                 ))}
                 {hasMore && (
@@ -713,7 +705,7 @@ export function ProspectListView({
                       showRowActions
                       isChecked={checkedIds.has(row.id)}
                       onCheck={() => toggleChecked(row.id)}
-                      latestNote={latestNotesByProspectId?.[row.id]}
+                      notes={notesByProspectId?.[row.id]}
                     />
                   ))}
                   {hasMore && (
@@ -758,7 +750,7 @@ export function ProspectListView({
                   prospect={selected}
                   onClose={() => setOverlayHidden(true)}
                   compact
-                  latestNote={latestNotesByProspectId?.[selected.id]}
+                  notes={notesByProspectId?.[selected.id]}
                 />
               </div>
             )}
@@ -1081,12 +1073,10 @@ function MapCardItem({
   prospect,
   isSelected,
   onSelect,
-  latestNote,
 }: {
   prospect: ProspectListItem;
   isSelected: boolean;
   onSelect: () => void;
-  latestNote?: { body: string; created_at: string; author_name: string | null };
 }) {
   const status = isProspectStatus(prospect.status) ? prospect.status : null;
   const accent = status ? PROSPECT_STATUS_ACCENTS[status] : "border-l-transparent";
@@ -1146,11 +1136,6 @@ function MapCardItem({
           </div>
         </div>
       </button>
-      {latestNote && latestNote.body.trim() && (
-        <div className="px-3 pb-2 -mt-1">
-          <ListRowNote note={latestNote} />
-        </div>
-      )}
     </div>
   );
 }
@@ -1163,7 +1148,7 @@ function ListRowItem({
   showRowActions,
   isChecked,
   onCheck,
-  latestNote,
+  notes,
 }: {
   prospect: ProspectListItem;
   isExpanded: boolean;
@@ -1171,7 +1156,7 @@ function ListRowItem({
   showRowActions?: boolean;
   isChecked?: boolean;
   onCheck?: () => void;
-  latestNote?: { body: string; created_at: string; author_name: string | null };
+  notes?: NoteSummary[];
 }) {
   const status = isProspectStatus(prospect.status) ? prospect.status : null;
   const accent = status ? PROSPECT_STATUS_ACCENTS[status] : "border-l-transparent";
@@ -1230,51 +1215,12 @@ function ListRowItem({
         )}
       </div>
 
-      {latestNote && latestNote.body.trim() && (
-        <div className="px-4 pb-2 -mt-1">
-          <ListRowNote note={latestNote} />
-        </div>
-      )}
-
       {isExpanded && (
         <div className="border-t bg-muted/10 max-h-[60vh] overflow-y-auto">
-          <ProspectDetailPanel prospect={prospect} latestNote={latestNote} />
+          <ProspectDetailPanel prospect={prospect} notes={notes} />
         </div>
       )}
     </div>
-  );
-}
-
-function ListRowNote({
-  note,
-}: {
-  note: { body: string; created_at: string; author_name: string | null };
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const created = note.created_at ? new Date(note.created_at).toLocaleString() : "";
-  return (
-    <button
-      type="button"
-      onClick={(e) => {
-        e.stopPropagation();
-        setExpanded((v) => !v);
-      }}
-      className="group flex w-full items-start gap-1.5 text-left text-xs italic text-muted-foreground hover:text-foreground"
-      title={expanded ? "Click to collapse" : "Click to read full note"}
-    >
-      <Clock className="h-3 w-3 mt-0.5 shrink-0 text-amber-600" />
-      <span className={expanded ? "whitespace-pre-wrap" : "line-clamp-2"}>
-        <span className="not-italic font-medium text-foreground/70">
-          {note.author_name ?? "Note"}:
-        </span>{" "}
-        {note.body}
-        {expanded && created && (
-          <span className="not-italic block mt-1 text-[10px] text-muted-foreground/70">
-            {created}
-          </span>
-        )}
-      </span>
-    </button>
   );
 }
 
@@ -1308,12 +1254,12 @@ function ProspectDetailPanel({
   prospect,
   onClose,
   compact,
-  latestNote,
+  notes,
 }: {
   prospect: ProspectListItem;
   onClose?: () => void;
   compact?: boolean;
-  latestNote?: { body: string; created_at: string; author_name: string | null };
+  notes?: NoteSummary[];
 }) {
   const router = useRouter();
   const [statusPending, startStatus] = useTransition();
@@ -1387,21 +1333,6 @@ function ProspectDetailPanel({
         </div>
 
         <div className="flex items-center gap-1.5 shrink-0">
-          <TooltipProvider delayDuration={200}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Link
-                  href={`/prospects/${prospect.id}`}
-                  onClick={() => rememberLastViewedProspect(prospect.id)}
-                >
-                  <Button variant="outline" size="icon" className="h-8 w-8">
-                    <ExternalLink className="h-3.5 w-3.5" />
-                  </Button>
-                </Link>
-              </TooltipTrigger>
-              <TooltipContent>Full Profile</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
           {onClose && (
             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onClose}>
               <X className="h-4 w-4" />
@@ -1450,20 +1381,6 @@ function ProspectDetailPanel({
           </Tooltip>
 
           <div className="h-5 w-px bg-border" />
-
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Link
-                href={`/prospects/${prospect.id}`}
-                onClick={() => rememberLastViewedProspect(prospect.id)}
-              >
-                <Button size="sm" variant="ghost" className="gap-1.5">
-                  <Pencil className="h-3.5 w-3.5" /> Edit
-                </Button>
-              </Link>
-            </TooltipTrigger>
-            <TooltipContent>Edit prospect</TooltipContent>
-          </Tooltip>
 
           <Tooltip>
             <TooltipTrigger asChild>
@@ -1735,28 +1652,36 @@ function ProspectDetailPanel({
         </Card>
       )}
 
-      {/* Latest note — pinned to the bottom of the panel */}
-      {latestNote && latestNote.body.trim() && (
+      {/* All notes — inline in the detail panel, newest first */}
+      {notes && notes.some((n) => n.body.trim()) && (
         <div className="rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/40 dark:bg-amber-950/30">
-          <div className="flex items-start gap-2.5">
+          <div className="flex items-center gap-2 mb-2">
             <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
               <Clock className="h-3 w-3" />
             </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-300">
-                Latest note
-                {latestNote.author_name ? ` · ${latestNote.author_name}` : ""}
-              </p>
-              <p className="mt-0.5 whitespace-pre-wrap text-xs text-amber-950 dark:text-amber-100">
-                {latestNote.body}
-              </p>
-              {latestNote.created_at && (
-                <p className="mt-1 text-[10px] text-amber-800/70 dark:text-amber-300/70">
-                  {new Date(latestNote.created_at).toLocaleString()}
-                </p>
-              )}
-            </div>
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-300">
+              Notes ({notes.filter((n) => n.body.trim()).length})
+            </p>
           </div>
+          <ul className="space-y-2 max-h-72 overflow-y-auto pr-1">
+            {notes
+              .filter((n) => n.body.trim())
+              .map((n, i) => (
+                <li
+                  key={`${n.created_at}-${i}`}
+                  className="rounded border border-amber-200/60 bg-amber-100/40 p-2 dark:border-amber-900/50 dark:bg-amber-900/20"
+                >
+                  <p className="whitespace-pre-wrap text-xs text-amber-950 dark:text-amber-100">
+                    {n.body}
+                  </p>
+                  <p className="mt-1 text-[10px] text-amber-800/70 dark:text-amber-300/70">
+                    {n.author_name ?? "Unknown"}
+                    {n.created_at &&
+                      ` · ${new Date(n.created_at).toLocaleString()}`}
+                  </p>
+                </li>
+              ))}
+          </ul>
         </div>
       )}
 
