@@ -81,7 +81,7 @@ export default async function ProspectDetailPage({
     .filter(Boolean)
     .join(", ");
 
-  const followUpNote = prospect.status === "follow_up" ? notes[0] : null;
+  const latestNote = notes[0] ?? null;
 
   return (
     <div className="space-y-6">
@@ -93,7 +93,7 @@ export default async function ProspectDetailPage({
           action={<StatusBadge status={prospect.status} />}
         />
       </div>
-      {followUpNote && (
+      {latestNote && (
         <div className="rounded-md border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/40 dark:bg-amber-950/30">
           <div className="flex items-start gap-3">
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
@@ -101,13 +101,13 @@ export default async function ProspectDetailPage({
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-xs font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-300">
-                Follow-up note
+                Latest note
               </p>
               <p className="mt-1 whitespace-pre-wrap text-sm text-amber-950 dark:text-amber-100">
-                {followUpNote.body}
+                {latestNote.body}
               </p>
               <p className="mt-2 text-xs text-amber-800/70 dark:text-amber-300/70">
-                {formatAuthor(followUpNote.author)} · {formatDateTime(followUpNote.created_at)}
+                {formatAuthor(latestNote.author)} · {formatDateTime(latestNote.created_at)}
               </p>
             </div>
           </div>

@@ -46,4 +46,10 @@ export async function addNote(input: AddNoteInput) {
 
   revalidatePath(`/prospects/${parsed.prospectId}`);
   revalidatePath("/prospects");
+  revalidatePath("/new-leads");
+  revalidatePath("/all-leads");
+  revalidatePath("/contacted");
+  revalidatePath("/follow-up");
+  revalidatePath("/closed-customers");
+  revalidatePath("/not-viable");
 }
