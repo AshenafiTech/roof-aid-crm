@@ -90,6 +90,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ProspectMap, parseCoordinates, type ProximitySearch } from "./prospect-map";
 import { openGoogleMapsDirections } from "@/lib/utils/navigation";
+import { NotesDialog } from "@/app/(dashboard)/prospects/notes-dialog";
 import {
   assignProspect,
   bulkAssign,
@@ -753,7 +754,12 @@ export function ProspectListView({
 
             {selected && !overlayHidden && (
               <div className="absolute bottom-0 inset-x-0 bg-background/95 backdrop-blur-sm border-t shadow-2xl max-h-[50%] overflow-y-auto">
-                <ProspectDetailPanel prospect={selected} onClose={() => setOverlayHidden(true)} compact />
+                <ProspectDetailPanel
+                  prospect={selected}
+                  onClose={() => setOverlayHidden(true)}
+                  compact
+                  latestNote={latestNotesByProspectId?.[selected.id]}
+                />
               </div>
             )}
             {selected && overlayHidden && (
@@ -1094,60 +1100,58 @@ function MapCardItem({
   }, [isSelected]);
 
   return (
-    <button
-      ref={ref}
-      type="button"
+    <div
+      ref={ref as unknown as React.Ref<HTMLDivElement>}
       data-prospect-id={prospect.id}
-      onClick={onSelect}
-      aria-pressed={isSelected}
       className={cn(
-        "relative w-full text-left border-l-4 px-3 py-2 transition-all",
+        "relative w-full border-l-4 transition-all",
         isSelected
           ? "border-l-primary bg-primary/10 shadow-[inset_0_0_0_1px_var(--primary)] z-10"
           : cn(accent, "hover:bg-muted/40"),
       )}
     >
-      {isSelected && (
-        <span className="absolute right-2 top-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground shadow">
-          <MapPin className="h-3 w-3" />
-        </span>
-      )}
-      <div className="flex items-center gap-2">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <p className={cn("truncate text-sm", isSelected ? "font-semibold text-primary" : "font-medium")}>
-              {prospect.name}
-            </p>
-            {prospect.do_not_call && (
-              <span className="shrink-0 flex items-center gap-0.5 rounded bg-destructive/10 px-1.5 py-0.5 text-[10px] font-medium text-destructive">
-                <PhoneOff className="h-2.5 w-2.5" /> DNC
-              </span>
-            )}
-          </div>
-          <div className="mt-0.5 flex items-center gap-x-3 text-xs text-muted-foreground">
-            {location && <span className="truncate">{location}</span>}
-            {prospect.phones?.[0] && <span className="shrink-0">{prospect.phones[0]}</span>}
-          </div>
-        </div>
-        <div className={cn("flex flex-col items-end gap-1 shrink-0", isSelected && "pr-6")}>
-          <StatusBadge status={prospect.status} className="text-[10px] px-1.5 py-0" />
-          {prospect.home_value ? (
-            <span className="text-[10px] text-muted-foreground font-medium">{formatCurrency(prospect.home_value)}</span>
-          ) : null}
-        </div>
-      </div>
-      {latestNote && latestNote.body.trim() && (
-        <div className="mt-1.5 flex items-start gap-1 text-[11px] italic text-muted-foreground">
-          <Clock className="h-2.5 w-2.5 mt-0.5 shrink-0 text-amber-600" />
-          <span className="line-clamp-2 text-left">
-            <span className="not-italic font-medium text-foreground/70">
-              {latestNote.author_name ?? "Note"}:
-            </span>{" "}
-            {latestNote.body}
+      <button
+        type="button"
+        onClick={onSelect}
+        aria-pressed={isSelected}
+        className="block w-full text-left px-3 py-2"
+      >
+        {isSelected && (
+          <span className="absolute right-2 top-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground shadow">
+            <MapPin className="h-3 w-3" />
           </span>
+        )}
+        <div className="flex items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <p className={cn("truncate text-sm", isSelected ? "font-semibold text-primary" : "font-medium")}>
+                {prospect.name}
+              </p>
+              {prospect.do_not_call && (
+                <span className="shrink-0 flex items-center gap-0.5 rounded bg-destructive/10 px-1.5 py-0.5 text-[10px] font-medium text-destructive">
+                  <PhoneOff className="h-2.5 w-2.5" /> DNC
+                </span>
+              )}
+            </div>
+            <div className="mt-0.5 flex items-center gap-x-3 text-xs text-muted-foreground">
+              {location && <span className="truncate">{location}</span>}
+              {prospect.phones?.[0] && <span className="shrink-0">{prospect.phones[0]}</span>}
+            </div>
+          </div>
+          <div className={cn("flex flex-col items-end gap-1 shrink-0", isSelected && "pr-6")}>
+            <StatusBadge status={prospect.status} className="text-[10px] px-1.5 py-0" />
+            {prospect.home_value ? (
+              <span className="text-[10px] text-muted-foreground font-medium">{formatCurrency(prospect.home_value)}</span>
+            ) : null}
+          </div>
+        </div>
+      </button>
+      {latestNote && latestNote.body.trim() && (
+        <div className="px-3 pb-2 -mt-1">
+          <ListRowNote note={latestNote} />
         </div>
       )}
-    </button>
+    </div>
   );
 }
 
@@ -1228,24 +1232,49 @@ function ListRowItem({
 
       {latestNote && latestNote.body.trim() && (
         <div className="px-4 pb-2 -mt-1">
-          <div className="flex items-start gap-1.5 text-xs italic text-muted-foreground">
-            <Clock className="h-3 w-3 mt-0.5 shrink-0 text-amber-600" />
-            <span className="line-clamp-2">
-              <span className="not-italic font-medium text-foreground/70">
-                {latestNote.author_name ?? "Note"}:
-              </span>{" "}
-              {latestNote.body}
-            </span>
-          </div>
+          <ListRowNote note={latestNote} />
         </div>
       )}
 
       {isExpanded && (
-        <div className="border-t bg-muted/10">
-          <ProspectDetailPanel prospect={prospect} />
+        <div className="border-t bg-muted/10 max-h-[60vh] overflow-y-auto">
+          <ProspectDetailPanel prospect={prospect} latestNote={latestNote} />
         </div>
       )}
     </div>
+  );
+}
+
+function ListRowNote({
+  note,
+}: {
+  note: { body: string; created_at: string; author_name: string | null };
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const created = note.created_at ? new Date(note.created_at).toLocaleString() : "";
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        setExpanded((v) => !v);
+      }}
+      className="group flex w-full items-start gap-1.5 text-left text-xs italic text-muted-foreground hover:text-foreground"
+      title={expanded ? "Click to collapse" : "Click to read full note"}
+    >
+      <Clock className="h-3 w-3 mt-0.5 shrink-0 text-amber-600" />
+      <span className={expanded ? "whitespace-pre-wrap" : "line-clamp-2"}>
+        <span className="not-italic font-medium text-foreground/70">
+          {note.author_name ?? "Note"}:
+        </span>{" "}
+        {note.body}
+        {expanded && created && (
+          <span className="not-italic block mt-1 text-[10px] text-muted-foreground/70">
+            {created}
+          </span>
+        )}
+      </span>
+    </button>
   );
 }
 
@@ -1279,10 +1308,12 @@ function ProspectDetailPanel({
   prospect,
   onClose,
   compact,
+  latestNote,
 }: {
   prospect: ProspectListItem;
   onClose?: () => void;
   compact?: boolean;
+  latestNote?: { body: string; created_at: string; author_name: string | null };
 }) {
   const router = useRouter();
   const [statusPending, startStatus] = useTransition();
@@ -1466,14 +1497,15 @@ function ProspectDetailPanel({
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <Link
-                href={`/prospects/${prospect.id}?tab=notes`}
-                onClick={() => rememberLastViewedProspect(prospect.id)}
-              >
-                <Button size="sm" variant="ghost" className="gap-1.5">
-                  <StickyNote className="h-3.5 w-3.5" />
-                </Button>
-              </Link>
+              <NotesDialog
+                prospectId={prospect.id}
+                prospectName={prospect.name}
+                trigger={
+                  <Button size="sm" variant="ghost" className="gap-1.5">
+                    <StickyNote className="h-3.5 w-3.5" />
+                  </Button>
+                }
+              />
             </TooltipTrigger>
             <TooltipContent>Add note</TooltipContent>
           </Tooltip>
@@ -1701,6 +1733,31 @@ function ProspectDetailPanel({
             </div>
           </div>
         </Card>
+      )}
+
+      {/* Latest note — pinned to the bottom of the panel */}
+      {latestNote && latestNote.body.trim() && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/40 dark:bg-amber-950/30">
+          <div className="flex items-start gap-2.5">
+            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+              <Clock className="h-3 w-3" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-300">
+                Latest note
+                {latestNote.author_name ? ` · ${latestNote.author_name}` : ""}
+              </p>
+              <p className="mt-0.5 whitespace-pre-wrap text-xs text-amber-950 dark:text-amber-100">
+                {latestNote.body}
+              </p>
+              {latestNote.created_at && (
+                <p className="mt-1 text-[10px] text-amber-800/70 dark:text-amber-300/70">
+                  {new Date(latestNote.created_at).toLocaleString()}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       <CallDialog open={callOpen} onOpenChange={setCallOpen} prospect={prospect} />

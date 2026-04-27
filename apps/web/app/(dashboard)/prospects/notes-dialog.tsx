@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,7 @@ export function NotesDialog({
   prospectName: string;
   trigger: React.ReactNode;
 }) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [body, setBody] = useState("");
   const [pending, start] = useTransition();
@@ -42,6 +44,7 @@ export function NotesDialog({
         toast.success("Note saved");
         setBody("");
         setOpen(false);
+        router.refresh();
       } catch (err) {
         toast.error(
           err instanceof Error ? err.message : "Failed to save note",
