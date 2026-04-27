@@ -12,7 +12,7 @@ import {
   PROSPECT_LIST_PAGE_SIZE,
   type ProspectListSearchParams,
 } from "@/lib/queries/parse-list-params";
-import { fetchLatestNotesByProspectId } from "@/lib/queries/follow-up-notes";
+import { fetchNotesByProspectId } from "@/lib/queries/follow-up-notes";
 
 export const metadata = {
   title: "All Leads — Roof-Aid CRM",
@@ -41,10 +41,10 @@ export default async function AllLeadsPage({
 
   const rotatedRows = applyAntiCollisionRotation(rows);
 
-  const notesByProspectId = await fetchLatestNotesByProspectId(
+  const notesMap = await fetchNotesByProspectId(
     rotatedRows.map((r) => r.id),
   );
-  const latestNotesByProspectId = Object.fromEntries(notesByProspectId);
+  const notesByProspectId = Object.fromEntries(notesMap);
 
   return (
     <ProspectListView
@@ -56,7 +56,7 @@ export default async function AllLeadsPage({
       basePath="/all-leads"
       statusFilter={statusForView}
       showStatusFilter={true}
-      latestNotesByProspectId={latestNotesByProspectId}
+      notesByProspectId={notesByProspectId}
     />
   );
 }

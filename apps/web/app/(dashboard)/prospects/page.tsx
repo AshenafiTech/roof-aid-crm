@@ -12,7 +12,7 @@ import {
   PROSPECT_LIST_PAGE_SIZE,
   type ProspectListSearchParams,
 } from "@/lib/queries/parse-list-params";
-import { fetchLatestNotesByProspectId } from "@/lib/queries/follow-up-notes";
+import { fetchNotesByProspectId } from "@/lib/queries/follow-up-notes";
 
 import { RealtimeRefresh } from "./realtime-refresh";
 
@@ -42,10 +42,10 @@ export default async function ProspectsPage({
 
   const rotatedRows = applyAntiCollisionRotation(rows);
 
-  const notesByProspectId = await fetchLatestNotesByProspectId(
+  const notesMap = await fetchNotesByProspectId(
     rotatedRows.map((r) => r.id),
   );
-  const latestNotesByProspectId = Object.fromEntries(notesByProspectId);
+  const notesByProspectId = Object.fromEntries(notesMap);
 
   return (
     <>
@@ -58,7 +58,7 @@ export default async function ProspectsPage({
         basePath="/prospects"
         statusFilter="prospects"
         showStatusFilter={false}
-        latestNotesByProspectId={latestNotesByProspectId}
+        notesByProspectId={notesByProspectId}
       />
       <RealtimeRefresh tenantId={user.tenantId} />
     </>
