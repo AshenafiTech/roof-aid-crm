@@ -7,19 +7,39 @@ import '../../domain/entities/prospect_entity.dart';
 class ProspectListTile extends StatelessWidget {
   final ProspectEntity prospect;
   final VoidCallback? onTap;
+  final bool highlight;
 
-  const ProspectListTile({super.key, required this.prospect, this.onTap});
+  const ProspectListTile({
+    super.key,
+    required this.prospect,
+    this.onTap,
+    this.highlight = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final statusColor = ProspectStatus.color(prospect.status);
     final address = prospect.displayAddress;
+    final baseCardColor = theme.cardTheme.color ?? theme.cardColor;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: Card(
-        clipBehavior: Clip.antiAlias,
+      child: TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0.0, end: highlight ? 1.0 : 0.0),
+        duration: Duration(milliseconds: highlight ? 260 : 900),
+        curve: Curves.easeOut,
+        builder: (context, t, child) {
+          return Card(
+            color: Color.lerp(
+              baseCardColor,
+              theme.colorScheme.primary,
+              t * 0.18,
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: child,
+          );
+        },
         child: InkWell(
           onTap:
               onTap ??
@@ -70,8 +90,8 @@ class ProspectListTile extends StatelessWidget {
                       Text(
                         prospect.name,
                         style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: -0.2,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: -0.1,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -177,8 +197,8 @@ class _StatusChip extends StatelessWidget {
         label,
         style: TextStyle(
           color: color,
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
           letterSpacing: 0.3,
         ),
       ),

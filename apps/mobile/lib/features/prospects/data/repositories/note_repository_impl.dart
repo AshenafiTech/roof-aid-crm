@@ -16,6 +16,8 @@ class NoteRepositoryImpl implements NoteRepository {
     try {
       final notes = await remoteDatasource.fetchForProspect(prospectId);
       return Right(notes);
+    } on NetworkException catch (e) {
+      return Left(NetworkFailure(e.message));
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message));
     }
@@ -35,6 +37,8 @@ class NoteRepositoryImpl implements NoteRepository {
       final note =
           await remoteDatasource.addNote(prospectId: prospectId, body: body);
       return Right(note);
+    } on NetworkException catch (e) {
+      return Left(NetworkFailure(e.message));
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message));
     }
@@ -49,6 +53,8 @@ class NoteRepositoryImpl implements NoteRepository {
       final note =
           await remoteDatasource.updateNote(noteId: noteId, body: body);
       return Right(note);
+    } on NetworkException catch (e) {
+      return Left(NetworkFailure(e.message));
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message));
     }
@@ -59,6 +65,8 @@ class NoteRepositoryImpl implements NoteRepository {
     try {
       await remoteDatasource.deleteNote(noteId);
       return const Right(unit);
+    } on NetworkException catch (e) {
+      return Left(NetworkFailure(e.message));
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message));
     }

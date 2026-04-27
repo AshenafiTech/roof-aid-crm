@@ -72,7 +72,7 @@ class NotesTab extends StatelessWidget {
       return const Center(child: CircularProgressIndicator());
     }
     if (state is NotesError) {
-      return _ErrorView(message: state.message);
+      return _ErrorView(message: state.message, isOffline: state.isOffline);
     }
     if (state is NotesLoaded) {
       if (state.notes.isEmpty) {
@@ -342,8 +342,9 @@ class _EditNoteDialogState extends State<_EditNoteDialog> {
 
 class _ErrorView extends StatelessWidget {
   final String message;
+  final bool isOffline;
 
-  const _ErrorView({required this.message});
+  const _ErrorView({required this.message, this.isOffline = false});
 
   @override
   Widget build(BuildContext context) {
@@ -355,8 +356,10 @@ class _ErrorView extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              Icons.error_outline,
-              color: theme.colorScheme.error,
+              isOffline ? Icons.wifi_off_rounded : Icons.error_outline,
+              color: isOffline
+                  ? theme.colorScheme.onSurfaceVariant
+                  : theme.colorScheme.error,
               size: 32,
             ),
             const SizedBox(height: 12),

@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../../core/error/failures.dart';
+import '../../../../core/network/network_error_detection.dart';
 import '../../domain/entities/note_entity.dart';
 import '../../domain/usecases/add_prospect_note.dart';
 import '../../domain/usecases/delete_prospect_note.dart';
@@ -51,11 +53,18 @@ class NotesBloc extends Bloc<NotesEvent, NotesState> {
 
     final result = await _getNotes(event.prospectId);
     result.fold(
-      (failure) => emit(NotesError(failure.message)),
+      (failure) => emit(_errorFor(failure)),
       (notes) {
         emit(NotesLoaded(notes));
         _subscribe(event.prospectId);
       },
+    );
+  }
+
+  NotesError _errorFor(Failure failure) {
+    return NotesError(
+      failure.message,
+      isOffline: failure is NetworkFailure,
     );
   }
 
@@ -75,7 +84,15 @@ class NotesBloc extends Bloc<NotesEvent, NotesState> {
     NotesStreamFailed event,
     Emitter<NotesState> emit,
   ) {
-    if (state is! NotesLoaded) emit(NotesError(event.message));
+    if (state is! NotesLoaded) {
+      final offline = isNetworkError(event.message);
+      emit(
+        NotesError(
+          offline ? offlineMessage : event.message,
+          isOffline: offline,
+        ),
+      );
+    }
   }
 
   Future<void> _onSubmit(

@@ -20,6 +20,7 @@ class ProspectsLoaded extends ProspectsState {
 
 class ProspectsError extends ProspectsState {
   final String message;
+  final bool isOffline;
 
-  const ProspectsError(this.message);
+  const ProspectsError(this.message, {this.isOffline = false});
 }

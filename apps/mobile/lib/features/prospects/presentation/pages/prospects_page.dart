@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -21,7 +23,10 @@ class ProspectsBody extends StatelessWidget {
           ProspectsInitial() || ProspectsLoading() => const Center(
             child: CircularProgressIndicator(),
           ),
-          ProspectsError(:final message) => _ErrorView(message: message),
+          ProspectsError(:final message, :final isOffline) => _ErrorView(
+            message: message,
+            isOffline: isOffline,
+          ),
           ProspectsLoaded(:final prospects) =>
             prospects.isEmpty
                 ? const _EmptyView()
@@ -32,10 +37,53 @@ class ProspectsBody extends StatelessWidget {
   }
 }
 
-class _ProspectsList extends StatelessWidget {
+class _ProspectsList extends StatefulWidget {
   final List<ProspectEntity> prospects;
 
   const _ProspectsList({required this.prospects});
+
+  @override
+  State<_ProspectsList> createState() => _ProspectsListState();
+}
+
+class _ProspectsListState extends State<_ProspectsList> {
+  final Map<String, GlobalKey> _tileKeys = {};
+  String? _recentlyViewedId;
+  Timer? _highlightClearTimer;
+
+  @override
+  void dispose() {
+    _highlightClearTimer?.cancel();
+    super.dispose();
+  }
+
+  GlobalKey _keyFor(String id) =>
+      _tileKeys.putIfAbsent(id, () => GlobalKey());
+
+  Future<void> _openDetail(ProspectEntity p) async {
+    await context.push('/prospects/${p.id}', extra: p);
+    if (!mounted) return;
+
+    _highlightClearTimer?.cancel();
+    setState(() => _recentlyViewedId = p.id);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _tileKeys[p.id]?.currentContext;
+      if (ctx != null) {
+        Scrollable.ensureVisible(
+          ctx,
+          duration: const Duration(milliseconds: 350),
+          curve: Curves.easeOutCubic,
+          alignment: 0.3,
+        );
+      }
+    });
+
+    _highlightClearTimer = Timer(const Duration(milliseconds: 500), () {
+      if (!mounted) return;
+      setState(() => _recentlyViewedId = null);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -50,12 +98,14 @@ class _ProspectsList extends StatelessWidget {
       child: ListView.builder(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.symmetric(vertical: 8),
-        itemCount: prospects.length,
+        itemCount: widget.prospects.length,
         itemBuilder: (_, i) {
-          final p = prospects[i];
+          final p = widget.prospects[i];
           return ProspectListTile(
+            key: _keyFor(p.id),
             prospect: p,
-            onTap: () => context.push('/prospects/${p.id}', extra: p),
+            highlight: _recentlyViewedId == p.id,
+            onTap: () => _openDetail(p),
           );
         },
       ),
@@ -109,12 +159,16 @@ class _EmptyView extends StatelessWidget {
 
 class _ErrorView extends StatelessWidget {
   final String message;
+  final bool isOffline;
 
-  const _ErrorView({required this.message});
+  const _ErrorView({required this.message, this.isOffline = false});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final iconColor = isOffline
+        ? theme.colorScheme.onSurfaceVariant
+        : theme.colorScheme.error;
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 32),
@@ -124,18 +178,18 @@ class _ErrorView extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: theme.colorScheme.error.withValues(alpha: 0.08),
+                color: iconColor.withValues(alpha: 0.08),
                 shape: BoxShape.circle,
               ),
               child: Icon(
-                Icons.error_outline,
+                isOffline ? Icons.wifi_off_rounded : Icons.error_outline,
                 size: 40,
-                color: theme.colorScheme.error,
+                color: iconColor,
               ),
             ),
             const SizedBox(height: 20),
             Text(
-              'Something went wrong',
+              isOffline ? "You're offline" : 'Something went wrong',
               style: theme.textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w600,
               ),

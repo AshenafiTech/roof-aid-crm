@@ -79,28 +79,7 @@ class OverviewTab extends StatelessWidget {
               label: 'Address',
               value: _fullAddress(prospect),
             ),
-            if (prospect.hailSize != null)
-              _KeyValue(
-                icon: Icons.cloud_outlined,
-                iconColor: AppTheme.iconWeather,
-                label: 'Hail size',
-                value: '${prospect.hailSize!.toStringAsFixed(2)} in',
-              ),
-            if (prospect.homeValue != null)
-              _KeyValue(
-                icon: Icons.attach_money_outlined,
-                iconColor: AppTheme.iconMoney,
-                label: 'Home value',
-                value: _money(prospect.homeValue!),
-              ),
-            if (prospect.hasCoordinates)
-              _KeyValue(
-                icon: Icons.my_location_outlined,
-                iconColor: AppTheme.iconCoord,
-                label: 'Coordinates',
-                value:
-                    '${prospect.latitude!.toStringAsFixed(5)}, ${prospect.longitude!.toStringAsFixed(5)}',
-              ),
+            ..._buildPropertyStatGrid(prospect),
           ],
         ),
         _SectionCard(
@@ -122,6 +101,60 @@ class OverviewTab extends StatelessWidget {
         ),
       ],
     );
+  }
+
+  /// Lays out the short "stat" fields (hail, home value, coordinates) in a
+  /// 2-column grid. Keeps the Property card compact so the overview fits on
+  /// one screen without scrolling. Address stays full-width above this grid
+  /// because it's multi-line.
+  List<Widget> _buildPropertyStatGrid(ProspectEntity prospect) {
+    final stats = <Widget>[
+      if (prospect.hailSize != null)
+        _StatCell(
+          icon: Icons.cloud_outlined,
+          iconColor: AppTheme.iconWeather,
+          label: 'Hail size',
+          value: '${prospect.hailSize!.toStringAsFixed(2)} in',
+        ),
+      if (prospect.homeValue != null)
+        _StatCell(
+          icon: Icons.attach_money_outlined,
+          iconColor: AppTheme.iconMoney,
+          label: 'Home value',
+          value: _money(prospect.homeValue!),
+        ),
+      if (prospect.hasCoordinates)
+        _StatCell(
+          icon: Icons.my_location_outlined,
+          iconColor: AppTheme.iconCoord,
+          label: 'Coordinates',
+          value:
+              '${prospect.latitude!.toStringAsFixed(5)}, ${prospect.longitude!.toStringAsFixed(5)}',
+        ),
+    ];
+    if (stats.isEmpty) return const [];
+
+    final rows = <Widget>[];
+    for (var i = 0; i < stats.length; i += 2) {
+      rows.add(
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: stats[i]),
+              const SizedBox(width: 12),
+              Expanded(
+                child: i + 1 < stats.length
+                    ? stats[i + 1]
+                    : const SizedBox.shrink(),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    return rows;
   }
 
   String _fullAddress(ProspectEntity p) {
@@ -257,6 +290,64 @@ class _KeyValue extends StatelessWidget {
                   ),
                 ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Compact variant of [_KeyValue] used inside the Property card's 2-column
+/// grid. Stacks icon+label above the value so each cell fits in a half-width
+/// column without wrapping awkwardly.
+class _StatCell extends StatelessWidget {
+  final IconData icon;
+  final Color? iconColor;
+  final String label;
+  final String value;
+
+  const _StatCell({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.iconColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final resolvedIconColor = iconColor ?? theme.colorScheme.onSurfaceVariant;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 14, color: resolvedIconColor),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+              height: 1.3,
             ),
           ),
         ],

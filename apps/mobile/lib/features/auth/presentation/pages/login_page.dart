@@ -44,10 +44,43 @@ class _LoginPageState extends State<LoginPage> {
     return Scaffold(
       body: BlocListener<AuthBloc, AuthState>(
         listener: (context, state) {
+          // Any progress past an error/offline state means the previous
+          // snackbar is stale — dismiss it before doing anything else.
+          // (ScaffoldMessenger is app-level, so it would otherwise outlive
+          // the navigation to /dashboard.)
+          if (state is AuthLoading || state is AuthAuthenticated) {
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            return;
+          }
           if (state is AuthError) {
             ScaffoldMessenger.of(context)
               ..hideCurrentSnackBar()
               ..showSnackBar(SnackBar(content: Text(state.message)));
+          } else if (state is AuthOffline) {
+            ScaffoldMessenger.of(context)
+              ..hideCurrentSnackBar()
+              ..showSnackBar(
+                SnackBar(
+                  content: Row(
+                    children: [
+                      const Icon(
+                        Icons.wifi_off_rounded,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(child: Text(state.message)),
+                    ],
+                  ),
+                  behavior: SnackBarBehavior.floating,
+                  duration: const Duration(seconds: 4),
+                  action: SnackBarAction(
+                    label: 'Retry',
+                    textColor: Colors.white,
+                    onPressed: _onSubmit,
+                  ),
+                ),
+              );
           }
         },
         child: DecoratedBox(

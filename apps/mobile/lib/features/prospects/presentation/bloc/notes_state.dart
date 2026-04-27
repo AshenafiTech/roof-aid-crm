@@ -59,6 +59,7 @@ class NotesLoaded extends NotesState {
 
 class NotesError extends NotesState {
   final String message;
+  final bool isOffline;
 
-  const NotesError(this.message);
+  const NotesError(this.message, {this.isOffline = false});
 }

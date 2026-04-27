@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../../core/error/failures.dart';
+import '../../../../core/network/network_error_detection.dart';
 import '../../domain/usecases/get_assigned_prospects.dart';
 import '../../domain/usecases/watch_assigned_prospects.dart';
 import 'prospects_event.dart';
@@ -32,12 +34,13 @@ class ProspectsBloc extends Bloc<ProspectsEvent, ProspectsState> {
 
     final result = await _getAssigned();
 
-    result.fold((failure) => emit(ProspectsError(failure.message)), (
-      prospects,
-    ) {
-      emit(ProspectsLoaded(prospects));
-      _subscribe();
-    });
+    result.fold(
+      (failure) => emit(_errorFor(failure)),
+      (prospects) {
+        emit(ProspectsLoaded(prospects));
+        _subscribe();
+      },
+    );
   }
 
   Future<void> _onRefresh(
@@ -47,7 +50,7 @@ class ProspectsBloc extends Bloc<ProspectsEvent, ProspectsState> {
     final result = await _getAssigned();
 
     result.fold(
-      (failure) => emit(ProspectsError(failure.message)),
+      (failure) => emit(_errorFor(failure)),
       (prospects) => emit(ProspectsLoaded(prospects)),
     );
   }
@@ -66,8 +69,24 @@ class ProspectsBloc extends Bloc<ProspectsEvent, ProspectsState> {
     // Don't wipe the current list on a realtime error — just surface
     // the message via a transient error state if we're not already loaded.
     if (state is! ProspectsLoaded) {
-      emit(ProspectsError(event.message));
+      // Stream errors come through as raw exceptions stringified into
+      // `event.message`, not as Failures — sniff for the network shape so
+      // the UI can render an offline icon.
+      final offline = isNetworkError(event.message);
+      emit(
+        ProspectsError(
+          offline ? offlineMessage : event.message,
+          isOffline: offline,
+        ),
+      );
     }
+  }
+
+  ProspectsError _errorFor(Failure failure) {
+    return ProspectsError(
+      failure.message,
+      isOffline: failure is NetworkFailure,
+    );
   }
 
   void _subscribe() {

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../core/error/exceptions.dart';
+import '../../../../core/network/network_error_detection.dart';
 import '../models/note_model.dart';
 
 abstract class NoteRemoteDatasource {
@@ -43,9 +44,15 @@ class NoteRemoteDatasourceImpl implements NoteRemoteDatasource {
       return (response as List)
           .map((row) => NoteModel.fromMap(row as Map<String, dynamic>))
           .toList(growable: false);
-    } on PostgrestException catch (e) {
-      throw ServerException(e.message);
+    } on ServerException {
+      rethrow;
     } catch (e) {
+      if (isNetworkError(e)) {
+        throw NetworkException(offlineMessage);
+      }
+      if (e is PostgrestException) {
+        throw ServerException(e.message);
+      }
       throw ServerException('Failed to load notes: $e');
     }
   }
@@ -117,11 +124,15 @@ class NoteRemoteDatasourceImpl implements NoteRemoteDatasource {
           .single();
 
       return NoteModel.fromMap(inserted);
-    } on PostgrestException catch (e) {
-      throw ServerException(e.message);
     } on ServerException {
       rethrow;
     } catch (e) {
+      if (isNetworkError(e)) {
+        throw NetworkException(offlineMessage);
+      }
+      if (e is PostgrestException) {
+        throw ServerException(e.message);
+      }
       throw ServerException('Failed to add note: $e');
     }
   }
@@ -147,11 +158,15 @@ class NoteRemoteDatasourceImpl implements NoteRemoteDatasource {
       }
 
       return NoteModel.fromMap(updated);
-    } on PostgrestException catch (e) {
-      throw ServerException(e.message);
     } on ServerException {
       rethrow;
     } catch (e) {
+      if (isNetworkError(e)) {
+        throw NetworkException(offlineMessage);
+      }
+      if (e is PostgrestException) {
+        throw ServerException(e.message);
+      }
       throw ServerException('Failed to update note: $e');
     }
   }
@@ -173,11 +188,15 @@ class NoteRemoteDatasourceImpl implements NoteRemoteDatasource {
       if ((deleted as List).isEmpty) {
         throw ServerException('Delete window has expired');
       }
-    } on PostgrestException catch (e) {
-      throw ServerException(e.message);
     } on ServerException {
       rethrow;
     } catch (e) {
+      if (isNetworkError(e)) {
+        throw NetworkException(offlineMessage);
+      }
+      if (e is PostgrestException) {
+        throw ServerException(e.message);
+      }
       throw ServerException('Failed to delete note: $e');
     }
   }

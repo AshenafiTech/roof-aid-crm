@@ -153,6 +153,23 @@ class AppTheme {
       fontFamily: 'Roboto',
       scaffoldBackgroundColor: t.scaffoldBg,
       splashFactory: InkSparkle.splashFactory,
+      // Globally lighter & ~1 sp smaller than M3 defaults — paired with the
+      // 1.3× textScaler clamp in app.dart to keep the UI feeling crisp at
+      // any accessibility setting. Widgets that don't override fontSize /
+      // fontWeight inherit these automatically. Per-widget `copyWith` calls
+      // still win, so heavy emphasis (prospect names, status badges) stays
+      // expressive where it should be.
+      textTheme: const TextTheme(
+        titleLarge: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, letterSpacing: -0.2),
+        titleMedium: TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+        titleSmall: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+        bodyLarge: TextStyle(fontSize: 15, fontWeight: FontWeight.w400, height: 1.4),
+        bodyMedium: TextStyle(fontSize: 13, fontWeight: FontWeight.w400, height: 1.4),
+        bodySmall: TextStyle(fontSize: 11, fontWeight: FontWeight.w400, height: 1.4),
+        labelLarge: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+        labelMedium: TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
+        labelSmall: TextStyle(fontSize: 10, fontWeight: FontWeight.w500, letterSpacing: 0.4),
+      ),
       appBarTheme: AppBarTheme(
         elevation: 0,
         scrolledUnderElevation: 1,
@@ -161,10 +178,10 @@ class AppTheme {
         surfaceTintColor: colorScheme.surface,
         foregroundColor: colorScheme.onSurface,
         titleTextStyle: TextStyle(
-          fontSize: 20,
-          fontWeight: FontWeight.w700,
+          fontSize: 18,
+          fontWeight: FontWeight.w600,
           color: colorScheme.onSurface,
-          letterSpacing: -0.3,
+          letterSpacing: -0.2,
         ),
         iconTheme: IconThemeData(color: colorScheme.onSurface, size: 22),
       ),
@@ -187,11 +204,14 @@ class AppTheme {
         backgroundColor: colorScheme.surface,
         surfaceTintColor: colorScheme.surface,
         indicatorColor: colorScheme.primary.withValues(alpha: 0.12),
+        // Smaller, lighter base label so the system text scaler (capped at
+        // 1.3× in app.dart for "easy mode" / accessibility) still fits inside
+        // the 72 dp bar without overflow. 10 sp × 1.3 = 13 sp — comfortable.
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           final selected = states.contains(WidgetState.selected);
           return TextStyle(
-            fontSize: 11,
-            fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+            fontSize: 10,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
             color: selected
                 ? colorScheme.primary
                 : colorScheme.onSurfaceVariant,
@@ -228,12 +248,12 @@ class AppTheme {
         indicatorColor: colorScheme.primary,
         indicatorSize: TabBarIndicatorSize.label,
         labelStyle: const TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.w700,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
           letterSpacing: 0.2,
         ),
         unselectedLabelStyle: const TextStyle(
-          fontSize: 14,
+          fontSize: 13,
           fontWeight: FontWeight.w500,
         ),
         dividerColor: colorScheme.outlineVariant,
@@ -242,8 +262,8 @@ class AppTheme {
         style: ButtonStyle(
           textStyle: WidgetStateProperty.all(
             const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
               letterSpacing: 0.2,
             ),
           ),
@@ -254,8 +274,8 @@ class AppTheme {
         backgroundColor: colorScheme.surfaceContainer,
         side: BorderSide(color: colorScheme.outlineVariant),
         labelStyle: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
+          fontSize: 11,
+          fontWeight: FontWeight.w500,
           color: colorScheme.onSurface,
         ),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -309,7 +329,8 @@ class AppTheme {
         backgroundColor: t.snackBarBg,
         contentTextStyle: TextStyle(
           color: t.snackBarFg,
-          fontWeight: FontWeight.w500,
+          fontSize: 13,
+          fontWeight: FontWeight.w400,
         ),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),

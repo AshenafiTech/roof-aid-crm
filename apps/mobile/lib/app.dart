@@ -107,6 +107,21 @@ class _AppViewState extends State<_AppView> {
           darkTheme: AppTheme.dark,
           themeMode: mode,
           routerConfig: _router,
+          // Clamp system text scaling so "easy mode" / accessibility font
+          // sizes can't grow past 1.3× and break fixed-height widgets like
+          // NavigationBar and AppBar actions.
+          builder: (context, child) {
+            final mq = MediaQuery.of(context);
+            return MediaQuery(
+              data: mq.copyWith(
+                textScaler: mq.textScaler.clamp(
+                  minScaleFactor: 1.0,
+                  maxScaleFactor: 1.3,
+                ),
+              ),
+              child: child!,
+            );
+          },
         );
       },
     );

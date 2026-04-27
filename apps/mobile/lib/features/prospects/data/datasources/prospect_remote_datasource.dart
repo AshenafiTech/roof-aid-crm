@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../core/error/exceptions.dart';
+import '../../../../core/network/network_error_detection.dart';
 import '../models/prospect_model.dart';
 
 abstract class ProspectRemoteDatasource {
@@ -37,9 +38,15 @@ class ProspectRemoteDatasourceImpl implements ProspectRemoteDatasource {
       return (response as List)
           .map((row) => ProspectModel.fromMap(row as Map<String, dynamic>))
           .toList(growable: false);
-    } on PostgrestException catch (e) {
-      throw ServerException(e.message);
+    } on ServerException {
+      rethrow;
     } catch (e) {
+      if (isNetworkError(e)) {
+        throw NetworkException(offlineMessage);
+      }
+      if (e is PostgrestException) {
+        throw ServerException(e.message);
+      }
       throw ServerException('Failed to load prospects: $e');
     }
   }
