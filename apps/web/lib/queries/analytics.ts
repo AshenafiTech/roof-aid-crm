@@ -99,6 +99,7 @@ export async function getConversionMetrics(): Promise<ConversionMetrics> {
     "new_leads",
     "prospects",
     "contacted",
+    "follow_up",
     "scheduled",
     "closed_customer",
     "not_viable",

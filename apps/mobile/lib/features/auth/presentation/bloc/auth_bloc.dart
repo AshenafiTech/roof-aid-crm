@@ -1,5 +1,6 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../../core/error/failures.dart';
 import '../../domain/usecases/get_current_user.dart';
 import '../../domain/usecases/sign_in.dart';
 import '../../domain/usecases/sign_out.dart';
@@ -15,10 +16,10 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     required SignIn signIn,
     required SignOut signOut,
     required GetCurrentUser getCurrentUser,
-  })  : _signIn = signIn,
-        _signOut = signOut,
-        _getCurrentUser = getCurrentUser,
-        super(const AuthInitial()) {
+  }) : _signIn = signIn,
+       _signOut = signOut,
+       _getCurrentUser = getCurrentUser,
+       super(const AuthInitial()) {
     on<AuthCheckRequested>(_onCheckRequested);
     on<AuthSignInRequested>(_onSignInRequested);
     on<AuthSignOutRequested>(_onSignOutRequested);
@@ -33,7 +34,14 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     final result = await _getCurrentUser();
 
     result.fold(
-      (_) => emit(const AuthUnauthenticated()),
+      (failure) => emit(
+        // Network failure on session check → tell the user to reconnect
+        // (don't pretend they're unauthenticated; their session may still
+        // be valid, we just can't verify it right now).
+        failure is NetworkFailure
+            ? AuthOffline(failure.message)
+            : const AuthUnauthenticated(),
+      ),
       (user) => emit(AuthAuthenticated(user)),
     );
   }
@@ -44,13 +52,14 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   ) async {
     emit(const AuthLoading());
 
-    final result = await _signIn(
-      email: event.email,
-      password: event.password,
-    );
+    final result = await _signIn(email: event.email, password: event.password);
 
     result.fold(
-      (failure) => emit(AuthError(failure.message)),
+      (failure) => emit(
+        failure is NetworkFailure
+            ? AuthOffline(failure.message)
+            : AuthError(failure.message),
+      ),
       (user) => emit(AuthAuthenticated(user)),
     );
   }
@@ -64,7 +73,11 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     final result = await _signOut();
 
     result.fold(
-      (failure) => emit(AuthError(failure.message)),
+      (failure) => emit(
+        failure is NetworkFailure
+            ? AuthOffline(failure.message)
+            : AuthError(failure.message),
+      ),
       (_) => emit(const AuthUnauthenticated()),
     );
   }

@@ -16,14 +16,33 @@ export type ProspectFilters = {
   city?: string;
   state?: string;
   status?: ProspectStatus;
+  /** Free-text match against the prospect's NAME only. */
   search?: string;
+  /** Free-text match against the prospect's ADDRESS only. */
+  street?: string;
+  lat?: number;
+  lng?: number;
+  radiusKm?: number;
   assignedTo?: string;
   priceMin?: number;
   priceMax?: number;
   page?: number;
   pageSize?: number;
   offset?: number;
+  /**
+   * Order for the result set.
+   * - `"created_desc"` (default): newest prospects first.
+   * - `"updated_desc"`: most recently changed prospects first. Useful on
+   *   status pages (e.g. /follow-up) so a prospect that was just moved
+   *   into the bucket lands at the top.
+   */
+  sort?: "created_desc" | "updated_desc";
 };
+
+// Escape PostgREST/SQL ilike wildcards so user input is treated as a literal substring.
+function escapeIlike(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/[%_]/g, (c) => `\\${c}`);
+}
 
 export async function listProspects(filters: ProspectFilters) {
   const supabase = await createClient();
@@ -31,19 +50,32 @@ export async function listProspects(filters: ProspectFilters) {
   const from = filters.offset ?? 0;
   const to = from + size - 1;
 
+  const sortColumn = filters.sort === "updated_desc" ? "updated_at" : "created_at";
+
   let query = supabase
     .from("prospects")
     .select(
       "*, assigned_user:users!assigned_to(id, first_name, last_name)",
       { count: "exact" },
     )
-    .order("created_at", { ascending: false })
+    .order(sortColumn, { ascending: false })
     .range(from, to);
 
   if (filters.city) query = query.eq("city", filters.city);
   if (filters.state) query = query.eq("state", filters.state);
   if (filters.status) query = query.eq("status", filters.status);
-  if (filters.search) query = query.ilike("name", `%${filters.search}%`);
+
+  // Separation of concerns:
+  //   `search` → NAME only.   `street` → ADDRESS only.
+  const nameTerm = filters.search?.trim();
+  if (nameTerm) {
+    query = query.ilike("name", `%${escapeIlike(nameTerm)}%`);
+  }
+  const streetTerm = filters.street?.trim();
+  if (streetTerm) {
+    query = query.ilike("address", `%${escapeIlike(streetTerm)}%`);
+  }
+
   if (filters.assignedTo) query = query.eq("assigned_to", filters.assignedTo);
   if (filters.priceMin != null) query = query.gte("home_value", filters.priceMin);
   if (filters.priceMax != null) query = query.lte("home_value", filters.priceMax);

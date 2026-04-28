@@ -26,7 +26,7 @@ export function parseCoordinates(coordinates: unknown): Coords | null {
   return null;
 }
 
-const LeafletMap = dynamic(() => import("./prospect-map-leaflet"), {
+const GoogleMap = dynamic(() => import("./prospect-map-google"), {
   ssr: false,
   loading: () => (
     <div className="flex h-full w-full items-center justify-center bg-muted/30 text-sm text-muted-foreground">
@@ -35,20 +35,38 @@ const LeafletMap = dynamic(() => import("./prospect-map-leaflet"), {
   ),
 });
 
+export type ProximitySearch = { lat: number; lng: number; radiusKm: number };
+
 export function ProspectMap({
   prospects,
   focused,
   onSelect,
   className,
+  proximity,
+  onProximityChange,
+  tabLabel,
+  bottomInset,
 }: {
   prospects: ProspectListItem[];
   focused?: ProspectListItem | null;
-  onSelect?: (id: string) => void;
+  onSelect?: (id: string | null) => void;
   className?: string;
+  proximity?: ProximitySearch | null;
+  onProximityChange?: (p: ProximitySearch | null) => void;
+  tabLabel?: string;
+  bottomInset?: number;
 }) {
   return (
     <div className={className} style={{ isolation: "isolate", zIndex: 0 }}>
-      <LeafletMap prospects={prospects} focused={focused ?? null} onSelect={onSelect} />
+      <GoogleMap
+        prospects={prospects}
+        focused={focused ?? null}
+        onSelect={onSelect}
+        proximity={proximity ?? null}
+        onProximityChange={onProximityChange ?? (() => {})}
+        tabLabel={tabLabel ?? "records"}
+        bottomInset={bottomInset ?? 0}
+      />
     </div>
   );
 }

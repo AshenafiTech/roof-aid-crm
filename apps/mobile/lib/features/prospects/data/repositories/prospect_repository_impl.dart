@@ -16,6 +16,8 @@ class ProspectRepositoryImpl implements ProspectRepository {
     try {
       final prospects = await remoteDatasource.fetchAssigned();
       return Right(prospects);
+    } on NetworkException catch (e) {
+      return Left(NetworkFailure(e.message));
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message));
     }

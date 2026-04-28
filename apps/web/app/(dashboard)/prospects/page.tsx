@@ -6,8 +6,13 @@ import {
   listStates,
   listProspects,
   applyAntiCollisionRotation,
-  type ProspectFilters,
 } from "@/lib/queries/prospects";
+import {
+  parseProspectListFilters,
+  PROSPECT_LIST_PAGE_SIZE,
+  type ProspectListSearchParams,
+} from "@/lib/queries/parse-list-params";
+import { fetchNotesByProspectId } from "@/lib/queries/follow-up-notes";
 
 import { RealtimeRefresh } from "./realtime-refresh";
 
@@ -15,46 +20,19 @@ export const metadata = {
   title: "Prospects — Roof-Aid CRM",
 };
 
-const PAGE_SIZE = 60;
-
-type SearchParams = {
-  city?: string;
-  state?: string;
-  status?: string;
-  q?: string;
-  load?: string;
-  priceMin?: string;
-  priceMax?: string;
-};
-
 export default async function ProspectsPage({
   searchParams,
 }: {
-  searchParams: Promise<SearchParams>;
+  searchParams: Promise<ProspectListSearchParams>;
 }) {
   const params = await searchParams;
   const user = await getCurrentUser();
 
-  const loadCount = Number(params.load);
-  const effectiveSize =
-    Number.isFinite(loadCount) && loadCount > PAGE_SIZE
-      ? loadCount
-      : PAGE_SIZE;
-
-  const priceMin = params.priceMin ? Number(params.priceMin) : undefined;
-  const priceMax = params.priceMax ? Number(params.priceMax) : undefined;
-
-  const filters: ProspectFilters = {
-    city: params.city?.trim() || undefined,
-    state: params.state?.trim() || undefined,
+  const filters = parseProspectListFilters(params, {
     status: "prospects",
-    search: params.q?.trim() || undefined,
-    offset: 0,
-    pageSize: effectiveSize,
+    ignoreUrlStatus: true,
     assignedTo: user.role === "rufero" ? user.id : undefined,
-    priceMin: Number.isFinite(priceMin) ? priceMin : undefined,
-    priceMax: Number.isFinite(priceMax) ? priceMax : undefined,
-  };
+  });
 
   const [{ rows, total }, cities, states] = await Promise.all([
     listProspects(filters),
@@ -64,6 +42,11 @@ export default async function ProspectsPage({
 
   const rotatedRows = applyAntiCollisionRotation(rows);
 
+  const notesMap = await fetchNotesByProspectId(
+    rotatedRows.map((r) => r.id),
+  );
+  const notesByProspectId = Object.fromEntries(notesMap);
+
   return (
     <>
       <ProspectListView
@@ -71,10 +54,11 @@ export default async function ProspectsPage({
         total={total}
         cities={cities}
         states={states}
-        pageSize={PAGE_SIZE}
+        pageSize={PROSPECT_LIST_PAGE_SIZE}
         basePath="/prospects"
         statusFilter="prospects"
         showStatusFilter={false}
+        notesByProspectId={notesByProspectId}
       />
       <RealtimeRefresh tenantId={user.tenantId} />
     </>

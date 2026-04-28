@@ -99,6 +99,7 @@ export async function updateProspect(input: UpdateProspectInput) {
 const statusSchema = z.object({
   id: z.string().uuid(),
   status: z.enum(PROSPECT_STATUSES),
+  followUpNote: z.string().trim().min(1).max(5000).optional(),
 });
 
 export async function changeStatus(input: z.infer<typeof statusSchema>) {
@@ -132,6 +133,28 @@ export async function changeStatus(input: z.infer<typeof statusSchema>) {
     metadata: { from, to: parsed.status },
   });
 
+  if (parsed.status === "follow_up" && parsed.followUpNote) {
+    const body = parsed.followUpNote;
+    const { error: noteError } = await supabase.from("notes").insert({
+      tenant_id: profile.tenant_id,
+      prospect_id: parsed.id,
+      author_id: profile.id,
+      body,
+    });
+    if (noteError) throw noteError;
+
+    await supabase.from("activities").insert({
+      tenant_id: profile.tenant_id,
+      prospect_id: parsed.id,
+      user_id: profile.id,
+      type: "note_added",
+      metadata: {
+        preview: body.slice(0, 140),
+        source: "follow_up_status_change",
+      },
+    });
+  }
+
   // Notify the assigned user about the status change (if someone else is assigned)
   const { data: prospect } = await supabase
     .from("prospects")
@@ -152,8 +175,16 @@ export async function changeStatus(input: z.infer<typeof statusSchema>) {
     });
   }
 
+  // A status change can move a prospect into or out of any status bucket;
+  // invalidate every list page so each one re-fetches with fresh order.
   revalidatePath(`/prospects/${parsed.id}`);
   revalidatePath("/prospects");
+  revalidatePath("/new-leads");
+  revalidatePath("/all-leads");
+  revalidatePath("/contacted");
+  revalidatePath("/follow-up");
+  revalidatePath("/closed-customers");
+  revalidatePath("/not-viable");
 }
 
 const assignSchema = z.object({

@@ -27,3 +27,13 @@ class AuthError extends AuthState {
 
   const AuthError(this.message);
 }
+
+/// Distinct from [AuthError] so the UI can show an offline-specific affordance
+/// (icon + retry hint) rather than treating connectivity failures as auth or
+/// server errors. Emitted whenever a network-level failure interrupts an auth
+/// flow (sign-in, session check, sign-out).
+class AuthOffline extends AuthState {
+  final String message;
+
+  const AuthOffline(this.message);
+}

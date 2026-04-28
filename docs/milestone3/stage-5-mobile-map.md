@@ -392,3 +392,25 @@ class _EmptyMap extends StatelessWidget {
 ## 11. Contract with Stage 6
 
 The Map's tap-to-detail navigates to `/prospects/:id` — Stage 6 must register that route. Until Stage 6 ships, tapping an info window can route to a placeholder screen that just shows the name — fine for dev smoke tests.
+
+---
+
+## 12. Implementation log — 2026-04-22
+
+**Shipped in this session** (branch `feat/mobile-prospects-module`):
+
+- [apps/mobile/android/local.properties](../../apps/mobile/android/local.properties) — `GOOGLE_MAPS_API_KEY` entry (git-ignored). Key is restricted by package + SHA-1 in Google Cloud Console.
+- [apps/mobile/android/app/build.gradle.kts](../../apps/mobile/android/app/build.gradle.kts) — loads the key from `local.properties` and injects it via `manifestPlaceholders["GOOGLE_MAPS_API_KEY"]`.
+- [apps/mobile/android/app/src/main/AndroidManifest.xml](../../apps/mobile/android/app/src/main/AndroidManifest.xml) — added INTERNET / NETWORK_STATE / ACCESS_FINE_LOCATION / ACCESS_COARSE_LOCATION permissions and the `com.google.android.geo.API_KEY` meta-data.
+- [apps/mobile/lib/features/prospects/domain/entities/prospect_entity.dart](../../apps/mobile/lib/features/prospects/domain/entities/prospect_entity.dart) — added `latitude`, `longitude`, and `hasCoordinates` getter.
+- [apps/mobile/lib/features/prospects/data/models/prospect_model.dart](../../apps/mobile/lib/features/prospects/data/models/prospect_model.dart) — added `_parsePoint` helper that accepts all three PostgREST representations (GeoJSON Point, `{x, y}` map, `"(lng,lat)"` string), so the layer works whether the column stays `point` or migrates to `geography(Point, 4326)` later.
+- [apps/mobile/lib/features/prospects/presentation/pages/prospects_map_view.dart](../../apps/mobile/lib/features/prospects/presentation/pages/prospects_map_view.dart) — new `ProspectsMapView` that consumes the existing `ProspectsBloc`, filters to prospects with coordinates, renders status-hue markers with InfoWindows, and auto-fits camera bounds (signature-guarded to avoid camera jitter on every rebuild).
+- [apps/mobile/lib/features/shell/main_shell.dart](../../apps/mobile/lib/features/shell/main_shell.dart) — the Prospects tab now hosts a `SegmentedButton` (List / Map) inside a single `BlocProvider<ProspectsBloc>`, so one fetch + one realtime subscription powers both surfaces.
+
+**Decisions / deviations from the plan**:
+
+- **Coordinates come from HailTrace, not Google Geocoding.** We did not run migration `009_coordinates_geography.sql` and did not add a server-side geocoder — rows already carry lat/lng when they land. `_parsePoint` is defensive so a future migration to `geography` is zero-code-change on the client.
+- **No "Navigate" / "Center on me" yet.** `url_launcher` and `geolocator` are not in `pubspec.yaml` for this pass — navigation deep-link and GPS-center can ship with Stage 6 when the detail page lands.
+- **iOS setup is deferred.** `AppDelegate.swift` + `Info.plist` key entries were not touched; Android-only for today's smoke test.
+
+**Verified**: `flutter analyze` clean; `flutter run -d chrome` boots (web path doesn't exercise the Android API key, but proves the Gradle changes didn't break anything).

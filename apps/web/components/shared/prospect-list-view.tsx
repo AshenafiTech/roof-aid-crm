@@ -23,7 +23,6 @@ import {
   MessageSquare,
   Mic,
   Navigation,
-  Pencil,
   Phone,
   PhoneCall,
   PhoneOff,
@@ -65,6 +64,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { FollowUpNoteDialog } from "@/components/shared/follow-up-note-dialog";
+import { ScheduleAppointmentDialog } from "@/components/shared/schedule-appointment-dialog";
 import { StatusBadge } from "@/components/shared/status-badge";
 import {
   PROSPECT_STATUSES,
@@ -86,7 +87,9 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ProspectMap, parseCoordinates } from "./prospect-map";
+import { ProspectMap, parseCoordinates, type ProximitySearch } from "./prospect-map";
+import { openGoogleMapsDirections } from "@/lib/utils/navigation";
+import { NotesDialog } from "@/app/(dashboard)/prospects/notes-dialog";
 import {
   assignProspect,
   bulkAssign,
@@ -94,8 +97,13 @@ import {
   bulkDelete,
   bulkToggleDnc,
   changeStatus,
+  toggleDoNotCall,
   listRuferos,
 } from "@/app/(dashboard)/prospects/[id]/actions";
+import {
+  rememberLastViewedProspect,
+  useRestoreLastViewedProspect,
+} from "@/lib/hooks/use-last-viewed-prospect";
 
 const ALL = "__all__";
 
@@ -149,6 +157,22 @@ function matchPriceRange(min: string, max: string): string {
 
 const VIEW_MODE_KEY = "roofaid-view-mode";
 
+function haversineKm(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const R = 6371;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(bLat - aLat);
+  const dLng = toRad(bLng - aLng);
+  const lat1 = toRad(aLat);
+  const lat2 = toRad(bLat);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+type NoteSummary = { body: string; created_at: string; author_name: string | null };
+export type NotesByProspectId = Record<string, NoteSummary[]>;
+
 export function ProspectListView({
   rows,
   total,
@@ -158,6 +182,7 @@ export function ProspectListView({
   basePath,
   statusFilter,
   showStatusFilter = true,
+  notesByProspectId,
 }: {
   rows: ProspectListItem[];
   total: number;
@@ -167,22 +192,23 @@ export function ProspectListView({
   basePath: string;
   statusFilter?: ProspectStatus;
   showStatusFilter?: boolean;
+  notesByProspectId?: NotesByProspectId;
 }) {
   const router = useRouter();
   const sp = useSearchParams();
   const [pending, start] = useTransition();
-  // Map view temporarily disabled — always start in list mode. Restore when re-enabling map.
-  const [viewMode, setViewMode] = useState<"map" | "list">("list");
-  // const [viewMode, setViewMode] = useState<"map" | "list">(() => {
-  //   if (typeof window !== "undefined") {
-  //     const saved = localStorage.getItem(VIEW_MODE_KEY);
-  //     if (saved === "map" || saved === "list") return saved;
-  //   }
-  //   return "map";
-  // });
+  const [viewMode, setViewMode] = useState<"map" | "list">(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem(VIEW_MODE_KEY);
+      if (saved === "map" || saved === "list") return saved;
+    }
+    return "map";
+  });
+  const [proximity, setProximity] = useState<ProximitySearch | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [overlayHidden, setOverlayHidden] = useState(false);
   const [showPriceFilter, setShowPriceFilter] = useState(false);
+  const [showCoordSearch, setShowCoordSearch] = useState(false);
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
   const [bulkPending, startBulk] = useTransition();
 
@@ -191,10 +217,31 @@ export function ProspectListView({
     localStorage.setItem(VIEW_MODE_KEY, mode);
   }, []);
 
-  const selected = rows.find((r) => r.id === selectedId) ?? null;
+  // Staged (draft) filter state — only committed to the URL when the user clicks "Query Database".
+  const spString = sp.toString();
+  const [draft, setDraft] = useState<URLSearchParams>(() => new URLSearchParams(spString));
+  useEffect(() => {
+    setDraft(new URLSearchParams(spString));
+  }, [spString]);
 
-  const allChecked = rows.length > 0 && rows.every((r) => checkedIds.has(r.id));
-  const someChecked = checkedIds.size > 0;
+  function setDraftParam(key: string, value: string | undefined) {
+    setDraft((prev) => {
+      const next = new URLSearchParams(prev);
+      if (value) next.set(key, value);
+      else next.delete(key);
+      return next;
+    });
+  }
+
+  const _proximityRows = proximity
+    ? rows.filter((r) => {
+        const c = parseCoordinates(r.coordinates);
+        if (!c) return false;
+        return haversineKm(proximity.lat, proximity.lng, c.lat, c.lng) <= proximity.radiusKm;
+      })
+    : rows;
+
+  const selected = rows.find((r) => r.id === selectedId) ?? null;
 
   function toggleChecked(id: string) {
     setCheckedIds((prev) => {
@@ -209,7 +256,7 @@ export function ProspectListView({
     if (allChecked) {
       setCheckedIds(new Set());
     } else {
-      setCheckedIds(new Set(rows.map((r) => r.id)));
+      setCheckedIds(new Set(displayRows.map((r) => r.id)));
     }
   }
 
@@ -217,15 +264,65 @@ export function ProspectListView({
     setCheckedIds(new Set());
   }
 
-  const city = sp.get("city") ?? "";
-  const stateParam = sp.get("state") ?? "";
-  const status = sp.get("status") ?? "";
-  const q = sp.get("q") ?? "";
-  const priceMin = sp.get("priceMin") ?? "";
-  const priceMax = sp.get("priceMax") ?? "";
-  const hasFilters = !!(city || stateParam || status || q || priceMin || priceMax);
+  const city = draft.get("city") ?? "";
+  const stateParam = draft.get("state") ?? "";
+  const status = draft.get("status") ?? "";
+  const q = draft.get("q") ?? "";
+  const street = draft.get("street") ?? "";
+  const coordLat = draft.get("lat") ?? "";
+  const coordLng = draft.get("lng") ?? "";
+  const coordRadius = draft.get("radiusKm") ?? "";
+  const priceMin = draft.get("priceMin") ?? "";
+  const priceMax = draft.get("priceMax") ?? "";
+  const hasFilters = !!(city || stateParam || status || q || street || coordLat || priceMin || priceMax);
 
-  const showing = rows.length;
+  const coordFilterLat = coordLat ? Number(coordLat) : null;
+  const coordFilterLng = coordLng ? Number(coordLng) : null;
+  const coordFilterRadius = coordRadius ? Number(coordRadius) : 5;
+
+  const displayRows = (() => {
+    let filtered = _proximityRows;
+    if (coordFilterLat != null && coordFilterLng != null && Number.isFinite(coordFilterLat) && Number.isFinite(coordFilterLng)) {
+      filtered = filtered.filter((r) => {
+        const c = parseCoordinates(r.coordinates);
+        if (!c) return false;
+        return haversineKm(coordFilterLat, coordFilterLng, c.lat, c.lng) <= coordFilterRadius;
+      });
+    }
+    return filtered;
+  })();
+
+  const allChecked = displayRows.length > 0 && displayRows.every((r) => checkedIds.has(r.id));
+  const someChecked = checkedIds.size > 0;
+
+  useRestoreLastViewedProspect([displayRows.length, viewMode]);
+
+  // Normalize (drop "load" pagination param) for dirty comparison against the applied URL.
+  const normalizedDraft = (() => {
+    const n = new URLSearchParams(draft);
+    n.delete("load");
+    return n.toString();
+  })();
+  const normalizedApplied = (() => {
+    const n = new URLSearchParams(sp);
+    n.delete("load");
+    return n.toString();
+  })();
+  const draftDirty = normalizedDraft !== normalizedApplied;
+
+  function applyDraft() {
+    const next = new URLSearchParams(draft);
+    next.delete("load");
+    const qs = next.toString();
+    const currentQs = normalizedApplied;
+    if (qs === currentQs) {
+      start(() => router.refresh());
+    } else {
+      start(() => router.push(qs ? `${basePath}?${qs}` : basePath));
+    }
+  }
+
+  const showing = displayRows.length;
   const hasMore = showing < total;
 
   function push(next: URLSearchParams) {
@@ -235,16 +332,7 @@ export function ProspectListView({
   }
 
   function setParam(key: string, value: string | undefined) {
-    const next = new URLSearchParams(sp);
-    if (value) next.set(key, value);
-    else next.delete(key);
-    push(next);
-  }
-
-  function onSearchSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const form = new FormData(e.currentTarget);
-    setParam("q", (form.get("q") as string)?.trim() || undefined);
+    setDraftParam(key, value);
   }
 
   function loadMore() {
@@ -313,10 +401,8 @@ export function ProspectListView({
                   return;
                 }
                 setShowPriceFilter(false);
-                const next = new URLSearchParams(sp);
-                if (range.min) next.set("priceMin", range.min); else next.delete("priceMin");
-                if (range.max) next.set("priceMax", range.max); else next.delete("priceMax");
-                push(next);
+                setDraftParam("priceMin", range.min || undefined);
+                setDraftParam("priceMax", range.max || undefined);
               }}
             >
               <SelectTrigger className="h-8 w-[160px] text-sm">
@@ -333,28 +419,69 @@ export function ProspectListView({
 
           <div className="h-5 w-px bg-border hidden sm:block" />
 
-          <form onSubmit={onSearchSubmit} className="flex items-center gap-2 flex-1 min-w-[180px]">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              applyDraft();
+            }}
+            className="flex items-center gap-2 flex-1 min-w-[180px]"
+          >
             <div className="relative flex-1">
               <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-              <Input name="q" defaultValue={q} placeholder="Search name, address, phone..." className="h-8 text-sm pl-8" />
+              <Input
+                name="q"
+                value={q}
+                onChange={(e) => setDraftParam("q", e.target.value || undefined)}
+                placeholder="Search by name..."
+                aria-label="Search prospects by name"
+                className="h-8 text-sm pl-8"
+              />
             </div>
           </form>
 
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              applyDraft();
+            }}
+            className="flex items-center gap-2 min-w-[140px]"
+          >
+            <div className="relative flex-1">
+              <MapPin className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                name="street"
+                value={street}
+                onChange={(e) => setDraftParam("street", e.target.value || undefined)}
+                placeholder="Search by address..."
+                aria-label="Search prospects by street address"
+                className="h-8 text-sm pl-8"
+              />
+            </div>
+          </form>
+
+          <Button
+            variant={showCoordSearch ? "secondary" : "ghost"}
+            size="sm"
+            className="h-8 text-xs gap-1"
+            onClick={() => setShowCoordSearch((v) => !v)}
+          >
+            <Navigation className="h-3.5 w-3.5" /> Coords
+          </Button>
+
           <div className="flex items-center gap-2 ml-auto">
             {hasFilters && (
-              <Button variant="ghost" size="sm" onClick={() => { setShowPriceFilter(false); push(new URLSearchParams()); }} disabled={pending}>
+              <Button variant="ghost" size="sm" onClick={() => { setShowPriceFilter(false); setDraft(new URLSearchParams()); }} disabled={pending}>
                 <X className="mr-1 h-3.5 w-3.5" /> Clear
               </Button>
             )}
-            {/* Map/List toggle — temporarily disabled while map view is off. Map is only intended for screens larger than mobile (hidden sm:flex). Uncomment when re-enabling. */}
-            {/* <div className="hidden sm:flex rounded-md border">
-              <Button variant={viewMode === "map" ? "default" : "ghost"} size="sm" className="h-8 rounded-r-none px-3" onClick={() => persistViewMode("map")}>
-                <Map className="mr-1 h-3.5 w-3.5" /> Map
-              </Button>
-              <Button variant={viewMode === "list" ? "default" : "ghost"} size="sm" className="h-8 rounded-l-none px-3" onClick={() => persistViewMode("list")}>
+            <div className="hidden sm:flex rounded-md border">
+              <Button variant={viewMode === "list" ? "default" : "ghost"} size="sm" className="h-8 rounded-r-none px-3" onClick={() => persistViewMode("list")}>
                 <LayoutList className="mr-1 h-3.5 w-3.5" /> List
               </Button>
-            </div> */}
+              <Button variant={viewMode === "map" ? "default" : "ghost"} size="sm" className="h-8 rounded-l-none px-3" onClick={() => persistViewMode("map")}>
+                <Map className="mr-1 h-3.5 w-3.5" /> Map
+              </Button>
+            </div>
             {basePath === "/new-leads" && (
               <Button asChild variant="outline" size="sm" className="h-8">
                 <Link href="/new-leads/import">
@@ -362,12 +489,58 @@ export function ProspectListView({
                 </Link>
               </Button>
             )}
-            <Button size="sm" onClick={() => start(() => router.refresh())} disabled={pending}>
+            <Button
+              size="sm"
+              onClick={applyDraft}
+              disabled={pending}
+              className={cn(draftDirty && "ring-2 ring-primary ring-offset-2 ring-offset-background")}
+            >
               {pending ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-2 h-3.5 w-3.5" />}
               Query Database
+              {draftDirty && <span className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-yellow-300" aria-hidden />}
             </Button>
           </div>
         </div>
+
+        {/* Coordinate search */}
+        {(showCoordSearch || coordLat || coordLng) && (
+          <div className="flex items-center gap-3 pt-1">
+            <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-xs font-medium text-muted-foreground">Coordinates</span>
+            <Input
+              type="number"
+              step="any"
+              placeholder="Latitude"
+              value={coordLat}
+              onChange={(e) => setDraftParam("lat", e.target.value || undefined)}
+              className="h-7 w-[120px] text-xs"
+            />
+            <Input
+              type="number"
+              step="any"
+              placeholder="Longitude"
+              value={coordLng}
+              onChange={(e) => setDraftParam("lng", e.target.value || undefined)}
+              className="h-7 w-[120px] text-xs"
+            />
+            <Input
+              type="number"
+              step="any"
+              placeholder="Radius (km)"
+              value={coordRadius}
+              onChange={(e) => setDraftParam("radiusKm", e.target.value || undefined)}
+              className="h-7 w-[100px] text-xs"
+            />
+            <Button type="button" variant="ghost" size="sm" className="h-7 text-xs px-2" onClick={() => {
+              setShowCoordSearch(false);
+              setDraftParam("lat", undefined);
+              setDraftParam("lng", undefined);
+              setDraftParam("radiusKm", undefined);
+            }}>
+              <X className="h-3 w-3 mr-1" /> Clear
+            </Button>
+          </div>
+        )}
 
         {/* Custom price range inputs */}
         {showPriceFilter && (
@@ -376,12 +549,10 @@ export function ProspectListView({
             onSubmit={(e) => {
               e.preventDefault();
               const fd = new FormData(e.currentTarget);
-              const next = new URLSearchParams(sp);
               const min = (fd.get("priceMin") as string)?.trim();
               const max = (fd.get("priceMax") as string)?.trim();
-              if (min) next.set("priceMin", min); else next.delete("priceMin");
-              if (max) next.set("priceMax", max); else next.delete("priceMax");
-              push(next);
+              setDraftParam("priceMin", min || undefined);
+              setDraftParam("priceMax", max || undefined);
             }}
           >
             <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
@@ -406,10 +577,8 @@ export function ProspectListView({
             </Button>
             <Button type="button" variant="ghost" size="sm" className="h-7 text-xs px-2" onClick={() => {
               setShowPriceFilter(false);
-              const next = new URLSearchParams(sp);
-              next.delete("priceMin");
-              next.delete("priceMax");
-              push(next);
+              setDraftParam("priceMin", undefined);
+              setDraftParam("priceMax", undefined);
             }}>
               <X className="h-3 w-3 mr-1" /> Clear
             </Button>
@@ -451,8 +620,26 @@ export function ProspectListView({
                 {bulkPending && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
               </div>
             ) : (
-              <p className="text-xs text-muted-foreground font-medium">
-                {showing} of {total} {statusFilter ? PROSPECT_STATUS_LABELS[statusFilter].toLowerCase() : "records"}
+              <p className="text-xs text-muted-foreground font-medium flex items-center gap-2">
+                {proximity ? (
+                  <>
+                    <span>
+                      {showing} within {proximity.radiusKm.toFixed(1)} km of pinned point
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-5 text-[11px] px-1.5"
+                      onClick={() => setProximity(null)}
+                    >
+                      <X className="h-3 w-3 mr-0.5" /> Clear radius
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    {showing} of {total} {statusFilter ? PROSPECT_STATUS_LABELS[statusFilter].toLowerCase() : "records"}
+                  </>
+                )}
               </p>
             )}
             {selectedId && !someChecked && (
@@ -463,7 +650,7 @@ export function ProspectListView({
           </div>
 
           <div className="flex-1 overflow-y-auto">
-            {rows.length === 0 ? (
+            {displayRows.length === 0 ? (
               <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
                 <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
                   <Search className="h-7 w-7 text-primary" />
@@ -475,7 +662,7 @@ export function ProspectListView({
               </div>
             ) : viewMode === "map" ? (
               <div className="divide-y">
-                {rows.map((row) => (
+                {displayRows.map((row) => (
                   <MapCardItem
                     key={row.id}
                     prospect={row}
@@ -495,7 +682,7 @@ export function ProspectListView({
             ) : (
               <div>
                 {/* Column header */}
-                <div className="flex items-center gap-3 px-4 py-1.5 border-b bg-muted/40 sticky top-0 z-10">
+                <div className="flex items-center gap-3 px-4 py-1.5 border-b bg-muted sticky top-0 z-10">
                   <button type="button" onClick={toggleAll} className="shrink-0 flex items-center justify-center w-4 h-4 text-muted-foreground hover:text-primary transition-colors">
                     {allChecked ? <CheckSquare className="h-4 w-4 text-primary" /> : <Square className="h-4 w-4" />}
                   </button>
@@ -510,20 +697,19 @@ export function ProspectListView({
                   <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground w-[40px] shrink-0 text-right hidden sm:block">Hail</span>
                   <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground w-[80px] shrink-0 text-right hidden sm:block">Value</span>
                   <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground w-[42px] shrink-0" />
-                  {basePath === "/prospects" && (
-                    <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground w-[228px] shrink-0 text-center hidden sm:block">Actions</span>
-                  )}
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground w-[260px] shrink-0 text-center hidden sm:block">Actions</span>
                 </div>
                 <div className="divide-y">
-                  {rows.map((row) => (
+                  {displayRows.map((row) => (
                     <ListRowItem
                       key={row.id}
                       prospect={row}
                       isExpanded={selectedId === row.id}
                       onToggle={() => toggleSelect(row.id)}
-                      showRowActions={basePath === "/prospects"}
+                      showRowActions
                       isChecked={checkedIds.has(row.id)}
                       onCheck={() => toggleChecked(row.id)}
+                      notes={notesByProspectId?.[row.id]}
                     />
                   ))}
                   {hasMore && (
@@ -544,18 +730,32 @@ export function ProspectListView({
         {viewMode === "map" && (
           <div className="hidden sm:flex flex-1 flex-col relative">
             <ProspectMap
-              prospects={rows}
+              prospects={displayRows}
               focused={selected}
               onSelect={(id) => {
                 setSelectedId(id);
-                setOverlayHidden(false);
+                if (id != null) setOverlayHidden(false);
               }}
+              proximity={proximity}
+              onProximityChange={setProximity}
+              tabLabel={basePath === "/new-leads" ? "leads" : "prospects"}
               className="absolute inset-0"
+              bottomInset={selected && !overlayHidden ? 280 : 0}
             />
+            {!proximity && (
+              <div className="pointer-events-none absolute left-3 top-3 z-[500] rounded-md bg-background/90 backdrop-blur-sm px-2.5 py-1 text-[11px] text-muted-foreground shadow-sm border">
+                Right-click the map to search by radius
+              </div>
+            )}
 
             {selected && !overlayHidden && (
               <div className="absolute bottom-0 inset-x-0 bg-background/95 backdrop-blur-sm border-t shadow-2xl max-h-[50%] overflow-y-auto">
-                <ProspectDetailPanel prospect={selected} onClose={() => setOverlayHidden(true)} compact />
+                <ProspectDetailPanel
+                  prospect={selected}
+                  onClose={() => setOverlayHidden(true)}
+                  compact
+                  notes={notesByProspectId?.[selected.id]}
+                />
               </div>
             )}
             {selected && overlayHidden && (
@@ -668,7 +868,11 @@ function InlineRowActions({ prospect }: { prospect: ProspectListItem }) {
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
   const [flagOpen, setFlagOpen] = useState(false);
-  const coords = parseCoordinates(prospect.coordinates);
+  const [followUpOpen, setFollowUpOpen] = useState(false);
+  const [followUpPending, startFollowUp] = useTransition();
+  const [dncPending, startDnc] = useTransition();
+  const router = useRouter();
+  const isFollowUp = prospect.status === "follow_up";
 
   return (
     <>
@@ -676,17 +880,30 @@ function InlineRowActions({ prospect }: { prospect: ProspectListItem }) {
         <TooltipProvider delayDuration={200}>
           <Tooltip>
             <TooltipTrigger asChild>
+              <Link
+                href={`/prospects/${prospect.id}`}
+                onClick={() => rememberLastViewedProspect(prospect.id)}
+              >
+                <Button size="icon" variant="outline" className="h-7 w-7">
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </Button>
+              </Link>
+            </TooltipTrigger>
+            <TooltipContent>Open full profile</TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
               <Button
                 size="icon"
-                variant={prospect.do_not_call ? "ghost" : "default"}
-                disabled={prospect.do_not_call ?? false}
+                variant="default"
                 onClick={() => setCallOpen(true)}
                 className="h-7 w-7"
               >
                 <Phone className="h-3.5 w-3.5" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>{prospect.do_not_call ? "Do Not Call" : "Call"}</TooltipContent>
+            <TooltipContent>{prospect.do_not_call ? "DNC Flagged — Call" : "Call"}</TooltipContent>
           </Tooltip>
 
           <Tooltip>
@@ -694,14 +911,13 @@ function InlineRowActions({ prospect }: { prospect: ProspectListItem }) {
               <Button
                 size="icon"
                 variant="outline"
-                disabled={prospect.do_not_call ?? false}
                 onClick={() => setSmsOpen(true)}
                 className="h-7 w-7"
               >
                 <MessageSquare className="h-3.5 w-3.5" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>{prospect.do_not_call ? "Do Not Call" : "SMS"}</TooltipContent>
+            <TooltipContent>{prospect.do_not_call ? "DNC Flagged — SMS" : "SMS"}</TooltipContent>
           </Tooltip>
 
           <Tooltip>
@@ -751,16 +967,37 @@ function InlineRowActions({ prospect }: { prospect: ProspectListItem }) {
               <Button
                 size="icon"
                 variant="outline"
-                onClick={() => {
-                  if (coords) window.open(`https://www.google.com/maps/dir/?api=1&destination=${coords.lat},${coords.lng}`, "_blank");
-                  else toast("No coordinates available");
-                }}
+                onClick={() =>
+                  openGoogleMapsDirections({
+                    coordinates: prospect.coordinates,
+                    address: [prospect.address, prospect.city, prospect.state]
+                      .filter(Boolean)
+                      .join(", "),
+                  })
+                }
                 className="h-7 w-7"
               >
                 <Navigation className="h-3.5 w-3.5" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>Navigate</TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="icon"
+                variant={isFollowUp ? "secondary" : "outline"}
+                disabled={isFollowUp || followUpPending}
+                onClick={() => setFollowUpOpen(true)}
+                className="h-7 w-7"
+              >
+                <Clock className="h-3.5 w-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {isFollowUp ? "Already in Follow Up" : "Mark as Follow Up"}
+            </TooltipContent>
           </Tooltip>
 
           <Tooltip>
@@ -776,20 +1013,80 @@ function InlineRowActions({ prospect }: { prospect: ProspectListItem }) {
             </TooltipTrigger>
             <TooltipContent>Flag</TooltipContent>
           </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="icon"
+                variant={prospect.do_not_call ? "destructive" : "outline"}
+                disabled={dncPending}
+                onClick={() => {
+                  startDnc(async () => {
+                    try {
+                      await toggleDoNotCall({ id: prospect.id, doNotCall: !prospect.do_not_call });
+                      toast.success(prospect.do_not_call ? "DNC flag removed" : "Marked as Do Not Call");
+                      router.refresh();
+                    } catch (err) {
+                      toast.error(err instanceof Error ? err.message : "Failed to toggle DNC");
+                    }
+                  });
+                }}
+                className="h-7 w-7"
+              >
+                <PhoneOff className="h-3.5 w-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{prospect.do_not_call ? "Remove DNC Flag" : "Mark DNC"}</TooltipContent>
+          </Tooltip>
         </TooltipProvider>
       </div>
 
       <CallDialog open={callOpen} onOpenChange={setCallOpen} prospect={prospect} />
       <SmsDialog open={smsOpen} onOpenChange={setSmsOpen} prospect={prospect} />
       <EmailDialog open={emailOpen} onOpenChange={setEmailOpen} prospect={prospect} />
-      <ScheduleDialog open={scheduleOpen} onOpenChange={setScheduleOpen} prospect={prospect} />
+      <ScheduleAppointmentDialog
+        open={scheduleOpen}
+        onOpenChange={setScheduleOpen}
+        prospectId={prospect.id}
+        prospectName={prospect.name}
+        prospectLocation={[prospect.address, prospect.city, prospect.state]
+          .filter(Boolean)
+          .join(", ")}
+        defaultRuferoId={prospect.assigned_to ?? null}
+      />
       <AssignDialog open={assignOpen} onOpenChange={setAssignOpen} prospect={prospect} />
       <FlagDialog open={flagOpen} onOpenChange={setFlagOpen} prospect={prospect} />
+      <FollowUpNoteDialog
+        open={followUpOpen}
+        onOpenChange={(o) => {
+          if (!followUpPending) setFollowUpOpen(o);
+        }}
+        prospectName={prospect.name}
+        pending={followUpPending}
+        onSave={(note) => {
+          startFollowUp(async () => {
+            try {
+              await changeStatus({
+                id: prospect.id,
+                status: "follow_up",
+                followUpNote: note,
+              });
+              toast.success("Marked as Follow Up");
+              setFollowUpOpen(false);
+              router.refresh();
+            } catch (err) {
+              toast.error(
+                err instanceof Error ? err.message : "Failed to mark as Follow Up",
+              );
+            }
+          });
+        }}
+      />
     </>
   );
 }
 
-/* ── Map view: compact card in left panel ── */
+/* ���─ Map view: compact card in left panel ── */
 function MapCardItem({
   prospect,
   isSelected,
@@ -811,48 +1108,53 @@ function MapCardItem({
   }, [isSelected]);
 
   return (
-    <button
-      ref={ref}
-      type="button"
-      onClick={onSelect}
-      aria-pressed={isSelected}
+    <div
+      ref={ref as unknown as React.Ref<HTMLDivElement>}
+      data-prospect-id={prospect.id}
       className={cn(
-        "relative w-full text-left border-l-4 px-3 py-2 transition-all",
+        "relative w-full border-l-4 transition-all",
         isSelected
           ? "border-l-primary bg-primary/10 shadow-[inset_0_0_0_1px_var(--primary)] z-10"
           : cn(accent, "hover:bg-muted/40"),
       )}
     >
-      {isSelected && (
-        <span className="absolute right-2 top-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground shadow">
-          <MapPin className="h-3 w-3" />
-        </span>
-      )}
-      <div className="flex items-center gap-2">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <p className={cn("truncate text-sm", isSelected ? "font-semibold text-primary" : "font-medium")}>
-              {prospect.name}
-            </p>
-            {prospect.do_not_call && (
-              <span className="shrink-0 flex items-center gap-0.5 rounded bg-destructive/10 px-1.5 py-0.5 text-[10px] font-medium text-destructive">
-                <PhoneOff className="h-2.5 w-2.5" /> DNC
-              </span>
-            )}
+      <button
+        type="button"
+        onClick={onSelect}
+        aria-pressed={isSelected}
+        className="block w-full text-left px-3 py-2"
+      >
+        {isSelected && (
+          <span className="absolute right-2 top-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground shadow">
+            <MapPin className="h-3 w-3" />
+          </span>
+        )}
+        <div className="flex items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <p className={cn("truncate text-sm", isSelected ? "font-semibold text-primary" : "font-medium")}>
+                {prospect.name}
+              </p>
+              {prospect.do_not_call && (
+                <span className="shrink-0 flex items-center gap-0.5 rounded bg-destructive/10 px-1.5 py-0.5 text-[10px] font-medium text-destructive">
+                  <PhoneOff className="h-2.5 w-2.5" /> DNC
+                </span>
+              )}
+            </div>
+            <div className="mt-0.5 flex items-center gap-x-3 text-xs text-muted-foreground">
+              {location && <span className="truncate">{location}</span>}
+              {prospect.phones?.[0] && <span className="shrink-0">{prospect.phones[0]}</span>}
+            </div>
           </div>
-          <div className="mt-0.5 flex items-center gap-x-3 text-xs text-muted-foreground">
-            {location && <span className="truncate">{location}</span>}
-            {prospect.phones?.[0] && <span className="shrink-0">{prospect.phones[0]}</span>}
+          <div className={cn("flex flex-col items-end gap-1 shrink-0", isSelected && "pr-6")}>
+            <StatusBadge status={prospect.status} className="text-[10px] px-1.5 py-0" />
+            {prospect.home_value ? (
+              <span className="text-[10px] text-muted-foreground font-medium">{formatCurrency(prospect.home_value)}</span>
+            ) : null}
           </div>
         </div>
-        <div className={cn("flex flex-col items-end gap-1 shrink-0", isSelected && "pr-6")}>
-          <StatusBadge status={prospect.status} className="text-[10px] px-1.5 py-0" />
-          {prospect.home_value ? (
-            <span className="text-[10px] text-muted-foreground font-medium">{formatCurrency(prospect.home_value)}</span>
-          ) : null}
-        </div>
-      </div>
-    </button>
+      </button>
+    </div>
   );
 }
 
@@ -864,6 +1166,7 @@ function ListRowItem({
   showRowActions,
   isChecked,
   onCheck,
+  notes,
 }: {
   prospect: ProspectListItem;
   isExpanded: boolean;
@@ -871,6 +1174,7 @@ function ListRowItem({
   showRowActions?: boolean;
   isChecked?: boolean;
   onCheck?: () => void;
+  notes?: NoteSummary[];
 }) {
   const status = isProspectStatus(prospect.status) ? prospect.status : null;
   const accent = status ? PROSPECT_STATUS_ACCENTS[status] : "border-l-transparent";
@@ -879,7 +1183,7 @@ function ListRowItem({
   const phone = prospect.phones?.[0] ?? "";
 
   return (
-    <div className={cn("border-l-4 transition-colors", accent, isExpanded && "bg-accent/20", isChecked && "bg-primary/5")}>
+    <div data-prospect-id={prospect.id} className={cn("border-l-4 transition-colors", accent, isExpanded && "bg-accent/20", isChecked && "bg-primary/5")}>
       <div
         className={cn(
           "w-full text-left px-4 py-2 transition-colors flex items-center gap-3",
@@ -923,15 +1227,15 @@ function ListRowItem({
         <span className="w-[42px] shrink-0" />
 
         {showRowActions && (
-          <div className="w-[228px] shrink-0 hidden sm:flex justify-center">
+          <div className="w-[260px] shrink-0 hidden sm:flex justify-center">
             <InlineRowActions prospect={prospect} />
           </div>
         )}
       </div>
 
       {isExpanded && (
-        <div className="border-t bg-muted/10">
-          <ProspectDetailPanel prospect={prospect} />
+        <div className="border-t bg-muted/10 max-h-[60vh] overflow-y-auto">
+          <ProspectDetailPanel prospect={prospect} notes={notes} />
         </div>
       )}
     </div>
@@ -968,32 +1272,46 @@ function ProspectDetailPanel({
   prospect,
   onClose,
   compact,
+  notes,
 }: {
   prospect: ProspectListItem;
   onClose?: () => void;
   compact?: boolean;
+  notes?: NoteSummary[];
 }) {
+  const router = useRouter();
   const [statusPending, startStatus] = useTransition();
+  const [dncPending, startDnc] = useTransition();
   const [callOpen, setCallOpen] = useState(false);
   const [smsOpen, setSmsOpen] = useState(false);
   const [emailOpen, setEmailOpen] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
   const [flagOpen, setFlagOpen] = useState(false);
+  const [followUpOpen, setFollowUpOpen] = useState(false);
   const coords = parseCoordinates(prospect.coordinates);
   const location = [prospect.address, prospect.city, prospect.state, prospect.zip].filter(Boolean).join(", ");
   const assignedName = formatAssigned(prospect.assigned_user);
 
-  function onStatusChange(newStatus: string) {
-    if (!isProspectStatus(newStatus)) return;
+  function applyStatus(newStatus: ProspectStatus, followUpNote?: string) {
     startStatus(async () => {
       try {
-        await changeStatus({ id: prospect.id, status: newStatus });
+        await changeStatus({ id: prospect.id, status: newStatus, followUpNote });
         toast.success(`Status changed to ${PROSPECT_STATUS_LABELS[newStatus]}`);
+        setFollowUpOpen(false);
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Failed to change status");
       }
     });
+  }
+
+  function onStatusChange(newStatus: string) {
+    if (!isProspectStatus(newStatus)) return;
+    if (newStatus === "follow_up") {
+      setFollowUpOpen(true);
+      return;
+    }
+    applyStatus(newStatus);
   }
 
   return (
@@ -1033,18 +1351,6 @@ function ProspectDetailPanel({
         </div>
 
         <div className="flex items-center gap-1.5 shrink-0">
-          <TooltipProvider delayDuration={200}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Link href={`/prospects/${prospect.id}`}>
-                  <Button variant="outline" size="icon" className="h-8 w-8">
-                    <ExternalLink className="h-3.5 w-3.5" />
-                  </Button>
-                </Link>
-              </TooltipTrigger>
-              <TooltipContent>Full Profile</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
           {onClose && (
             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onClose}>
               <X className="h-4 w-4" />
@@ -1058,20 +1364,20 @@ function ProspectDetailPanel({
         <TooltipProvider delayDuration={200}>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button size="sm" variant={prospect.do_not_call ? "ghost" : "default"} disabled={prospect.do_not_call ?? false} onClick={() => setCallOpen(true)} className="gap-1.5">
+              <Button size="sm" variant="default" onClick={() => setCallOpen(true)} className="gap-1.5">
                 <Phone className="h-3.5 w-3.5" /> Call
               </Button>
             </TooltipTrigger>
-            {prospect.do_not_call && <TooltipContent>This prospect is on the Do Not Call list</TooltipContent>}
+            {prospect.do_not_call && <TooltipContent>DNC Flagged — call with caution</TooltipContent>}
           </Tooltip>
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button size="sm" variant="outline" disabled={prospect.do_not_call ?? false} onClick={() => setSmsOpen(true)} className="gap-1.5">
+              <Button size="sm" variant="outline" onClick={() => setSmsOpen(true)} className="gap-1.5">
                 <MessageSquare className="h-3.5 w-3.5" /> SMS
               </Button>
             </TooltipTrigger>
-            {prospect.do_not_call && <TooltipContent>This prospect is on the Do Not Call list</TooltipContent>}
+            {prospect.do_not_call && <TooltipContent>DNC Flagged — message with caution</TooltipContent>}
           </Tooltip>
 
           <Tooltip>
@@ -1096,17 +1402,6 @@ function ProspectDetailPanel({
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <Link href={`/prospects/${prospect.id}`}>
-                <Button size="sm" variant="ghost" className="gap-1.5">
-                  <Pencil className="h-3.5 w-3.5" /> Edit
-                </Button>
-              </Link>
-            </TooltipTrigger>
-            <TooltipContent>Edit prospect</TooltipContent>
-          </Tooltip>
-
-          <Tooltip>
-            <TooltipTrigger asChild>
               <Button size="sm" variant="ghost" className="gap-1.5" onClick={() => setAssignOpen(true)}>
                 <UserCheck className="h-3.5 w-3.5" /> Assign
               </Button>
@@ -1116,11 +1411,19 @@ function ProspectDetailPanel({
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button size="sm" variant="ghost" className="gap-1.5" onClick={() => {
-                const c = parseCoordinates(prospect.coordinates);
-                if (c) window.open(`https://www.google.com/maps/dir/?api=1&destination=${c.lat},${c.lng}`, "_blank");
-                else toast("No coordinates available for this prospect");
-              }}>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="gap-1.5"
+                onClick={() =>
+                  openGoogleMapsDirections({
+                    coordinates: prospect.coordinates,
+                    address: [prospect.address, prospect.city, prospect.state]
+                      .filter(Boolean)
+                      .join(", "),
+                  })
+                }
+              >
                 <Navigation className="h-3.5 w-3.5" />
               </Button>
             </TooltipTrigger>
@@ -1129,13 +1432,37 @@ function ProspectDetailPanel({
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <Link href={`/prospects/${prospect.id}?tab=notes`}>
-                <Button size="sm" variant="ghost" className="gap-1.5">
-                  <StickyNote className="h-3.5 w-3.5" />
-                </Button>
-              </Link>
+              <NotesDialog
+                prospectId={prospect.id}
+                prospectName={prospect.name}
+                trigger={
+                  <Button size="sm" variant="ghost" className="gap-1.5">
+                    <StickyNote className="h-3.5 w-3.5" />
+                  </Button>
+                }
+              />
             </TooltipTrigger>
             <TooltipContent>Add note</TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="sm"
+                variant={prospect.status === "follow_up" ? "secondary" : "ghost"}
+                disabled={prospect.status === "follow_up" || statusPending}
+                onClick={() => setFollowUpOpen(true)}
+                className="gap-1.5"
+              >
+                <Clock className="h-3.5 w-3.5" />
+                Follow Up
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {prospect.status === "follow_up"
+                ? "Already in Follow Up"
+                : "Mark as Follow Up (note required)"}
+            </TooltipContent>
           </Tooltip>
 
           <Tooltip>
@@ -1145,6 +1472,34 @@ function ProspectDetailPanel({
               </Button>
             </TooltipTrigger>
             <TooltipContent>Flag prospect</TooltipContent>
+          </Tooltip>
+
+          <div className="h-5 w-px bg-border" />
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="sm"
+                variant={prospect.do_not_call ? "destructive" : "outline"}
+                disabled={dncPending}
+                onClick={() => {
+                  startDnc(async () => {
+                    try {
+                      await toggleDoNotCall({ id: prospect.id, doNotCall: !prospect.do_not_call });
+                      toast.success(prospect.do_not_call ? "DNC flag removed" : "Marked as Do Not Call");
+                      router.refresh();
+                    } catch (err) {
+                      toast.error(err instanceof Error ? err.message : "Failed to toggle DNC");
+                    }
+                  });
+                }}
+                className="gap-1.5"
+              >
+                <PhoneOff className="h-3.5 w-3.5" />
+                {prospect.do_not_call ? "Remove DNC" : "DNC"}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{prospect.do_not_call ? "Remove Do Not Call flag" : "Mark as Do Not Call"}</TooltipContent>
           </Tooltip>
         </TooltipProvider>
       </div>
@@ -1315,12 +1670,63 @@ function ProspectDetailPanel({
         </Card>
       )}
 
+      {/* All notes — inline in the detail panel, newest first */}
+      {notes && notes.some((n) => n.body.trim()) && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/40 dark:bg-amber-950/30">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+              <Clock className="h-3 w-3" />
+            </div>
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-300">
+              Notes ({notes.filter((n) => n.body.trim()).length})
+            </p>
+          </div>
+          <ul className="space-y-2 max-h-72 overflow-y-auto pr-1">
+            {notes
+              .filter((n) => n.body.trim())
+              .map((n, i) => (
+                <li
+                  key={`${n.created_at}-${i}`}
+                  className="rounded border border-amber-200/60 bg-amber-100/40 p-2 dark:border-amber-900/50 dark:bg-amber-900/20"
+                >
+                  <p className="whitespace-pre-wrap text-xs text-amber-950 dark:text-amber-100">
+                    {n.body}
+                  </p>
+                  <p className="mt-1 text-[10px] text-amber-800/70 dark:text-amber-300/70">
+                    {n.author_name ?? "Unknown"}
+                    {n.created_at &&
+                      ` · ${new Date(n.created_at).toLocaleString()}`}
+                  </p>
+                </li>
+              ))}
+          </ul>
+        </div>
+      )}
+
       <CallDialog open={callOpen} onOpenChange={setCallOpen} prospect={prospect} />
       <SmsDialog open={smsOpen} onOpenChange={setSmsOpen} prospect={prospect} />
       <EmailDialog open={emailOpen} onOpenChange={setEmailOpen} prospect={prospect} />
-      <ScheduleDialog open={scheduleOpen} onOpenChange={setScheduleOpen} prospect={prospect} />
+      <ScheduleAppointmentDialog
+        open={scheduleOpen}
+        onOpenChange={setScheduleOpen}
+        prospectId={prospect.id}
+        prospectName={prospect.name}
+        prospectLocation={[prospect.address, prospect.city, prospect.state]
+          .filter(Boolean)
+          .join(", ")}
+        defaultRuferoId={prospect.assigned_to ?? null}
+      />
       <AssignDialog open={assignOpen} onOpenChange={setAssignOpen} prospect={prospect} />
       <FlagDialog open={flagOpen} onOpenChange={setFlagOpen} prospect={prospect} />
+      <FollowUpNoteDialog
+        open={followUpOpen}
+        onOpenChange={(o) => {
+          if (!statusPending) setFollowUpOpen(o);
+        }}
+        prospectName={prospect.name}
+        pending={statusPending}
+        onSave={(note) => applyStatus("follow_up", note)}
+      />
     </div>
   );
 }
@@ -1739,108 +2145,6 @@ function CallDialog({
   );
 }
 
-/* ── Schedule Appointment Dialog ── */
-function ScheduleDialog({
-  open,
-  onOpenChange,
-  prospect,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  prospect: ProspectListItem;
-}) {
-  const [date, setDate] = useState("");
-  const [time, setTime] = useState("10:00");
-  const [notes, setNotes] = useState("");
-  const location = [prospect.address, prospect.city, prospect.state].filter(Boolean).join(", ");
-
-  function handleSchedule() {
-    if (!date) {
-      toast.error("Please select a date");
-      return;
-    }
-    toast.success(`Appointment scheduled for ${prospect.name} on ${date} at ${time}. Calendar integration coming in M5.`);
-    setDate("");
-    setTime("10:00");
-    setNotes("");
-    onOpenChange(false);
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100 text-blue-700">
-              <CalendarPlus className="h-4 w-4" />
-            </div>
-            Schedule Appointment
-          </DialogTitle>
-          <DialogDescription>
-            Schedule a visit for {prospect.name}
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4 pt-2">
-          <div className="rounded-lg border bg-muted/30 p-3">
-            <p className="text-sm font-medium">{prospect.name}</p>
-            {location && (
-              <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                <MapPin className="h-3 w-3" /> {location}
-              </p>
-            )}
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label htmlFor="appt-date">Date</Label>
-              <Input
-                id="appt-date"
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                min={new Date().toISOString().split("T")[0]}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="appt-time">Time</Label>
-              <Input
-                id="appt-time"
-                type="time"
-                value={time}
-                onChange={(e) => setTime(e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="appt-notes">Notes</Label>
-            <Textarea
-              id="appt-notes"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Any special instructions for the visit..."
-              rows={3}
-            />
-          </div>
-
-          <div className="flex gap-2">
-            <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button className="flex-1" onClick={handleSchedule}>
-              <CalendarPlus className="mr-2 h-4 w-4" /> Schedule
-            </Button>
-          </div>
-
-          <p className="text-[11px] text-center text-muted-foreground">
-            Full calendar integration — coming in Milestone 5
-          </p>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 /* ── Flag Dialog ── */
 function FlagDialog({
   open,
@@ -1853,12 +2157,33 @@ function FlagDialog({
 }) {
   const [reason, setReason] = useState("");
   const [flagType, setFlagType] = useState("follow_up");
+  const [flagPending, startFlag] = useTransition();
+  const router = useRouter();
 
   function handleFlag() {
-    toast.success(`${prospect.name} flagged as "${flagType === "follow_up" ? "Follow Up" : flagType === "priority" ? "Priority" : flagType === "issue" ? "Issue" : "DNC Review"}". Flag management coming in M4.`);
-    setReason("");
-    setFlagType("follow_up");
-    onOpenChange(false);
+    startFlag(async () => {
+      try {
+        if (flagType === "dnc") {
+          await toggleDoNotCall({ id: prospect.id, doNotCall: true, reason: reason.trim() || undefined });
+          toast.success(`${prospect.name} marked as Do Not Call`);
+        } else if (flagType === "follow_up") {
+          await changeStatus({
+            id: prospect.id,
+            status: "follow_up",
+            followUpNote: reason.trim() || undefined,
+          });
+          toast.success(`${prospect.name} status changed to Follow Up`);
+        } else {
+          toast.success(`${prospect.name} flagged as "${flagType === "priority" ? "Priority" : "Issue"}"`);
+        }
+        setReason("");
+        setFlagType("follow_up");
+        onOpenChange(false);
+        router.refresh();
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Failed to flag prospect");
+      }
+    });
   }
 
   return (
@@ -1872,7 +2197,7 @@ function FlagDialog({
             Flag Prospect
           </DialogTitle>
           <DialogDescription>
-            Flag {prospect.name} for follow-up or review
+            Flag {prospect.name} for follow-up, DNC, or review
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 pt-2">
@@ -1880,10 +2205,10 @@ function FlagDialog({
             <Label>Flag Type</Label>
             <div className="grid grid-cols-2 gap-2">
               {[
-                { value: "follow_up", label: "Follow Up", color: "border-blue-200 bg-blue-50 text-blue-700" },
-                { value: "priority", label: "Priority", color: "border-orange-200 bg-orange-50 text-orange-700" },
-                { value: "issue", label: "Issue", color: "border-red-200 bg-red-50 text-red-700" },
-                { value: "dnc_review", label: "DNC Review", color: "border-gray-200 bg-gray-50 text-gray-700" },
+                { value: "follow_up", label: "Follow Up", color: "border-amber-200 bg-amber-50 text-amber-700", desc: "Changes status to Follow Up" },
+                { value: "dnc", label: "Do Not Call", color: "border-red-200 bg-red-50 text-red-700", desc: "Flags as DNC" },
+                { value: "priority", label: "Priority", color: "border-orange-200 bg-orange-50 text-orange-700", desc: "Marks as priority" },
+                { value: "issue", label: "Issue", color: "border-gray-200 bg-gray-50 text-gray-700", desc: "Flags an issue" },
               ].map((opt) => (
                 <button
                   key={opt.value}
@@ -1900,6 +2225,12 @@ function FlagDialog({
                 </button>
               ))}
             </div>
+            <p className="text-[11px] text-muted-foreground">
+              {flagType === "follow_up" && "This will change the prospect status to Follow Up."}
+              {flagType === "dnc" && "This will flag the prospect as Do Not Call."}
+              {flagType === "priority" && "Marks this prospect as high priority."}
+              {flagType === "issue" && "Flags an issue for review."}
+            </p>
           </div>
 
           <div className="space-y-2">
@@ -1917,8 +2248,9 @@ function FlagDialog({
             <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button className="flex-1" onClick={handleFlag}>
-              <Flag className="mr-2 h-4 w-4" /> Flag Prospect
+            <Button className="flex-1" onClick={handleFlag} disabled={flagPending}>
+              {flagPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Flag className="mr-2 h-4 w-4" />}
+              {flagType === "dnc" ? "Mark DNC" : flagType === "follow_up" ? "Set Follow Up" : "Flag Prospect"}
             </Button>
           </div>
         </div>

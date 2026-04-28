@@ -18,9 +18,13 @@ class ProspectModel extends ProspectEntity {
     super.hailSize,
     super.homeValue,
     super.doNotCall,
+    super.doNotCallReason,
+    super.latitude,
+    super.longitude,
   });
 
   factory ProspectModel.fromMap(Map<String, dynamic> map) {
+    final coords = _parsePoint(map['coordinates']);
     return ProspectModel(
       id: map['id'] as String,
       tenantId: map['tenant_id'] as String,
@@ -38,6 +42,9 @@ class ProspectModel extends ProspectEntity {
       hailSize: _parseDouble(map['hail_size']),
       homeValue: _parseDouble(map['home_value']),
       doNotCall: (map['do_not_call'] as bool?) ?? false,
+      doNotCallReason: map['do_not_call_reason'] as String?,
+      latitude: coords?.$1,
+      longitude: coords?.$2,
     );
   }
 
@@ -61,5 +68,38 @@ class ProspectModel extends ProspectEntity {
       return value.whereType<String>().toList(growable: false);
     }
     return const [];
+  }
+
+  // Returns (latitude, longitude) or null. Handles the three formats
+  // PostgREST can emit for a coordinates column:
+  //   - GeoJSON: { type: "Point", coordinates: [lng, lat] }  (geography/geometry)
+  //   - Map:     { x: lng, y: lat }                          (plain point, some drivers)
+  //   - String:  "(lng,lat)"                                 (plain point, default)
+  static (double, double)? _parsePoint(dynamic value) {
+    if (value == null) return null;
+
+    if (value is Map) {
+      final coords = value['coordinates'];
+      if (coords is List && coords.length >= 2) {
+        final lng = (coords[0] as num?)?.toDouble();
+        final lat = (coords[1] as num?)?.toDouble();
+        if (lat != null && lng != null) return (lat, lng);
+      }
+      final x = value['x'];
+      final y = value['y'];
+      if (x is num && y is num) return (y.toDouble(), x.toDouble());
+    }
+
+    if (value is String) {
+      final cleaned = value.replaceAll(RegExp(r'[()\s]'), '');
+      final parts = cleaned.split(',');
+      if (parts.length == 2) {
+        final lng = double.tryParse(parts[0]);
+        final lat = double.tryParse(parts[1]);
+        if (lat != null && lng != null) return (lat, lng);
+      }
+    }
+
+    return null;
   }
 }

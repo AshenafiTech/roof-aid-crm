@@ -4,10 +4,13 @@ import 'package:go_router/go_router.dart';
 
 import 'core/di/injection_container.dart';
 import 'core/theme/app_theme.dart';
+import 'core/theme/theme_controller.dart';
 import 'features/auth/presentation/bloc/auth_bloc.dart';
 import 'features/auth/presentation/bloc/auth_event.dart';
 import 'features/auth/presentation/bloc/auth_state.dart';
 import 'features/auth/presentation/pages/login_page.dart';
+import 'features/prospects/domain/entities/prospect_entity.dart';
+import 'features/prospects/presentation/pages/prospect_detail_page.dart';
 import 'features/shell/main_shell.dart';
 
 class RoofAidApp extends StatelessWidget {
@@ -64,13 +67,29 @@ class _AppViewState extends State<_AppView> {
         return null;
       },
       routes: [
-        GoRoute(
-          path: '/login',
-          builder: (context, state) => const LoginPage(),
-        ),
+        GoRoute(path: '/login', builder: (context, state) => const LoginPage()),
         GoRoute(
           path: '/dashboard',
           builder: (context, state) => const MainShell(),
+        ),
+        GoRoute(
+          path: '/prospects/:id',
+          builder: (context, state) {
+            final prospect = state.extra as ProspectEntity?;
+            if (prospect == null) {
+              // Direct URL navigation (deep link / refresh) isn't supported
+              // in M3 — every entry comes from the list or map with extra
+              // set. Fetch-by-id lands when deep links + push notifications
+              // do.
+              return Scaffold(
+                appBar: AppBar(),
+                body: const Center(
+                  child: Text('Open this prospect from the list or map.'),
+                ),
+              );
+            }
+            return ProspectDetailPage(prospect: prospect);
+          },
         ),
       ],
     );
@@ -78,11 +97,33 @@ class _AppViewState extends State<_AppView> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp.router(
-      title: 'Roof-Aid CRM',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.light,
-      routerConfig: _router,
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: ThemeController.mode,
+      builder: (context, mode, _) {
+        return MaterialApp.router(
+          title: 'Roof-Aid CRM',
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.light,
+          darkTheme: AppTheme.dark,
+          themeMode: mode,
+          routerConfig: _router,
+          // Clamp system text scaling so "easy mode" / accessibility font
+          // sizes can't grow past 1.3× and break fixed-height widgets like
+          // NavigationBar and AppBar actions.
+          builder: (context, child) {
+            final mq = MediaQuery.of(context);
+            return MediaQuery(
+              data: mq.copyWith(
+                textScaler: mq.textScaler.clamp(
+                  minScaleFactor: 1.0,
+                  maxScaleFactor: 1.3,
+                ),
+              ),
+              child: child!,
+            );
+          },
+        );
+      },
     );
   }
 }
