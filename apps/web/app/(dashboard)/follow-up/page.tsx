@@ -4,7 +4,6 @@ import {
   listCities,
   listStates,
   listProspects,
-  applyAntiCollisionRotation,
 } from "@/lib/queries/prospects";
 import {
   parseProspectListFilters,
@@ -29,6 +28,10 @@ export default async function FollowUpPage({
     status: "follow_up",
     ignoreUrlStatus: true,
     assignedTo: user.role === "rufero" ? user.id : undefined,
+    // Most recently changed first → newly-added follow-ups land at the top.
+    // No anti-collision rotation here: ordering must stay stable across reloads
+    // so reps don't lose their place between visits.
+    sort: "updated_desc",
   });
 
   const [{ rows, total }, cities, states] = await Promise.all([
@@ -37,16 +40,12 @@ export default async function FollowUpPage({
     listStates(),
   ]);
 
-  const rotatedRows = applyAntiCollisionRotation(rows);
-
-  const notesMap = await fetchNotesByProspectId(
-    rotatedRows.map((r) => r.id),
-  );
+  const notesMap = await fetchNotesByProspectId(rows.map((r) => r.id));
   const notesByProspectId = Object.fromEntries(notesMap);
 
   return (
     <ProspectListView
-      rows={rotatedRows}
+      rows={rows}
       total={total}
       cities={cities}
       states={states}

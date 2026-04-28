@@ -42,6 +42,8 @@ export function parseProspectListFilters(
     ignoreUrlStatus?: boolean;
     /** When set, scope to prospects assigned to this user (rufero scoping). */
     assignedTo?: string;
+    /** Override the default ordering (default: "created_desc"). */
+    sort?: "created_desc" | "updated_desc";
   } = {},
 ): ProspectFilters {
   const loadCount = num(params.load);
@@ -69,5 +71,6 @@ export function parseProspectListFilters(
     offset: 0,
     pageSize: effectiveSize,
     assignedTo: opts.assignedTo,
+    sort: opts.sort,
   };
 }

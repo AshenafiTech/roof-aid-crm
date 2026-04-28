@@ -175,8 +175,16 @@ export async function changeStatus(input: z.infer<typeof statusSchema>) {
     });
   }
 
+  // A status change can move a prospect into or out of any status bucket;
+  // invalidate every list page so each one re-fetches with fresh order.
   revalidatePath(`/prospects/${parsed.id}`);
   revalidatePath("/prospects");
+  revalidatePath("/new-leads");
+  revalidatePath("/all-leads");
+  revalidatePath("/contacted");
+  revalidatePath("/follow-up");
+  revalidatePath("/closed-customers");
+  revalidatePath("/not-viable");
 }
 
 const assignSchema = z.object({

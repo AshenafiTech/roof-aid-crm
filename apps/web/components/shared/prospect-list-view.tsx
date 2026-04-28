@@ -12,6 +12,7 @@ import {
   Clock,
   Copy,
   DollarSign,
+  ExternalLink,
   Flag,
   Home,
   LayoutList,
@@ -99,7 +100,10 @@ import {
   toggleDoNotCall,
   listRuferos,
 } from "@/app/(dashboard)/prospects/[id]/actions";
-import { useRestoreLastViewedProspect } from "@/lib/hooks/use-last-viewed-prospect";
+import {
+  rememberLastViewedProspect,
+  useRestoreLastViewedProspect,
+} from "@/lib/hooks/use-last-viewed-prospect";
 
 const ALL = "__all__";
 
@@ -874,6 +878,20 @@ function InlineRowActions({ prospect }: { prospect: ProspectListItem }) {
     <>
       <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
         <TooltipProvider delayDuration={200}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Link
+                href={`/prospects/${prospect.id}`}
+                onClick={() => rememberLastViewedProspect(prospect.id)}
+              >
+                <Button size="icon" variant="outline" className="h-7 w-7">
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </Button>
+              </Link>
+            </TooltipTrigger>
+            <TooltipContent>Open full profile</TooltipContent>
+          </Tooltip>
+
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
