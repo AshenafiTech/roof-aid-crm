@@ -29,6 +29,14 @@ export type ProspectFilters = {
   page?: number;
   pageSize?: number;
   offset?: number;
+  /**
+   * Order for the result set.
+   * - `"created_desc"` (default): newest prospects first.
+   * - `"updated_desc"`: most recently changed prospects first. Useful on
+   *   status pages (e.g. /follow-up) so a prospect that was just moved
+   *   into the bucket lands at the top.
+   */
+  sort?: "created_desc" | "updated_desc";
 };
 
 // Escape PostgREST/SQL ilike wildcards so user input is treated as a literal substring.
@@ -42,13 +50,15 @@ export async function listProspects(filters: ProspectFilters) {
   const from = filters.offset ?? 0;
   const to = from + size - 1;
 
+  const sortColumn = filters.sort === "updated_desc" ? "updated_at" : "created_at";
+
   let query = supabase
     .from("prospects")
     .select(
       "*, assigned_user:users!assigned_to(id, first_name, last_name)",
       { count: "exact" },
     )
-    .order("created_at", { ascending: false })
+    .order(sortColumn, { ascending: false })
     .range(from, to);
 
   if (filters.city) query = query.eq("city", filters.city);

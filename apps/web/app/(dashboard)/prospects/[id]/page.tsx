@@ -93,6 +93,13 @@ export default async function ProspectDetailPage({
           action={<StatusBadge status={prospect.status} />}
         />
       </div>
+      <ProspectTabs
+        prospect={prospect}
+        activities={activities}
+        notes={notes}
+        ruferos={ruferos}
+        currentUser={user}
+      />
       {latestNote && (
         <div className="rounded-md border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/40 dark:bg-amber-950/30">
           <div className="flex items-start gap-3">
@@ -113,13 +120,6 @@ export default async function ProspectDetailPage({
           </div>
         </div>
       )}
-      <ProspectTabs
-        prospect={prospect}
-        activities={activities}
-        notes={notes}
-        ruferos={ruferos}
-        currentUser={user}
-      />
       <RealtimeRefresh prospectId={prospect.id} />
     </div>
   );
