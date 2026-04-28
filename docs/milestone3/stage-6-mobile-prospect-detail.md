@@ -490,3 +490,57 @@ Every one of those is a deliberate M3 scope cut — don't let them creep in.
 ## 13. M3 completion checkpoint
 
 Once Stage 6 ships and the success-demo script in [README.md](README.md) §9 passes end-to-end with two real test users on web and mobile, M3 is done. Hand off to the client for acceptance and start M4 planning.
+
+---
+
+## 14. Implementation log — 2026-04-22 (first pass)
+
+**Shipped in this session** (branch `feat/mobile-prospects-module`, `flutter analyze` clean):
+
+- `flutter pub add url_launcher` → [apps/mobile/pubspec.yaml](../../apps/mobile/pubspec.yaml) now carries `url_launcher: ^6.3.2`.
+- [apps/mobile/lib/features/prospects/domain/entities/prospect_entity.dart](../../apps/mobile/lib/features/prospects/domain/entities/prospect_entity.dart) — added `doNotCallReason` (nullable).
+- [apps/mobile/lib/features/prospects/data/models/prospect_model.dart](../../apps/mobile/lib/features/prospects/data/models/prospect_model.dart) — parses `do_not_call_reason` from PostgREST.
+- **Shared widgets** under [apps/mobile/lib/features/prospects/presentation/widgets/](../../apps/mobile/lib/features/prospects/presentation/widgets/):
+  - `empty_state.dart` — reusable icon + title + description placeholder used by every stub tab.
+  - `dnc_banner.dart` — red strip on the detail page when `doNotCall == true`, surfaces the reason if present.
+  - `quick_actions_bar.dart` — Call / SMS / Navigate. Call + SMS disabled when DNC or no phone. Navigate disabled without coords. Uses `tel:` / `sms:` / `geo:` with a Google Maps fallback.
+- **Tab widgets** under [apps/mobile/lib/features/prospects/presentation/widgets/tabs/](../../apps/mobile/lib/features/prospects/presentation/widgets/tabs/):
+  - `overview_tab.dart` — real data: status pill, Contact (name + phones + email), Property (address + hail size + home value + coords), Record (created/updated). Card sections, no extra queries.
+  - `placeholder_tabs.dart` — `CallsTab`, `SmsTab`, `AppointmentsTab`, `DocumentsTab`, `InspectionTab`, `NotesTab` all render `EmptyState` with the milestone they ship in. Bundled into one file deliberately — each gets promoted to its own file when real data wiring lands (see §15).
+- [apps/mobile/lib/features/prospects/presentation/pages/prospect_detail_page.dart](../../apps/mobile/lib/features/prospects/presentation/pages/prospect_detail_page.dart) — `DefaultTabController(length: 7)`, scrollable `TabBar`, DNC banner above the `TabBarView`, `QuickActionsBar` as `bottomNavigationBar`. Accepts the full `ProspectEntity` so no extra fetch is needed on entry.
+- [apps/mobile/lib/app.dart](../../apps/mobile/lib/app.dart) — new `GoRoute('/prospects/:id')` that reads the entity off `state.extra`. Deep-link fallback is a friendly "open from list or map" scaffold (deferred until push notifications / fetch-by-id land).
+- [apps/mobile/lib/features/prospects/presentation/pages/prospects_page.dart](../../apps/mobile/lib/features/prospects/presentation/pages/prospects_page.dart) — list rows now call `context.push('/prospects/${p.id}', extra: p)`, replacing the "detail coming soon" snackbar.
+- [apps/mobile/lib/features/prospects/presentation/pages/prospects_map_view.dart](../../apps/mobile/lib/features/prospects/presentation/pages/prospects_map_view.dart) — `InfoWindow.onTap` navigates to the same route.
+
+**Deliberate scope cuts** (vs the plan in §1–§10):
+
+- **No `ProspectDetailBloc`, no new datasource method, no new use cases.** The entity already carries everything Overview needs, and the other six tabs render static empty states. We'll add the bloc + detail fetch when the first of those tabs is wired to real data.
+- **Notes tab is UI-only — no composer, no fetch, no add-note mutation yet.** Ship alongside the first real tab build-out.
+- **No document download flow** (§9) — deferred with the Documents tab.
+- **iOS `LSApplicationQueriesSchemes` and `NSLocationWhenInUseUsageDescription`** not added yet; Android-only test target for now.
+
+**Manual verification checklist** (for when the device build is up):
+
+- [ ] Tap a row in List view → detail opens with tab bar visible
+- [ ] Tap a marker on Map → info window; tap the info window → same detail page
+- [ ] Back button returns to whichever view (list/map) launched the detail page
+- [ ] DNC banner appears for a DNC-flagged prospect; Call + SMS buttons are disabled
+- [ ] Call button opens the native dialer pre-filled with `primaryPhone`
+- [ ] SMS button opens native Messages pre-filled
+- [ ] Navigate opens Google Maps with turn-by-turn to the coords
+- [ ] Tabs Calls / SMS / Appointments / Documents / Inspection / Notes all show a readable EmptyState (no blanks, no crashes)
+
+## 15. Follow-ups (next passes, scope-by-tab)
+
+When real data wiring begins, split `placeholder_tabs.dart` into per-tab files and wire as follows — each is a vertical slice (entity → model → datasource method → tab widget):
+
+| Tab | Wire-up blocker | Earliest milestone |
+|-----|------------------|---------------------|
+| Notes | Needs compose TextField + `add_note` mutation; pure CRUD | Late M3 (can ship standalone) |
+| Calls | Telnyx call_log rows don't exist until M4 | M4 |
+| SMS | Telnyx sms_log rows don't exist until M4 | M4 |
+| Appointments | Scheduling flow (and seed rows) ship in M5 | M5 |
+| Documents | Contract generation + storage_path + signed URL ship in M5 | M5 |
+| Inspection | Inspection capture (damage_data + photos) ships in M5 | M5 |
+
+Adding a `ProspectDetailBloc` is the natural trigger for the first real tab — at that point consolidate into the 7-query batch described in §3.1.

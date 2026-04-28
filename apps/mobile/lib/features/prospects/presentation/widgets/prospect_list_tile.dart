@@ -1,16 +1,19 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/constants/prospect_status.dart';
+import '../../../../core/theme/app_theme.dart';
 import '../../domain/entities/prospect_entity.dart';
 
 class ProspectListTile extends StatelessWidget {
   final ProspectEntity prospect;
   final VoidCallback? onTap;
+  final bool highlight;
 
   const ProspectListTile({
     super.key,
     required this.prospect,
     this.onTap,
+    this.highlight = false,
   });
 
   @override
@@ -18,13 +21,28 @@ class ProspectListTile extends StatelessWidget {
     final theme = Theme.of(context);
     final statusColor = ProspectStatus.color(prospect.status);
     final address = prospect.displayAddress;
+    final baseCardColor = theme.cardTheme.color ?? theme.cardColor;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: Card(
-        clipBehavior: Clip.antiAlias,
+      child: TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0.0, end: highlight ? 1.0 : 0.0),
+        duration: Duration(milliseconds: highlight ? 260 : 900),
+        curve: Curves.easeOut,
+        builder: (context, t, child) {
+          return Card(
+            color: Color.lerp(
+              baseCardColor,
+              theme.colorScheme.primary,
+              t * 0.18,
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: child,
+          );
+        },
         child: InkWell(
-          onTap: onTap ??
+          onTap:
+              onTap ??
               () {
                 ScaffoldMessenger.of(context)
                   ..hideCurrentSnackBar()
@@ -42,13 +60,24 @@ class ProspectListTile extends StatelessWidget {
             padding: const EdgeInsets.all(14),
             child: Row(
               children: [
-                // Left: status indicator bar
+                // Left: status indicator bar with soft gradient for depth.
                 Container(
                   width: 4,
                   height: 52,
                   decoration: BoxDecoration(
-                    color: statusColor,
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [statusColor, statusColor.withValues(alpha: 0.6)],
+                    ),
                     borderRadius: BorderRadius.circular(2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: statusColor.withValues(alpha: 0.35),
+                        blurRadius: 6,
+                        offset: const Offset(0, 1),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(width: 14),
@@ -61,8 +90,8 @@ class ProspectListTile extends StatelessWidget {
                       Text(
                         prospect.name,
                         style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: -0.2,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: -0.1,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -74,7 +103,7 @@ class ProspectListTile extends StatelessWidget {
                             Icon(
                               Icons.location_on_outlined,
                               size: 14,
-                              color: theme.colorScheme.onSurfaceVariant,
+                              color: AppTheme.iconLocation,
                             ),
                             const SizedBox(width: 4),
                             Expanded(
@@ -98,7 +127,7 @@ class ProspectListTile extends StatelessWidget {
                             Icon(
                               Icons.phone_outlined,
                               size: 14,
-                              color: theme.colorScheme.onSurfaceVariant,
+                              color: AppTheme.iconPhone,
                             ),
                             const SizedBox(width: 4),
                             Text(
@@ -125,7 +154,9 @@ class ProspectListTile extends StatelessWidget {
                     Icon(
                       Icons.chevron_right,
                       size: 20,
-                      color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+                      color: theme.colorScheme.onSurfaceVariant.withValues(
+                        alpha: 0.4,
+                      ),
                     ),
                   ],
                 ),
@@ -149,18 +180,26 @@ class _StatusChip extends StatelessWidget {
     final label = ProspectStatus.label(status);
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(6),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            color.withValues(alpha: 0.14),
+            color.withValues(alpha: 0.06),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
       ),
       child: Text(
         label,
         style: TextStyle(
           color: color,
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.2,
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.3,
         ),
       ),
     );

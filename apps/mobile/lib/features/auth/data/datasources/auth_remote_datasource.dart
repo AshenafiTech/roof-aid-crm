@@ -1,13 +1,11 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../core/error/exceptions.dart';
+import '../../../../core/network/network_error_detection.dart';
 import '../models/user_model.dart';
 
 abstract class AuthRemoteDatasource {
-  Future<UserModel> signIn({
-    required String email,
-    required String password,
-  });
+  Future<UserModel> signIn({required String email, required String password});
 
   Future<void> signOut();
 
@@ -35,8 +33,18 @@ class AuthRemoteDatasourceImpl implements AuthRemoteDatasource {
       }
 
       return _fetchUserProfile(response.user!.id);
-    } on AuthException catch (e) {
-      throw ServerException(_mapAuthError(e.message));
+    } on ServerException {
+      rethrow;
+    } on NetworkException {
+      rethrow;
+    } catch (e) {
+      if (isNetworkError(e)) {
+        throw NetworkException(offlineMessage);
+      }
+      if (e is AuthException) {
+        throw ServerException(_mapAuthError(e.message));
+      }
+      throw ServerException('Something went wrong. Please try again later.');
     }
   }
 
@@ -44,8 +52,14 @@ class AuthRemoteDatasourceImpl implements AuthRemoteDatasource {
   Future<void> signOut() async {
     try {
       await client.auth.signOut();
-    } on AuthException catch (e) {
-      throw ServerException(e.message);
+    } catch (e) {
+      if (isNetworkError(e)) {
+        throw NetworkException(offlineMessage);
+      }
+      if (e is AuthException) {
+        throw ServerException(e.message);
+      }
+      throw ServerException('Could not sign out. Please try again.');
     }
   }
 
@@ -55,16 +69,16 @@ class AuthRemoteDatasourceImpl implements AuthRemoteDatasource {
     if (session == null) {
       throw ServerException('No active session');
     }
-
-    final userId = session.user.id;
-    return _fetchUserProfile(userId);
+    return _fetchUserProfile(session.user.id);
   }
 
   Future<UserModel> _fetchUserProfile(String userId) async {
     try {
       final data = await client
           .from('users')
-          .select('id, tenant_id, role, email, first_name, last_name, phone, is_active')
+          .select(
+            'id, tenant_id, role, email, first_name, last_name, phone, is_active',
+          )
           .eq('id', userId)
           .maybeSingle();
 
@@ -75,8 +89,19 @@ class AuthRemoteDatasourceImpl implements AuthRemoteDatasource {
       }
 
       return UserModel.fromMap(data);
-    } on PostgrestException catch (e) {
-      throw ServerException(e.message);
+    } on ServerException {
+      rethrow;
+    } catch (e) {
+      if (isNetworkError(e)) {
+        throw NetworkException(offlineMessage);
+      }
+      if (e is PostgrestException) {
+        throw ServerException(e.message);
+      }
+      if (e is AuthException) {
+        throw ServerException(_mapAuthError(e.message));
+      }
+      throw ServerException('Could not load your profile. Please try again.');
     }
   }
 
