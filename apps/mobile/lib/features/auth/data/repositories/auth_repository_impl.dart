@@ -22,6 +22,8 @@ class AuthRepositoryImpl implements AuthRepository {
         password: password,
       );
       return Right(user);
+    } on NetworkException catch (e) {
+      return Left(NetworkFailure(e.message));
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message));
     }
@@ -32,6 +34,8 @@ class AuthRepositoryImpl implements AuthRepository {
     try {
       await remoteDatasource.signOut();
       return const Right(unit);
+    } on NetworkException catch (e) {
+      return Left(NetworkFailure(e.message));
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message));
     }
@@ -42,6 +46,8 @@ class AuthRepositoryImpl implements AuthRepository {
     try {
       final user = await remoteDatasource.getCurrentUser();
       return Right(user);
+    } on NetworkException catch (e) {
+      return Left(NetworkFailure(e.message));
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message));
     }

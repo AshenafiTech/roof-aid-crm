@@ -3,10 +3,15 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
 import 'core/di/injection_container.dart';
+import 'core/theme/app_theme.dart';
+import 'core/theme/theme_controller.dart';
 import 'features/auth/presentation/bloc/auth_bloc.dart';
 import 'features/auth/presentation/bloc/auth_event.dart';
 import 'features/auth/presentation/bloc/auth_state.dart';
 import 'features/auth/presentation/pages/login_page.dart';
+import 'features/prospects/domain/entities/prospect_entity.dart';
+import 'features/prospects/presentation/pages/prospect_detail_page.dart';
+import 'features/shell/main_shell.dart';
 
 class RoofAidApp extends StatelessWidget {
   const RoofAidApp({super.key});
@@ -50,29 +55,41 @@ class _AppViewState extends State<_AppView> {
         final authState = context.read<AuthBloc>().state;
         final isOnLogin = state.matchedLocation == '/login';
 
-        // Still loading — don't redirect
         if (authState is AuthInitial || authState is AuthLoading) {
           return null;
         }
 
         final isAuthenticated = authState is AuthAuthenticated;
 
-        // Not logged in and not on login → go to login
         if (!isAuthenticated && !isOnLogin) return '/login';
-
-        // Logged in and on login → go to dashboard
         if (isAuthenticated && isOnLogin) return '/dashboard';
 
         return null;
       },
       routes: [
-        GoRoute(
-          path: '/login',
-          builder: (context, state) => const LoginPage(),
-        ),
+        GoRoute(path: '/login', builder: (context, state) => const LoginPage()),
         GoRoute(
           path: '/dashboard',
-          builder: (context, state) => const _DashboardPlaceholder(),
+          builder: (context, state) => const MainShell(),
+        ),
+        GoRoute(
+          path: '/prospects/:id',
+          builder: (context, state) {
+            final prospect = state.extra as ProspectEntity?;
+            if (prospect == null) {
+              // Direct URL navigation (deep link / refresh) isn't supported
+              // in M3 — every entry comes from the list or map with extra
+              // set. Fetch-by-id lands when deep links + push notifications
+              // do.
+              return Scaffold(
+                appBar: AppBar(),
+                body: const Center(
+                  child: Text('Open this prospect from the list or map.'),
+                ),
+              );
+            }
+            return ProspectDetailPage(prospect: prospect);
+          },
         ),
       ],
     );
@@ -80,65 +97,33 @@ class _AppViewState extends State<_AppView> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp.router(
-      title: 'Roof-Aid CRM',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorSchemeSeed: Colors.blue,
-        useMaterial3: true,
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-      ),
-      routerConfig: _router,
-    );
-  }
-}
-
-/// Temporary dashboard screen — will be replaced with real implementation.
-class _DashboardPlaceholder extends StatelessWidget {
-  const _DashboardPlaceholder();
-
-  @override
-  Widget build(BuildContext context) {
-    final user = context.read<AuthBloc>().state;
-    final theme = Theme.of(context);
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Roof-Aid'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () =>
-                context.read<AuthBloc>().add(const AuthSignOutRequested()),
-          ),
-        ],
-      ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.check_circle, size: 64, color: theme.colorScheme.primary),
-            const SizedBox(height: 16),
-            Text(
-              'Welcome to Roof-Aid',
-              style: theme.textTheme.headlineSmall,
-            ),
-            const SizedBox(height: 8),
-            if (user is AuthAuthenticated)
-              Text(
-                'Signed in as ${user.user.role}',
-                style: theme.textTheme.bodyLarge?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: ThemeController.mode,
+      builder: (context, mode, _) {
+        return MaterialApp.router(
+          title: 'Roof-Aid CRM',
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.light,
+          darkTheme: AppTheme.dark,
+          themeMode: mode,
+          routerConfig: _router,
+          // Clamp system text scaling so "easy mode" / accessibility font
+          // sizes can't grow past 1.3× and break fixed-height widgets like
+          // NavigationBar and AppBar actions.
+          builder: (context, child) {
+            final mq = MediaQuery.of(context);
+            return MediaQuery(
+              data: mq.copyWith(
+                textScaler: mq.textScaler.clamp(
+                  minScaleFactor: 1.0,
+                  maxScaleFactor: 1.3,
                 ),
               ),
-          ],
-        ),
-      ),
+              child: child!,
+            );
+          },
+        );
+      },
     );
   }
 }
