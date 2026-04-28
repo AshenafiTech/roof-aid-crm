@@ -204,14 +204,15 @@ class AppTheme {
         backgroundColor: colorScheme.surface,
         surfaceTintColor: colorScheme.surface,
         indicatorColor: colorScheme.primary.withValues(alpha: 0.12),
-        // Smaller, lighter base label so the system text scaler (capped at
-        // 1.3× in app.dart for "easy mode" / accessibility) still fits inside
-        // the 72 dp bar without overflow. 10 sp × 1.3 = 13 sp — comfortable.
+        // Very small, thin labels — the nav bar gets a tighter textScaler
+        // clamp than the rest of the app (1.2× vs 1.3×) in main_shell.dart,
+        // so easy-mode users see at most 9 × 1.2 = 10.8 sp. The bar stays
+        // calm at any accessibility setting.
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           final selected = states.contains(WidgetState.selected);
           return TextStyle(
-            fontSize: 10,
-            fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+            fontSize: 8.5,
+            fontWeight: selected ? FontWeight.w500 : FontWeight.w400,
             color: selected
                 ? colorScheme.primary
                 : colorScheme.onSurfaceVariant,

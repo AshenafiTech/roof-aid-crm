@@ -164,7 +164,18 @@ class _MainShellState extends State<MainShell> {
           ),
         ],
       ),
-      bottomNavigationBar: NavigationBar(
+      bottomNavigationBar: MediaQuery(
+        // The rest of the app is clamped to 1.3× in app.dart for accessibility.
+        // The nav bar lives in fixed-height chrome (72 dp), so 1.3× still
+        // pushes the labels too big in easy mode — re-clamp to 1.2× here so
+        // the bar stays calm without affecting any other screen.
+        data: MediaQuery.of(context).copyWith(
+          textScaler: MediaQuery.of(context).textScaler.clamp(
+            minScaleFactor: 1.0,
+            maxScaleFactor: 1.2,
+          ),
+        ),
+        child: NavigationBar(
         selectedIndex: _currentIndex,
         onDestinationSelected: (i) => setState(() => _currentIndex = i),
         destinations: const [
@@ -194,6 +205,7 @@ class _MainShellState extends State<MainShell> {
             label: 'Settings',
           ),
         ],
+        ),
       ),
     );
   }
