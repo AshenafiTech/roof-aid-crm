@@ -26,7 +26,7 @@ After M4, the demo flips from "look at this dashboard" to "watch me close a deal
 | # | Task | Surface |
 |---|------|---------|
 | M4-1 | WebRTC softphone component (Telnyx) — mic/level/CALL/MUTE/HOLD/TRANSFER/HANGUP, incoming-call banner, status indicator | Web |
-| M4-2 | Click-to-call from any Call button → softphone dials with agent's Telnyx caller ID | Web |
+| M4-2 | Click-to-call from any Call button → softphone dials. Caller ID = the tenant's selected phone number from `tenant_phone_numbers` (defaults to the tenant's primary; rep can override via "Send from" dropdown when the tenant has >1 number). See `stage-1.5-tenant-phone-numbers.md`. | Web |
 | M4-3 | Call disposition modal after hangup → record into `call_logs` + activity | Web |
 | M4-4 | Call recording → Supabase Storage `call-recordings/{tenant_id}/{call_id}.mp3` + tenant-configurable disclosure prompt | Web + Storage |
 | M4-5 | Telnyx webhook Edge Function — inbound call routing, inbound SMS, call-event lifecycle, idempotency, signature verification | Edge Function |
@@ -59,9 +59,11 @@ Stages 2–4 are mostly independent (different surfaces) and can parallelize onc
 
 - [ ] **M3 Definition of Done signed off** — mainly: prospect detail tabs render, DNC flag UI exists (informational; M4 turns it from advisory into hard enforcement)
 - [ ] **Telnyx account provisioned** with:
-  - One phone number per environment (dev/staging/prod)
-  - WebRTC credentials (SIP username + password) — per-environment
-  - Voice + Messaging profile attached to the number
+  - **One Messaging Profile** named "Roof-Aid" (`TELNYX_MESSAGING_PROFILE_ID`). Numbers purchased per-tenant via onboarding are auto-attached to this profile so all events flow to our webhook.
+  - **One Voice / Call Control Application** named "Roof-Aid" (`TELNYX_VOICE_APP_ID`). Same — every tenant's purchased number is auto-attached.
+  - **Per-tenant phone numbers** — acquired by tenant owners via the `/onboarding` wizard (see `stage-1.5-tenant-phone-numbers.md`). No platform-wide DID is required in prod.
+  - **Optional dev-only fallback number** (`TELNYX_DEFAULT_NUMBER`) for system-test traffic that isn't bound to a tenant yet. Not used in prod.
+  - WebRTC credentials issued per-rep at runtime against `TELNYX_CONNECTION_ID`.
   - Webhook URL configured: `https://<project>.supabase.co/functions/v1/telnyx-webhook`
 - [ ] **SendGrid account provisioned** with:
   - Verified sender domain (DKIM + SPF DNS records added)
@@ -75,13 +77,15 @@ Stages 2–4 are mostly independent (different surfaces) and can parallelize onc
 - [ ] **Telnyx extension assignment field on `users`** — `telnyx_extension TEXT` column added if missing. Used to route inbound calls to the right agent's WebRTC session
 - [ ] **Environment variables added** to `.env.example`:
   ```
-  TELNYX_API_KEY=
-  TELNYX_PUBLIC_KEY=                 # for webhook signature verification
-  TELNYX_DEFAULT_NUMBER=             # E.164
-  TELNYX_CONNECTION_ID=              # for WebRTC credential generation
+  TELNYX_API_KEY=                       # required — V2 API key
+  TELNYX_PUBLIC_KEY=                    # required — webhook signature verification (Ed25519)
+  TELNYX_MESSAGING_PROFILE_ID=          # required — purchased numbers are auto-attached
+  TELNYX_VOICE_APP_ID=                  # required — purchased numbers are auto-attached
+  TELNYX_CONNECTION_ID=                 # required for stage 2 — WebRTC credential generation
+  TELNYX_DEFAULT_NUMBER=                # dev-only fallback; unused in prod (see stage 1.5)
   SENDGRID_API_KEY=
-  SENDGRID_WEBHOOK_PUBLIC_KEY=       # for event-webhook signature verification
-  SENDGRID_FROM_DOMAIN=              # e.g. mail.roofaid.app
+  SENDGRID_WEBHOOK_PUBLIC_KEY=          # for event-webhook signature verification
+  SENDGRID_FROM_DOMAIN=                 # e.g. mail.roofaid.app
   NEXT_PUBLIC_SUPABASE_FUNCTIONS_URL=
   ```
 - [ ] **Two demo phone numbers** that the QA team controls (one to play "homeowner", one to play "agent"). Outbound Telnyx number → demo phone for two-way SMS test

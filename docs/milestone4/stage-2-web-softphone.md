@@ -170,10 +170,15 @@ switch (event.event_type) {
 
 ### `handleInbound(event)`
 
-1. Identify tenant from `event.payload.to` (the Telnyx number that was dialed) — needs a `tenant_phone_numbers` table or a `tenants.telnyx_number TEXT UNIQUE` column
-2. Find the agent currently online (`users.last_active_at > now() - 1m AND telnyx_extension IS NOT NULL`) — for v1, route to *any* online agent; M7 adds round-robin
-3. Issue a `client.invite()` call-control command to that agent's WebRTC session
-4. The agent's softphone fires `telnyx.notification → callUpdate(state: 'ringing', direction: 'inbound')` → renders the incoming-call banner
+1. Resolve the dialed number to a tenant via the `tenantFromTo()` helper introduced in `stage-1.5-tenant-phone-numbers.md` — looks up `tenant_phone_numbers WHERE e164 = event.payload.to AND status = 'active'`. Unknown number → log `webhook_events.process_error = 'unknown_to_number'` and return 200 (don't make Telnyx retry).
+2. Read that row's `routing_rule` JSON. Dispatch by `kind`:
+   - **`voicemail_only`** → answer with TeXML, play the tenant's recording disclosure, capture voicemail to Supabase Storage, log to `call_logs`.
+   - **`assigned_rep_first_then_all`** → look up the prospect by caller's E.164 (`findProspectByPhone`); if matched and `prospect.assigned_to` is online, ring that rep first; after `voicemail_after_seconds`, fall back to ring-all; final fallback = voicemail.
+   - **`ring_all`** *(default)* → ring every online rep on the tenant (`users.last_active_at > now() - 1m AND telnyx_extension IS NOT NULL AND tenant_id = ?`). First to answer wins; the rest stop ringing. Voicemail after `voicemail_after_seconds`.
+3. For each rep we ring, issue `client.invite()` to that rep's WebRTC session. Their softphone fires `telnyx.notification → callUpdate(state: 'ringing', direction: 'inbound')` → renders the incoming-call banner.
+4. Round-robin (and any per-tenant queue/IVR) stays deferred to M7 — the routing-rule JSON is intentionally extensible so adding a `round_robin` kind later doesn't require a schema change.
+
+> The `routing_rule` shape is defined in `stage-1.5-tenant-phone-numbers.md §8`. This stage *consumes* it; the schema, defaults, and settings UI live in stage 1.5.
 
 Banner UI: top-right floating card with:
 - Caller's E.164 number (formatted)
@@ -186,9 +191,12 @@ Banner UI: top-right floating card with:
 Idempotently inserts into `call_logs`:
 
 ```ts
+// `tpn` was resolved earlier by tenantFromTo(event.payload.to) for inbound,
+// or by the originating server action for outbound (see stage 1.5 §7).
 await admin.from('call_logs').upsert({
   provider_event_id: event.payload.call_session_id,
   tenant_id,
+  tenant_phone_number_id: tpn?.id ?? null,   // stage 1.5: per-number attribution
   prospect_id: lookupProspectIdByCallerNumber(event.payload.from),
   direction: event.payload.direction,
   started_at: event.payload.started_at,
