@@ -401,3 +401,15 @@ s3_secret_key = "env(S3_SECRET_KEY)"
 # declarative_schema_path = "./declarative"
 # JSON string passed through to pg-delta SQL formatting.
 # format_options = "{\"keywordCase\":\"upper\",\"indent\":2,\"maxWidth\":80,\"commaStyle\":\"trailing\"}"
+
+# ── M4 Communications webhooks ───────────────────────────────────────
+# Telnyx and SendGrid POST webhooks without a Supabase JWT — they sign
+# their own payloads with Ed25519 / ECDSA respectively. We verify those
+# signatures inside the function. Disable Supabase's gateway-level JWT
+# check so these requests can reach the function in the first place.
+
+[functions.telnyx-webhook]
+verify_jwt = false
+
+[functions.sendgrid-webhook]
+verify_jwt = false

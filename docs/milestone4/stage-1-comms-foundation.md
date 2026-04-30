@@ -1,8 +1,8 @@
 # Stage 1 — Communications Foundation
 
-**Goal:** Lay the database, RPC, webhook, and Vault scaffolding that every subsequent M4 stage stands on. By the end, an empty webhook handler is live, both providers can send signed events to it, and the `can_call()` / `can_message()` RPCs return correct verdicts for any prospect.
+**Goal:** Lay the database, RPC, webhook, and Vault scaffolding that every subsequent M4 stage stands on. By the end, signed webhooks land cleanly into an audit table, `can_call()` / `can_message()` / `mark_sms_read()` work end-to-end, and the call-recordings storage bucket is locked to per-tenant paths.
 
-**Outcome:** Stages 2–4 can each plug into the same scaffolding; nobody has to re-solve "where do call events get stored" or "where does a DNC check live".
+**Outcome:** Stages 2–4 plug into the same scaffolding; nobody re-solves "where do call events get stored" or "where does a DNC check live".
 
 **Estimated time:** 1.5 days
 
@@ -10,243 +10,100 @@
 
 ## 1. Schema migrations
 
-Add three migrations under `supabase/migrations/`:
+Three migrations under `supabase/migrations/`:
 
 ### `010_comms_schema_extensions.sql`
 
-```sql
--- Tenant-level config
-ALTER TABLE tenants
-  ADD COLUMN IF NOT EXISTS timezone TEXT NOT NULL DEFAULT 'America/Chicago',
-  ADD COLUMN IF NOT EXISTS calling_hours JSONB NOT NULL DEFAULT '{
-    "mon":{"start":"08:00","end":"20:00"},
-    "tue":{"start":"08:00","end":"20:00"},
-    "wed":{"start":"08:00","end":"20:00"},
-    "thu":{"start":"08:00","end":"20:00"},
-    "fri":{"start":"08:00","end":"20:00"},
-    "sat":{"start":"09:00","end":"17:00"},
-    "sun":null
-  }'::jsonb,
-  ADD COLUMN IF NOT EXISTS sms_templates JSONB NOT NULL DEFAULT '[]'::jsonb,
-  ADD COLUMN IF NOT EXISTS email_templates JSONB NOT NULL DEFAULT '[]'::jsonb,
-  ADD COLUMN IF NOT EXISTS recording_disclosure_audio_url TEXT;
+- **Tenant config**: adds `timezone`, `calling_hours` (jsonb per-day), `sms_templates`, `email_templates`, `recording_disclosure_audio_url`. (`telnyx_main_number`, `telnyx_app_id`, `sendgrid_subuser` already exist from M1.)
+- **Idempotency uniques**: partial UNIQUE indexes on the existing `call_logs.telnyx_call_id`, `sms_logs.telnyx_message_id`, `email_logs.sendgrid_message_id` columns. We don't rename — these column names are already in `apps/web/lib/supabase/database.types.ts` and renaming would require a coordinated web change.
+- **`sms_logs` enhancements**: adds `delivery_status` (richer enum than the existing `status` — `queued / sent / delivered / failed / received`), `read_at`, `sent_at`. A trigger keeps `status` and `delivery_status` in sync until the web team can drop the old column. Existing rows are backfilled.
+- **`webhook_events` table**: every inbound provider webhook lands here BEFORE dispatching, with the signature-verification result. RLS deny-all (service-role only).
+- **`tasks` table**: async work queue used by `send_sms` / `send_email` to enqueue Telnyx / SendGrid API calls so RPCs return fast. RLS deny-all.
 
--- Per-agent extension for inbound routing
-ALTER TABLE users
-  ADD COLUMN IF NOT EXISTS telnyx_extension TEXT UNIQUE;
+### `011_can_rpc.sql`
 
--- Idempotency on every external event row
-ALTER TABLE call_logs  ADD COLUMN IF NOT EXISTS provider_event_id TEXT UNIQUE;
-ALTER TABLE sms_logs   ADD COLUMN IF NOT EXISTS provider_message_id TEXT UNIQUE;
-ALTER TABLE email_logs ADD COLUMN IF NOT EXISTS provider_message_id TEXT UNIQUE;
+Three SQL functions, all `SECURITY DEFINER` and granted to `authenticated`:
 
--- Audit trail for every webhook event we receive
-CREATE TABLE webhook_events (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  provider    TEXT NOT NULL CHECK (provider IN ('telnyx','sendgrid')),
-  event_type  TEXT NOT NULL,
-  payload     JSONB NOT NULL,
-  received_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  signature_ok BOOLEAN NOT NULL,
-  processed_at TIMESTAMPTZ,
-  process_error TEXT
-);
-CREATE INDEX webhook_events_recent ON webhook_events (received_at DESC);
-```
+- **`can_call(uuid)` → jsonb** — verdict for "may we dial this prospect right now". Hard-block reasons: `not_found`, `cross_tenant`, `no_phone`, `outside_calling_hours`. **DNC is NOT a hard block** per client policy — it's surfaced as a `do_not_call_warning: true` field on the verdict so the UI can decorate the call button (red border, tooltip) without disabling it.
+- **`can_message(uuid)` → jsonb** — same shape, no calling-hours check. SMS quiet-hours are enforced at the carrier level if needed; we don't double-enforce in v1.
+- **`mark_sms_read(uuid)` → void** — `SECURITY INVOKER`. Mobile fires this fire-and-forget on tab open and on Realtime updates. Tenant-scoped via `public.get_tenant_id()`.
 
-### `011_can_call_rpc.sql`
+A private helper `_prospect_dnc_flagged(uuid)` is used by both verdict functions; it's not granted to `authenticated`, only callable from inside the SECURITY DEFINER bodies.
 
-```sql
-CREATE OR REPLACE FUNCTION can_call(p_prospect_id UUID)
-RETURNS JSONB
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  v_tenant_id  UUID;
-  v_dnc        BOOLEAN;
-  v_phones     TEXT[];
-  v_tz         TEXT;
-  v_hours      JSONB;
-  v_now_local  TIMESTAMP;
-  v_dow        TEXT;
-  v_today      JSONB;
-BEGIN
-  SELECT tenant_id, do_not_call, phones
-    INTO v_tenant_id, v_dnc, v_phones
-    FROM prospects WHERE id = p_prospect_id;
+### `012_call_recordings_bucket.sql`
 
-  IF v_tenant_id IS NULL THEN
-    RETURN jsonb_build_object('allowed', false, 'reason', 'not_found');
-  END IF;
-  IF current_setting('app.tenant_id', true)::uuid != v_tenant_id THEN
-    RETURN jsonb_build_object('allowed', false, 'reason', 'cross_tenant');
-  END IF;
-  IF v_dnc THEN
-    RETURN jsonb_build_object('allowed', false, 'reason', 'dnc');
-  END IF;
-  IF v_phones IS NULL OR array_length(v_phones, 1) = 0 THEN
-    RETURN jsonb_build_object('allowed', false, 'reason', 'no_phone');
-  END IF;
-
-  SELECT timezone, calling_hours INTO v_tz, v_hours FROM tenants WHERE id = v_tenant_id;
-  v_now_local := (now() AT TIME ZONE v_tz);
-  v_dow := lower(to_char(v_now_local, 'dy'));   -- mon, tue, ...
-  v_today := v_hours -> v_dow;
-
-  IF v_today IS NULL OR v_today = 'null'::jsonb THEN
-    RETURN jsonb_build_object('allowed', false, 'reason', 'outside_calling_hours');
-  END IF;
-
-  IF (v_now_local::time < (v_today->>'start')::time)
-     OR (v_now_local::time >= (v_today->>'end')::time) THEN
-    RETURN jsonb_build_object('allowed', false, 'reason', 'outside_calling_hours');
-  END IF;
-
-  RETURN jsonb_build_object('allowed', true, 'reason', 'ok');
-END;
-$$;
-
--- Identical shape for messaging — DNC + has-phone, but NO calling-hours check.
--- The TCPA SMS quiet-hours rules differ; we apply them at the API boundary
--- in stage 3 instead of at the RPC.
-CREATE OR REPLACE FUNCTION can_message(p_prospect_id UUID)
-RETURNS JSONB
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  v_tenant_id UUID; v_dnc BOOLEAN; v_phones TEXT[];
-BEGIN
-  SELECT tenant_id, do_not_call, phones
-    INTO v_tenant_id, v_dnc, v_phones
-    FROM prospects WHERE id = p_prospect_id;
-  IF v_tenant_id IS NULL THEN
-    RETURN jsonb_build_object('allowed', false, 'reason', 'not_found');
-  END IF;
-  IF current_setting('app.tenant_id', true)::uuid != v_tenant_id THEN
-    RETURN jsonb_build_object('allowed', false, 'reason', 'cross_tenant');
-  END IF;
-  IF v_dnc THEN
-    RETURN jsonb_build_object('allowed', false, 'reason', 'dnc');
-  END IF;
-  IF v_phones IS NULL OR array_length(v_phones, 1) = 0 THEN
-    RETURN jsonb_build_object('allowed', false, 'reason', 'no_phone');
-  END IF;
-  RETURN jsonb_build_object('allowed', true, 'reason', 'ok');
-END;
-$$;
-
-GRANT EXECUTE ON FUNCTION can_call(UUID), can_message(UUID) TO authenticated;
-```
-
-### `012_storage_call_recordings.sql`
-
-```sql
-INSERT INTO storage.buckets (id, name, public)
-VALUES ('call-recordings', 'call-recordings', false)
-ON CONFLICT (id) DO NOTHING;
-
-CREATE POLICY "tenant_owns_path_select" ON storage.objects FOR SELECT TO authenticated
-USING (
-  bucket_id = 'call-recordings'
-  AND (storage.foldername(name))[1] = (SELECT tenant_id::text FROM users WHERE id = auth.uid())
-);
--- Mirror INSERT/UPDATE/DELETE policies same as SELECT.
-```
+Creates the `call-recordings` private bucket and attaches a SELECT-only RLS policy: a user can read recordings whose path starts with their own `tenant_id`. Writes go through service-role only (the Telnyx webhook will fetch the recording from Telnyx and upload it; the user never POSTs to this bucket).
 
 ---
 
-## 2. Vault: signing secrets
+## 2. ⚠️ DNC policy — the one-line summary
 
-Both webhooks must verify signatures **before** doing any work.
+`can_call` and `can_message` **never** return `allowed: false` for a DNC flag. The `do_not_call_warning` field in the verdict and the page-level `DncBanner` provide the warning; the agent decides whether to proceed and accepts responsibility for the contact. This matches the M3-6 client deviation already accepted on web.
+
+`send_sms` (Stage 3) and the click-to-call path (Stage 2) **must NOT raise on DNC**. The Stage 5 audit pass verifies this end-to-end.
+
+Calling-hours stays a hard block (TCPA quiet-hours rule, separate compliance regime).
+
+---
+
+## 3. Vault: signing secrets
+
+Both webhooks must verify signatures **before** dispatching. Run once via Supabase Dashboard → SQL Editor (or psql with service role):
 
 ```sql
--- one-time, run via supabase dashboard or psql
-SELECT vault.create_secret('TELNYX_PUBLIC_KEY',   '<paste from Telnyx portal>');
-SELECT vault.create_secret('SENDGRID_PUBLIC_KEY', '<paste from SendGrid event-webhook settings>');
-SELECT vault.create_secret('TELNYX_API_KEY',      '<paste>');
-SELECT vault.create_secret('SENDGRID_API_KEY',    '<paste>');
+SELECT vault.create_secret('TELNYX_PUBLIC_KEY',   '<paste from Telnyx Portal>');
+SELECT vault.create_secret('SENDGRID_PUBLIC_KEY', '<paste from SendGrid Event Webhook settings>');
+SELECT vault.create_secret('TELNYX_API_KEY',      '<paste from Telnyx>');
+SELECT vault.create_secret('SENDGRID_API_KEY',    '<paste from SendGrid>');
 ```
 
-The Edge Functions read these via `SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = $1` (service role only). **Never** put these in `.env` — they end up in the build cache.
+The Edge Functions read these via `vault.decrypted_secrets`. Cached for the function instance lifetime (cold-start scope) so we don't hit Vault on every call.
+
+**Never** put these in `.env` — they end up in build caches.
 
 ---
 
-## 3. Webhook skeletons
+## 4. Webhook scaffolds
 
-### `supabase/functions/telnyx-webhook/index.ts`
+Six new files under `supabase/functions/`:
 
-```ts
-import { serve } from 'https://deno.land/std/http/server.ts';
-import { verifyTelnyxSignature } from '../_shared/telnyx-signature.ts';
-import { admin } from '../_shared/supabase-admin.ts';
+- `_shared/cors.ts` — permissive CORS headers for browser-fronted testing
+- `_shared/admin-client.ts` — service-role Supabase client factory (singleton per cold start)
+- `_shared/get-vault-secret.ts` — Vault reader with in-memory cache
+- `_shared/telnyx-signature.ts` — Ed25519 verification with 5-min replay window
+- `_shared/sendgrid-signature.ts` — ECDSA P-256 verification with DER → raw transcoding
+- `_shared/log-webhook.ts` — `webhook_events` insert + processed-marker helpers
 
-serve(async (req) => {
-  const body = await req.text();
-  const sig  = req.headers.get('telnyx-signature-ed25519');
-  const ts   = req.headers.get('telnyx-timestamp');
+Plus the two webhook entry points:
 
-  const ok = await verifyTelnyxSignature(body, sig, ts);
-  await admin.from('webhook_events').insert({
-    provider: 'telnyx',
-    event_type: JSON.parse(body)?.data?.event_type ?? 'unknown',
-    payload: JSON.parse(body),
-    signature_ok: ok,
-  });
-  if (!ok) return new Response('bad signature', { status: 401 });
+- `telnyx-webhook/index.ts` — verifies signature, logs the event, 200s. Stage 2 plugs in `call.*` dispatch; Stage 3 plugs in `message.*` dispatch (including STOP-keyword auto-DNC + auto-reply).
+- `sendgrid-webhook/index.ts` — same shape. Detects multipart for the Inbound Parse path. Stage 4 plugs in dispatch.
 
-  // Dispatch happens in Stage 2 (call events) and Stage 3 (sms events).
-  // Stage 1 just records and 200s.
-  return new Response('ok', { status: 200 });
-});
-```
-
-### `supabase/functions/sendgrid-webhook/index.ts`
-
-Same shape, different signature algorithm (ECDSA on `X-Twilio-Email-Event-Webhook-Signature`).
-
-### `supabase/functions/_shared/telnyx-signature.ts`
-
-```ts
-import { decode as b64decode } from 'https://deno.land/std/encoding/base64.ts';
-
-export async function verifyTelnyxSignature(
-  body: string, sig: string | null, ts: string | null,
-): Promise<boolean> {
-  if (!sig || !ts) return false;
-  if (Math.abs(Date.now() / 1000 - Number(ts)) > 300) return false;  // 5-min window
-  const pub = await getSecret('TELNYX_PUBLIC_KEY');
-  const key = await crypto.subtle.importKey(
-    'raw', b64decode(pub), { name: 'Ed25519' }, false, ['verify']
-  );
-  const data = new TextEncoder().encode(`${ts}|${body}`);
-  return crypto.subtle.verify('Ed25519', key, b64decode(sig), data);
-}
-```
+Both endpoints **always** return within ~50 ms (or 401 for forged signatures); long work moves to the `tasks` queue.
 
 ---
 
-## 4. Wire-up tasks
+## 5. Wire-up tasks
 
-| Task | Owner | Verify |
-|------|-------|--------|
-| Run migrations 010–012 against dev DB | Dev | `\d tenants` shows new columns; `SELECT can_call('<seed prospect uuid>')` returns `{allowed:true}` |
-| Insert Vault secrets | Dev | `SELECT decrypted_secret FROM vault.decrypted_secrets` returns 4 rows |
-| Deploy `telnyx-webhook` and `sendgrid-webhook` Edge Functions | Dev | `supabase functions list` shows both |
-| Configure webhook URLs in Telnyx + SendGrid portals | Dev | Send a test event from each portal → `webhook_events` table grows |
-| Add `telnyx_extension` to seed agents (e.g. `1001`, `1002`) | Dev | `SELECT id, telnyx_extension FROM users` shows values |
-| Create `call-recordings` bucket via migration | Dev | Bucket visible in dashboard, RLS shows path-prefix policy |
+| Task | Verify |
+|------|--------|
+| Run migrations 010–012 against dev DB | `\d tenants` shows new columns; `SELECT can_call('<seed prospect uuid>')` returns `{allowed:true, do_not_call_warning:false}` |
+| Insert Vault secrets | `SELECT name FROM vault.decrypted_secrets` returns 4 rows |
+| Deploy `telnyx-webhook` and `sendgrid-webhook` Edge Functions | `supabase functions list` shows both |
+| Configure webhook URLs in Telnyx + SendGrid portals | Send a test event from each portal → `webhook_events` row appears |
+| `users.telnyx_extension` column | Already exists from M1; just populate seed agents (e.g. `1001`, `1002`) |
 
 ---
 
-## 5. Done when
+## 6. Done when
 
-- [ ] Forging a webhook payload with a wrong signature returns 401 and inserts a row with `signature_ok = false`
-- [ ] Re-sending the same valid Telnyx event 3× via `curl --data-raw` results in 3 rows in `webhook_events` (not deduped — that's the audit) but only 0 rows in `call_logs` (no handler yet)
-- [ ] `SELECT can_call('<seeded prospect>')` returns `{allowed: true, reason: 'ok'}` during business hours, `{allowed: false, reason: 'outside_calling_hours'}` after 8pm
-- [ ] Toggling `prospects.do_not_call = true` flips the verdict to `{allowed: false, reason: 'dnc'}` immediately
+- [ ] Forging a webhook payload with a wrong signature → 401, row in `webhook_events` with `signature_ok = false`
+- [ ] Re-sending the same valid Telnyx event 3× via `curl --data-raw` → 3 rows in `webhook_events` (audit), 0 rows in `call_logs` (no dispatcher yet)
+- [ ] `SELECT can_call('<seeded prospect>')` returns `{allowed:true}` during business hours
+- [ ] Setting that prospect's `do_not_call = true` → `can_call` STILL returns `allowed: true` but `do_not_call_warning: true`. **(This is the policy — verify it works as designed.)**
+- [ ] `can_call` returns `{allowed:false, reason:'outside_calling_hours', today_hours: {...}, tz: 'America/Chicago'}` when invoked at 21:00 local
+- [ ] `can_call` returns `{allowed:false, reason:'no_phone'}` for a prospect with `phones = '{}'`
+- [ ] `can_message` is identical except no calling-hours field
+- [ ] `mark_sms_read('<id>')` updates only the caller's tenant rows (cross-tenant attempt is a no-op)
 
-Once those four checks pass, Stage 2 can plug a real handler into the dispatcher. Nothing in M4 builds correctly without this foundation in place.
+Once those pass, Stage 2 (web softphone) and Stage 3 (web SMS + the mobile-blocking `send_sms` RPC) can plug real handlers into the dispatchers. Nothing else in M4 builds correctly without this foundation.
