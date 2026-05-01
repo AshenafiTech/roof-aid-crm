@@ -76,6 +76,14 @@ import {
 } from "@/lib/constants/prospect-status";
 import { cn } from "@/lib/utils";
 import type { ProspectListItem } from "@/lib/queries/prospects";
+import { sendSms } from "@/lib/sms/actions";
+import { canCallProspect } from "@/lib/calls/actions";
+import {
+  DncConfirmDialog,
+  type Warning as ComplianceWarning,
+} from "@/components/comms/dnc-confirm-dialog";
+import { useSoftphoneStore } from "@/lib/stores/softphone-store";
+import { REMOTE_AUDIO_ID } from "@/components/comms/softphone";
 
 import {
   DropdownMenu,
@@ -1742,16 +1750,46 @@ function SmsDialog({
   prospect: ProspectListItem;
 }) {
   const [message, setMessage] = useState("");
+  const [pending, startTransition] = useTransition();
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [pendingWarnings, setPendingWarnings] = useState<ComplianceWarning[]>([]);
   const phone = prospect.phones?.[0] ?? "";
 
-  function handleSend() {
-    if (!message.trim()) {
+  function send(acknowledged: ComplianceWarning[]) {
+    const body = message.trim();
+    if (!body) {
       toast.error("Please enter a message");
       return;
     }
-    toast.success(`SMS queued for ${prospect.name}. Integration with Telnyx coming in M4.`);
-    setMessage("");
-    onOpenChange(false);
+    startTransition(async () => {
+      const res = await sendSms({
+        prospectId: prospect.id,
+        body,
+        acknowledgedWarnings: acknowledged,
+      });
+      if (!res.ok) {
+        if (res.requiresAcknowledgement && res.requiresAcknowledgement.length > 0) {
+          setPendingWarnings(res.requiresAcknowledgement);
+          setConfirmOpen(true);
+          return;
+        }
+        toast.error(res.error);
+        return;
+      }
+      toast.success(`SMS sent to ${prospect.name}`);
+      setMessage("");
+      setPendingWarnings([]);
+      setConfirmOpen(false);
+      onOpenChange(false);
+    });
+  }
+
+  function handleSend() {
+    send([]);
+  }
+
+  function handleConfirm() {
+    send(pendingWarnings);
   }
 
   return (
@@ -1799,16 +1837,36 @@ function SmsDialog({
             />
           </div>
 
+          {prospect.do_not_call && (
+            <div className="rounded-md border border-amber-500/40 bg-amber-50 dark:bg-amber-950/20 p-2 text-xs text-amber-800 dark:text-amber-300">
+              <strong>DNC.</strong> This prospect is on the Do Not Call list.
+              You&rsquo;ll be asked to confirm before any message goes out.
+            </div>
+          )}
+
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
+            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>
               Cancel
             </Button>
-            <Button onClick={handleSend} disabled={!phone}>
-              <Send className="mr-2 h-4 w-4" /> Send SMS
+            <Button onClick={handleSend} disabled={!phone || pending}>
+              {pending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="mr-2 h-4 w-4" />
+              )}
+              Send SMS
             </Button>
           </div>
         </div>
       </DialogContent>
+      <DncConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        warnings={pendingWarnings}
+        prospectName={prospect.name}
+        onConfirm={handleConfirm}
+        busy={pending}
+      />
     </Dialog>
   );
 }
@@ -2062,6 +2120,74 @@ function CallDialog({
   const phone = prospect.phones?.[0] ?? "";
   const phone2 = prospect.phones?.[1] ?? "";
   const [selectedPhone, setSelectedPhone] = useState(phone);
+  const { client, callerNumber, status, setOutgoingContext } = useSoftphoneStore();
+  const [pending, startTransition] = useTransition();
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [pendingWarnings, setPendingWarnings] = useState<ComplianceWarning[]>([]);
+
+  const softphoneReady = status === "ready" && !!client;
+
+  function dial(acknowledged: ComplianceWarning[]) {
+    if (!client || !selectedPhone) return;
+    if (!callerNumber) {
+      toast.error(
+        "No active number to call from. Set up a primary number in Settings → Phone Numbers.",
+      );
+      return;
+    }
+    try {
+      client.newCall({
+        destinationNumber: selectedPhone,
+        callerNumber,
+        audio: true,
+        video: false,
+        remoteElement: REMOTE_AUDIO_ID,
+        customHeaders: [
+          { name: "X-RoofAid-Prospect-Id", value: prospect.id },
+          ...(acknowledged.length > 0
+            ? [
+                {
+                  name: "X-RoofAid-Acknowledged-Warnings",
+                  value: acknowledged.join(","),
+                },
+              ]
+            : []),
+        ],
+      });
+      setOutgoingContext({
+        prospectId: prospect.id,
+        prospectName: prospect.name,
+        destinationNumber: selectedPhone,
+      });
+      setConfirmOpen(false);
+      setPendingWarnings([]);
+      onOpenChange(false);
+    } catch (err) {
+      console.error("[CallDialog] dial failed", err);
+      toast.error(err instanceof Error ? err.message : "Could not start the call");
+    }
+  }
+
+  function handleCallNow() {
+    if (!selectedPhone) return;
+    startTransition(async () => {
+      const verdict = await canCallProspect({ prospectId: prospect.id });
+      if (!verdict.ok) {
+        toast.error(verdict.error);
+        return;
+      }
+      if (verdict.warnings.length > 0) {
+        setPendingWarnings(verdict.warnings);
+        setConfirmOpen(true);
+        return;
+      }
+      dial([]);
+    });
+  }
+
+  function handleConfirm() {
+    dial(pendingWarnings);
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -2121,26 +2247,34 @@ function CallDialog({
           </div>
 
           <div className="flex gap-2">
-            <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
+            <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)} disabled={pending}>
               Cancel
             </Button>
             <Button
               className="flex-1 bg-green-600 hover:bg-green-700 text-white"
-              disabled={!selectedPhone}
-              onClick={() => {
-                toast.success(`Calling ${selectedPhone}... Integration with Telnyx coming in M4.`);
-                onOpenChange(false);
-              }}
+              disabled={!selectedPhone || !softphoneReady || pending}
+              onClick={handleCallNow}
             >
-              <PhoneCall className="mr-2 h-4 w-4" /> Call Now
+              {pending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PhoneCall className="mr-2 h-4 w-4" />}
+              Call Now
             </Button>
           </div>
 
-          <p className="text-[11px] text-center text-muted-foreground">
-            VoIP calling via Telnyx — coming in Milestone 4
-          </p>
+          {!softphoneReady && (
+            <p className="text-[11px] text-center text-muted-foreground">
+              Softphone {status === "connecting" ? "connecting…" : status === "in_call" ? "is in another call" : "not ready"}
+            </p>
+          )}
         </div>
       </DialogContent>
+      <DncConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        warnings={pendingWarnings}
+        prospectName={prospect.name}
+        onConfirm={handleConfirm}
+        busy={pending}
+      />
     </Dialog>
   );
 }

@@ -15,6 +15,9 @@ import { AssignmentTab } from "./assignment-tab";
 import { NotesTab } from "./notes-tab";
 import { OverviewTab } from "./overview-tab";
 import { PipelineTab } from "./pipeline-tab";
+import { SmsTab } from "./sms-tab";
+import type { SmsMessage } from "@/components/comms/sms-thread";
+import type { SmsTemplate } from "@/components/comms/sms-composer";
 import type {
   ActivityWithUser,
   NoteWithAuthor,
@@ -28,6 +31,8 @@ type Props = {
   notes: NoteWithAuthor[];
   ruferos: UserLite[];
   currentUser: AuthUser;
+  smsMessages: SmsMessage[];
+  smsTemplates: SmsTemplate[];
 };
 
 const VALID_TABS = [
@@ -36,6 +41,7 @@ const VALID_TABS = [
   "assignment",
   "activity",
   "notes",
+  "sms",
 ] as const;
 
 type TabValue = (typeof VALID_TABS)[number];
@@ -52,6 +58,8 @@ export function ProspectTabs({
   notes,
   ruferos,
   currentUser,
+  smsMessages,
+  smsTemplates,
 }: Props) {
   const router = useRouter();
   const sp = useSearchParams();
@@ -71,6 +79,7 @@ export function ProspectTabs({
         <TabsTrigger value="assignment">Assignment</TabsTrigger>
         <TabsTrigger value="activity">Activity</TabsTrigger>
         <TabsTrigger value="notes">Notes</TabsTrigger>
+        <TabsTrigger value="sms">SMS</TabsTrigger>
       </TabsList>
 
       <TabsContent value="overview" className="pt-4">
@@ -96,6 +105,16 @@ export function ProspectTabs({
       </TabsContent>
       <TabsContent value="notes" className="pt-4">
         <NotesTab prospect={prospect} notes={notes} />
+      </TabsContent>
+      <TabsContent value="sms" className="pt-4">
+        <SmsTab
+          prospectId={prospect.id}
+          prospectName={prospect.name}
+          hasPhone={(prospect.phones ?? []).length > 0}
+          isDnc={prospect.do_not_call ?? false}
+          initialMessages={smsMessages}
+          templates={smsTemplates}
+        />
       </TabsContent>
     </Tabs>
   );

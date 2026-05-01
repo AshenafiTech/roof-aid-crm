@@ -26,6 +26,7 @@ import type { NotificationRow } from "@/lib/queries/notifications";
 import { signOut } from "./actions";
 import { NotificationBell } from "./notification-bell";
 import { SidebarNav } from "./sidebar-nav";
+import { Softphone } from "@/components/comms/softphone";
 
 export function DashboardShell({
   user,
@@ -163,6 +164,8 @@ export function DashboardShell({
             </div>
           </div>
         </header>
+
+        <Softphone />
 
         <main className="flex-1 px-4 py-6 sm:px-6">{children}</main>
       </div>
