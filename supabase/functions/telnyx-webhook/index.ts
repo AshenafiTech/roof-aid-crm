@@ -72,7 +72,30 @@ serve(async (req) => {
           'delivered',
         )
         break
-      case 'message.finalized':
+      case 'message.finalized': {
+        // message.finalized is the *terminal* event for an outbound SMS.
+        // Telnyx packs the actual outcome inside payload.to[0].status:
+        //   - 'delivered'             → carrier confirmed delivery
+        //   - 'delivery_unconfirmed'  → sent, carrier did not ACK (still arrived in most cases)
+        //   - 'sending_failed' /
+        //     'delivery_failed'       → never reached the recipient
+        const finalStatus =
+          (eventPayload as { to?: Array<{ status?: string }> })?.to?.[0]
+            ?.status ?? 'delivery_unconfirmed'
+        let next: 'delivered' | 'sent' | 'failed'
+        if (finalStatus === 'delivered') next = 'delivered'
+        else if (
+          finalStatus === 'sending_failed' ||
+          finalStatus === 'delivery_failed'
+        )
+          next = 'failed'
+        else next = 'sent' // delivery_unconfirmed and any unknown sub-state
+        await handleSmsStatusUpdate(
+          eventPayload as Parameters<typeof handleSmsStatusUpdate>[0],
+          next,
+        )
+        break
+      }
       case 'message.failed':
         await handleSmsStatusUpdate(
           eventPayload as Parameters<typeof handleSmsStatusUpdate>[0],
