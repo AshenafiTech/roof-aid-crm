@@ -8,6 +8,7 @@ import {
   releaseNumber,
   searchAvailableNumbers,
 } from "@/lib/telnyx/client";
+import { ensureTenantTelnyxConnection } from "@/lib/telnyx/ensure-tenant-connection";
 import { TelnyxError } from "@/lib/telnyx/errors";
 import type { AvailableNumber } from "@/lib/telnyx/types";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -123,8 +124,30 @@ export async function purchaseAndAttachNumber(input: {
       };
     }
 
-    // 1. Purchase from Telnyx (also auto-attaches to messaging profile + voice app)
-    const purchased = await purchaseNumber({ e164: parsed.e164 });
+    // 1. Ensure tenant has a Telnyx Credentials Connection. Required for
+    //    the WebRTC softphone — without it, /api/telnyx/credentials rejects
+    //    and reps can't make/receive calls. Idempotent: returns existing
+    //    connection id if one is already set.
+    const { data: tenantInfo, error: tenantInfoErr } = await admin
+      .from("tenants")
+      .select("slug")
+      .eq("id", profileTenantId)
+      .single();
+    if (tenantInfoErr || !tenantInfo) {
+      return { ok: false, error: "Tenant lookup failed" };
+    }
+    const connectionId = await ensureTenantTelnyxConnection({
+      admin,
+      tenantId: profileTenantId,
+      tenantSlug: tenantInfo.slug,
+    });
+
+    // 2. Purchase from Telnyx and atomically attach to the tenant's connection
+    //    + the platform messaging profile.
+    const purchased = await purchaseNumber({
+      e164: parsed.e164,
+      connectionId,
+    });
     purchasedTelnyxId = purchased.telnyx_number_id;
 
     // 2. Insert tenant_phone_numbers row

@@ -4,6 +4,7 @@ import { getUnreadNotificationCount } from "@/lib/queries/dashboard";
 import { getRecentNotifications } from "@/lib/queries/notifications";
 
 import { DashboardShell } from "./dashboard-shell";
+import { MissingNumberBanner } from "./missing-number-banner";
 
 export default async function DashboardLayout({
   children,
@@ -27,6 +28,7 @@ export default async function DashboardLayout({
         unreadCount={unreadCount}
         recentNotifications={recentNotifications}
       >
+        <MissingNumberBanner tenantId={user.tenantId} role={user.role} />
         {children}
       </DashboardShell>
     </UserProvider>

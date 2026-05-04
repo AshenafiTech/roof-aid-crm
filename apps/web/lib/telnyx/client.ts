@@ -105,8 +105,14 @@ interface PhoneNumberDetailResponse {
 }
 
 /**
- * Purchase a US number and atomically attach it to the platform's
- * Roof-Aid messaging profile + voice Call Control app.
+ * Purchase a US number and atomically attach it to a Telnyx connection
+ * (Voice Call Control App OR a per-tenant Credentials Connection) plus
+ * the platform's Roof-Aid messaging profile.
+ *
+ * `connectionId` is preferred — pass the tenant's
+ * `telnyx_credential_connection_id` when set. Falls back to the
+ * platform-wide `TELNYX_VOICE_APP_ID` env var when no per-tenant
+ * connection exists yet (e.g., new tenants pre-multi-tenant rollout).
  *
  * Telnyx allows messaging_profile_id and connection_id directly on the
  * order, so the resulting number is wired to our webhook the instant
@@ -114,15 +120,19 @@ interface PhoneNumberDetailResponse {
  */
 export async function purchaseNumber(opts: {
   e164: string
+  /** Tenant's Credentials Connection ID. Pass when available. */
+  connectionId?: string
 }): Promise<PurchasedNumber> {
   const messagingProfileId = process.env.TELNYX_MESSAGING_PROFILE_ID
-  const voiceAppId =
-    process.env.TELNYX_VOICE_APP_ID ?? process.env.TELNYX_APP_ID
+  const connectionId =
+    opts.connectionId ??
+    process.env.TELNYX_VOICE_APP_ID ??
+    process.env.TELNYX_APP_ID
 
-  if (!messagingProfileId || !voiceAppId) {
+  if (!messagingProfileId || !connectionId) {
     throw new TelnyxError({
       message:
-        'TELNYX_MESSAGING_PROFILE_ID and TELNYX_VOICE_APP_ID must be set to purchase numbers',
+        'A Telnyx connection (per-tenant or platform via TELNYX_VOICE_APP_ID) and TELNYX_MESSAGING_PROFILE_ID are required to purchase numbers',
       status: 0,
     })
   }
@@ -133,7 +143,7 @@ export async function purchaseNumber(opts: {
     body: {
       phone_numbers: [{ phone_number: opts.e164 }],
       messaging_profile_id: messagingProfileId,
-      connection_id: voiceAppId,
+      connection_id: connectionId,
     },
   })
 
@@ -162,7 +172,7 @@ export async function purchaseNumber(opts: {
     e164: assigned.phone_number,
     capabilities,
     messaging_profile_id: detail.data.messaging_profile_id ?? messagingProfileId,
-    voice_app_id: detail.data.connection_id ?? voiceAppId,
+    voice_app_id: detail.data.connection_id ?? connectionId,
   }
 }
 

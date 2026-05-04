@@ -54,8 +54,8 @@ import {
 
 const ROUTING_LABELS: Record<RoutingKind, string> = {
   ring_all: "Ring all reps",
-  ring_assigned_then_all: "Ring assigned rep, then all",
-  voicemail: "Send to voicemail",
+  assigned_rep_first_then_all: "Ring assigned rep, then all",
+  voicemail_only: "Send to voicemail",
 };
 
 export function PhoneNumbersManagement({
@@ -314,10 +314,10 @@ function NumberRow({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="ring_all">{ROUTING_LABELS.ring_all}</SelectItem>
-                <SelectItem value="ring_assigned_then_all">
-                  {ROUTING_LABELS.ring_assigned_then_all}
+                <SelectItem value="assigned_rep_first_then_all">
+                  {ROUTING_LABELS.assigned_rep_first_then_all}
                 </SelectItem>
-                <SelectItem value="voicemail">{ROUTING_LABELS.voicemail}</SelectItem>
+                <SelectItem value="voicemail_only">{ROUTING_LABELS.voicemail_only}</SelectItem>
               </SelectContent>
             </Select>
           </div>

@@ -18,6 +18,12 @@ import {
   handleInboundSms,
   handleOutboundSmsStatus,
 } from '../_shared/sms-handlers.ts'
+import {
+  handleCallInitiated,
+  handleCallAnswered,
+  handleCallHangup,
+  handleCallRecordingSaved,
+} from '../_shared/call-handlers.ts'
 
 const TELNYX_PUBLIC_KEY = Deno.env.get('TELNYX_PUBLIC_KEY') ?? null
 
@@ -98,13 +104,19 @@ serve(async (req) => {
         break
       case 'message.finalized': {
         // Telnyx v2 message.finalized carries the terminal state inside
-        // payload.to[].status — 'delivered' | 'failed' | 'delivery_failed'
+        // payload.to[].status. Known values:
+        //   delivered             — carrier confirmed
+        //   delivery_unconfirmed  — sent but no delivery receipt (toll-free,
+        //                            certain international destinations);
+        //                            treat as its own status, not 'sent'
+        //   failed / delivery_failed / sending_failed — terminal failure
         const payload = parsed?.data?.payload as {
           to?: Array<{ status?: string }>
         } | undefined
         const status = payload?.to?.[0]?.status
-        const final =
+        const final: 'delivered' | 'delivery_unconfirmed' | 'failed' | null =
           status === 'delivered' ? 'delivered'
+          : status === 'delivery_unconfirmed' ? 'delivery_unconfirmed'
           : (status === 'failed' || status === 'delivery_failed' || status === 'sending_failed') ? 'failed'
           : null
         if (final) {
@@ -117,9 +129,29 @@ serve(async (req) => {
         }
         break
       }
+
+      // Call lifecycle — see _shared/call-handlers.ts. Each handler
+      // upserts call_logs keyed on telnyx_call_id, so replays and
+      // out-of-order events are idempotent.
+      case 'call.initiated':
+        await handleCallInitiated(parsed?.data?.payload as Parameters<typeof handleCallInitiated>[0])
+        break
+      case 'call.answered':
+        await handleCallAnswered(parsed?.data?.payload as Parameters<typeof handleCallAnswered>[0])
+        break
+      case 'call.hangup':
+        await handleCallHangup(parsed?.data?.payload as Parameters<typeof handleCallHangup>[0])
+        break
+      case 'call.recording.saved':
+        await handleCallRecordingSaved(parsed?.data?.payload as Parameters<typeof handleCallRecordingSaved>[0])
+        break
+
       default:
         if (eventType.startsWith('call.')) {
-          processError = 'pending_stage_2_call_handler'
+          // Other call.* events (bridged, dtmf.received, machine.detection.ended,
+          // playback.started, etc.) — we audit but don't act. Re-enable per
+          // event as features need them.
+          processError = `call_event_not_handled:${eventType}`
         } else {
           processError = 'unhandled_event_type'
         }

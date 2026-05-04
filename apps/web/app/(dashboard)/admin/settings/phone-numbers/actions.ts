@@ -10,10 +10,17 @@ import {
   releaseNumber,
   searchAvailableNumbers,
 } from "@/lib/telnyx/client";
+import { ensureTenantTelnyxConnection } from "@/lib/telnyx/ensure-tenant-connection";
 import { TelnyxError } from "@/lib/telnyx/errors";
 import type { AvailableNumber } from "@/lib/telnyx/types";
 
-const ROUTING_KINDS = ["ring_all", "ring_assigned_then_all", "voicemail"] as const;
+// Must match the CHECK constraint in migration 020 (tpn_routing_rule_kind_check).
+// Spec source: docs/milestone4/stage-1.5-tenant-phone-numbers.md §8.
+const ROUTING_KINDS = [
+  "ring_all",
+  "assigned_rep_first_then_all",
+  "voicemail_only",
+] as const;
 export type RoutingKind = (typeof ROUTING_KINDS)[number];
 
 // ---------------------------------------------------------------------------
@@ -140,7 +147,27 @@ export async function addPhoneNumber(input: {
     });
 
     const admin = createAdminClient();
-    const purchased = await purchaseNumber({ e164: parsed.e164 });
+
+    // Ensure tenant has a Credentials Connection (required by the softphone).
+    // Idempotent — returns existing id if one is set, else creates one.
+    const { data: tenantInfo, error: tenantInfoErr } = await admin
+      .from("tenants")
+      .select("slug")
+      .eq("id", profile.tenant_id)
+      .single();
+    if (tenantInfoErr || !tenantInfo) {
+      return { ok: false, error: "Tenant lookup failed" };
+    }
+    const connectionId = await ensureTenantTelnyxConnection({
+      admin,
+      tenantId: profile.tenant_id,
+      tenantSlug: tenantInfo.slug,
+    });
+
+    const purchased = await purchaseNumber({
+      e164: parsed.e164,
+      connectionId,
+    });
     purchasedTelnyxId = purchased.telnyx_number_id;
 
     // Decide is_primary: true only if this is the first active number.

@@ -1,13 +1,18 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { Loader2, Search } from "lucide-react";
+import { useMemo, useState, useTransition } from "react";
+import { Loader2, MapPin, Search } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
+import {
+  POPULAR_METROS,
+  metroForNpa,
+  siblingsForNpa,
+} from "@/lib/telnyx/npa-metros";
 import type { AvailableNumber } from "@/lib/telnyx/types";
 
 export function formatE164(e164: string): string {
@@ -44,13 +49,28 @@ export function NumberPickerForm({
   const [searching, startSearch] = useTransition();
   const [purchasing, startPurchase] = useTransition();
 
-  const handleSearch = () => {
-    if (!/^\d{3}$/.test(areaCode)) {
+  // Hint shown next to the input as the user types (e.g. "479 — NW Arkansas").
+  const metroHint = useMemo(
+    () => (areaCode.length === 3 ? metroForNpa(areaCode) : null),
+    [areaCode],
+  );
+
+  // When a search returns 0 results, show sibling NPAs for the same metro.
+  const siblings = useMemo(
+    () => (searched && results.length === 0 ? siblingsForNpa(areaCode) : []),
+    [searched, results.length, areaCode],
+  );
+
+  const runSearch = (npa: string) => {
+    if (!/^\d{3}$/.test(npa)) {
       toast.error("Area code must be 3 digits");
       return;
     }
+    setAreaCode(npa);
+    setResults([]);
+    setSelected(null);
     startSearch(async () => {
-      const res = await searchAction({ areaCode });
+      const res = await searchAction({ areaCode: npa });
       if (!res.ok) {
         toast.error(res.error);
         setResults([]);
@@ -61,12 +81,17 @@ export function NumberPickerForm({
       setSelected(res.numbers[0]?.e164 ?? null);
       setSearched(true);
       if (res.numbers.length === 0) {
-        toast.message("No numbers available in that area code", {
-          description: "Try a different area code.",
+        const m = metroForNpa(npa);
+        toast.message("No numbers available right now", {
+          description: m
+            ? `Try a sibling area code: ${siblingsForNpa(npa).join(", ") || "none on file"}`
+            : "Try a different area code.",
         });
       }
     });
   };
+
+  const handleSearch = () => runSearch(areaCode);
 
   const handlePurchase = () => {
     if (!selected) return;
@@ -86,26 +111,78 @@ export function NumberPickerForm({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-end gap-2">
-        <div className="flex-1 space-y-2">
-          <Label htmlFor="area-code">Area code</Label>
-          <Input
-            id="area-code"
-            inputMode="numeric"
-            maxLength={3}
-            placeholder="479"
-            value={areaCode}
-            onChange={(e) => setAreaCode(e.target.value.replace(/\D/g, "").slice(0, 3))}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") handleSearch();
-            }}
-          />
+      <div className="space-y-2">
+        <div className="flex items-end gap-2">
+          <div className="flex-1 space-y-2">
+            <Label htmlFor="area-code">Area code</Label>
+            <Input
+              id="area-code"
+              inputMode="numeric"
+              maxLength={3}
+              placeholder="479"
+              value={areaCode}
+              onChange={(e) =>
+                setAreaCode(e.target.value.replace(/\D/g, "").slice(0, 3))
+              }
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleSearch();
+              }}
+            />
+          </div>
+          <Button
+            onClick={handleSearch}
+            disabled={searching || areaCode.length !== 3}
+          >
+            {searching ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Search className="size-4" />
+            )}
+            Search
+          </Button>
         </div>
-        <Button onClick={handleSearch} disabled={searching || areaCode.length !== 3}>
-          {searching ? <Loader2 className="size-4 animate-spin" /> : <Search className="size-4" />}
-          Search
-        </Button>
+
+        {metroHint && (
+          <p className="flex items-center gap-1 text-xs text-muted-foreground">
+            <MapPin className="size-3" />
+            <span className="tabular-nums">{areaCode}</span>
+            {" — "}
+            <span>
+              {metroHint.label}, {metroHint.state}
+            </span>
+            {metroHint.npas.length > 1 && (
+              <span className="text-muted-foreground/70">
+                {" "}
+                · also {metroHint.npas.filter((n) => n !== areaCode).join(", ")}
+              </span>
+            )}
+          </p>
+        )}
       </div>
+
+      {!searched && (
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-muted-foreground">
+            Popular markets
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {POPULAR_METROS.map((m) => (
+              <button
+                key={m.label}
+                type="button"
+                onClick={() => runSearch(m.npas[0])}
+                disabled={searching}
+                className="rounded-full border border-border bg-background px-3 py-1 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground disabled:opacity-50"
+              >
+                {m.label}
+                <span className="ml-1.5 tabular-nums text-muted-foreground/70">
+                  {m.npas[0]}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {searched && results.length > 0 && (
         <div className="space-y-3">
@@ -171,8 +248,34 @@ export function NumberPickerForm({
       )}
 
       {searched && results.length === 0 && (
-        <div className="text-sm text-muted-foreground text-center py-8">
-          No numbers in that area code. Try another (e.g. 512, 415, 832).
+        <div className="space-y-3 py-6 text-center">
+          <p className="text-sm text-muted-foreground">
+            No numbers available in {areaCode} right now.
+          </p>
+          {siblings.length > 0 ? (
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">
+                Try a sibling area code in the same metro:
+              </p>
+              <div className="flex flex-wrap justify-center gap-1.5">
+                {siblings.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => runSearch(s)}
+                    disabled={searching}
+                    className="rounded-full border border-border bg-background px-3 py-1 text-xs tabular-nums hover:border-primary/40 hover:text-foreground disabled:opacity-50"
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Try a different area code (e.g. 512, 415, 832).
+            </p>
+          )}
         </div>
       )}
     </div>

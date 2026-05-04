@@ -64,6 +64,8 @@ function messageForReason(reason: string): string {
       return "This prospect belongs to a different tenant.";
     case "not_found":
       return "Prospect not found.";
+    case "tenant_has_no_voice_number":
+      return "Your tenant has no voice-capable phone number. Add one in Settings → Phone Numbers.";
     default:
       return `Cannot call: ${reason}`;
   }

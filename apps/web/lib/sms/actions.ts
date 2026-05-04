@@ -242,6 +242,8 @@ function messageForReason(reason: string): string {
       return "This prospect belongs to a different tenant.";
     case "not_found":
       return "Prospect not found.";
+    case "tenant_has_no_sms_number":
+      return "Your tenant has no SMS-capable phone number. Add one in Settings → Phone Numbers.";
     default:
       return `Cannot message: ${reason}`;
   }

@@ -25,6 +25,7 @@ interface InboundEventPayload {
   text?: string;
   received_at?: string;
   messaging_profile_id?: string;
+  media?: Array<{ url?: string; content_type?: string }>;
 }
 
 interface OutboundEventPayload {
@@ -32,6 +33,12 @@ interface OutboundEventPayload {
   to?: Array<{ phone_number?: string; status?: string }>;
   errors?: Array<{ code?: string; title?: string; detail?: string }>;
 }
+
+type SmsTerminalStatus =
+  | "sent"
+  | "delivered"
+  | "delivery_unconfirmed"
+  | "failed";
 
 // ----------------------------------------------------------------------------
 // Inbound — message.received
@@ -60,6 +67,10 @@ export async function handleInboundSms(payload: InboundEventPayload): Promise<vo
 
   // 1. Upsert the inbound row first so the conversation thread is correct
   //    even if STOP processing fails afterward.
+  const mediaUrls = (payload.media ?? [])
+    .map((m) => m.url)
+    .filter((u): u is string => typeof u === "string" && u.length > 0);
+
   const { error: upsertErr } = await admin
     .from("sms_logs")
     .upsert(
@@ -70,6 +81,7 @@ export async function handleInboundSms(payload: InboundEventPayload): Promise<vo
         prospect_id: prospect?.id ?? null,
         direction: "inbound",
         body,
+        media_urls: mediaUrls,
         status: "received",
         from_number: fromE164,
         to_number: toE164,
@@ -81,27 +93,42 @@ export async function handleInboundSms(payload: InboundEventPayload): Promise<vo
     console.error("[handleInboundSms] upsert failed", upsertErr);
   }
 
-  // 2. STOP keyword? Mark DNC, send the TCPA-required acknowledgement.
-  //    This runs regardless of whether we found a prospect — the carrier
-  //    expects a STOP ack against any number that texts STOP.
+  // 2. STOP keyword? Insert immutable dnc_records row (which fires a
+  //    trigger that flips prospects.do_not_call), then send the
+  //    TCPA-required acknowledgement. This runs regardless of whether
+  //    we matched a prospect — the carrier expects a STOP ack against
+  //    any number that texts STOP, even unknown ones.
   if (STOP_KEYWORD_REGEX.test(body)) {
-    if (prospect?.id) {
-      const { error: dncErr } = await admin
-        .from("prospects")
-        .update({
-          do_not_call: true,
-          do_not_call_reason: "sms_stop_keyword",
-          do_not_call_at: new Date().toISOString(),
-        })
-        .eq("id", prospect.id)
-        .eq("tenant_id", ctx.tenant_id);
-      if (dncErr) {
-        console.error("[handleInboundSms] DNC flag failed", dncErr);
+    const { error: dncErr } = await admin.from("dnc_records").insert({
+      tenant_id: ctx.tenant_id,
+      prospect_id: prospect?.id ?? null,
+      source: "sms_stop_keyword",
+      reason: "Inbound SMS matched STOP keyword",
+      message_body: body.slice(0, 500),
+      phone_number: fromE164,
+      metadata: {
+        message_id: messageId,
+        tenant_phone_number_id: ctx.tenant_phone_number_id,
+      },
+    });
+    if (dncErr) {
+      console.error("[handleInboundSms] dnc_records insert failed", dncErr);
+      // Fall back to direct prospect update so we never miss a DNC.
+      if (prospect?.id) {
+        await admin
+          .from("prospects")
+          .update({
+            do_not_call: true,
+            do_not_call_reason: "sms_stop_keyword",
+            do_not_call_at: new Date().toISOString(),
+          })
+          .eq("id", prospect.id)
+          .eq("tenant_id", ctx.tenant_id);
       }
     }
 
-    // Send the STOP acknowledgement. This is required by TCPA and the
-    // carriers expect to see it within ~30s. We do it inline here.
+    // Send the STOP acknowledgement. Required by TCPA; carriers expect
+    // to see it within ~30s. We do it inline here.
     await sendStopAcknowledgement({
       from: toE164,
       to: fromE164,
@@ -135,7 +162,7 @@ export async function handleInboundSms(payload: InboundEventPayload): Promise<vo
 
 export async function handleOutboundSmsStatus(
   payload: OutboundEventPayload,
-  newStatus: "sent" | "delivered" | "failed",
+  newStatus: SmsTerminalStatus,
 ): Promise<void> {
   const messageId = payload.id;
   if (!messageId) {
