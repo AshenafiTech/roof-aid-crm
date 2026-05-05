@@ -184,12 +184,10 @@ class OverviewTab extends StatelessWidget {
 
   String _formatDate(DateTime dt) {
     final local = dt.toLocal();
-    final y = local.year.toString();
     final m = local.month.toString().padLeft(2, '0');
     final d = local.day.toString().padLeft(2, '0');
-    final hh = local.hour.toString().padLeft(2, '0');
-    final mm = local.minute.toString().padLeft(2, '0');
-    return '$y-$m-$d  $hh:$mm';
+    final y = local.year.toString();
+    return '$m/$d/$y';
   }
 }
 

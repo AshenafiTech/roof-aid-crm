@@ -38,9 +38,9 @@ class ProspectDetailPage extends StatelessWidget {
             tabAlignment: TabAlignment.start,
             tabs: [
               Tab(text: 'Overview'),
+              Tab(text: 'Appointments'),
               Tab(text: 'Calls'),
               Tab(text: 'SMS'),
-              Tab(text: 'Appointments'),
               Tab(text: 'Documents'),
               Tab(text: 'Inspection'),
               Tab(text: 'Notes'),
@@ -54,13 +54,13 @@ class ProspectDetailPage extends StatelessWidget {
               child: TabBarView(
                 children: [
                   OverviewTab(prospect: prospect),
+                  const AppointmentsTab(),
                   const CallsTab(),
                   BlocProvider<SmsBloc>(
                     create: (_) =>
                         sl<SmsBloc>()..add(SmsLoadRequested(prospect.id)),
                     child: const SmsTab(),
                   ),
-                  const AppointmentsTab(),
                   const DocumentsTab(),
                   const InspectionTab(),
                   BlocProvider<NotesBloc>(
