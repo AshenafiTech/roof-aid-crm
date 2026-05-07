@@ -60,7 +60,7 @@
 }
 
 /* ─────────────────────────────────────────────────────────────────
-   LIGHT THEME — Roof-Aid Redesign (warm off-white + emerald accent)
+   LIGHT THEME — Roof-Aid Redesign (warm off-white + violet accent)
    Tokens map both shadcn names AND the redesign's naming so the
    shell + redesigned pages share one source of truth.
    ───────────────────────────────────────────────────────────────── */
@@ -76,12 +76,12 @@
   --row-h: 44px;
   --pad-x: 16px;
 
-  /* Accent — emerald */
-  --accent-h: 152;
-  --accent-color: oklch(0.72 0.14 var(--accent-h));
-  --accent-soft: oklch(0.72 0.14 var(--accent-h) / 0.14);
-  --accent-fg-c: oklch(0.18 0.02 var(--accent-h));
-  --accent-ring: oklch(0.72 0.14 var(--accent-h) / 0.35);
+  /* Accent — violet */
+  --accent-h: 285;
+  --accent-color: oklch(0.62 0.22 var(--accent-h));
+  --accent-soft: oklch(0.62 0.22 var(--accent-h) / 0.18);
+  --accent-fg-c: oklch(0.99 0.005 var(--accent-h));
+  --accent-ring: oklch(0.62 0.22 var(--accent-h) / 0.40);
 
   /* Status hues */
   --danger: oklch(0.66 0.18 25);
@@ -135,12 +135,12 @@
   --sidebar-border:                var(--line);
   --sidebar-ring:                  var(--accent-color);
 
-  /* Chart palette — emerald-led, vibrant */
-  --chart-1: oklch(0.72 0.14 152);   /* emerald */
+  /* Chart palette — violet-led, vibrant */
+  --chart-1: oklch(0.62 0.22 285);   /* violet (brand) */
   --chart-2: oklch(0.700 0.160 210); /* cyan */
   --chart-3: oklch(0.770 0.170 75);  /* amber */
   --chart-4: oklch(0.660 0.240 345); /* fuchsia */
-  --chart-5: oklch(0.585 0.250 275); /* violet */
+  --chart-5: oklch(0.72 0.14 152);   /* emerald */
 
   /* Shadows — cool-tinted, layered */
   --shadow-xs: 0 1px 2px 0 rgb(20 16 48 / 0.05);
@@ -149,25 +149,25 @@
   --shadow-lg: 0 8px 20px -4px rgb(20 16 48 / 0.12), 0 18px 36px -8px rgb(20 16 48 / 0.16);
   --shadow-xl: 0 14px 28px -8px rgb(20 16 48 / 0.16), 0 28px 56px -12px rgb(20 16 48 / 0.20);
   --shadow-focus: 0 0 0 4px var(--accent-ring);
-  --shadow-brand-glow: 0 10px 30px -10px oklch(0.72 0.14 var(--accent-h) / 0.45);
+  --shadow-brand-glow: 0 10px 30px -10px oklch(0.62 0.22 var(--accent-h) / 0.45);
   --shadow:    0 1px 0 oklch(1 0 0 / 0.6) inset, 0 6px 24px oklch(0 0 0 / 0.08);
 }
 
 /* ─────────────────────────────────────────────────────────────────
-   DARK THEME — Roof-Aid Redesign (warm slate + emerald accent)
+   DARK THEME — Roof-Aid Redesign (cool navy + violet accent)
    ───────────────────────────────────────────────────────────────── */
 .dark {
-  --bg:        oklch(0.165 0.008 60);
-  --bg-2:      oklch(0.195 0.008 60);
-  --bg-3:      oklch(0.225 0.008 60);
-  --surface:   oklch(0.21 0.008 60);
-  --surface-2: oklch(0.245 0.008 60);
-  --line:      oklch(0.30 0.008 60 / 0.6);
-  --line-soft: oklch(0.30 0.008 60 / 0.3);
-  --fg:        oklch(0.96 0.005 60);
-  --fg-2:      oklch(0.78 0.005 60);
-  --fg-3:      oklch(0.60 0.005 60);
-  --fg-4:      oklch(0.46 0.005 60);
+  --bg:        oklch(0.155 0.020 260);
+  --bg-2:      oklch(0.185 0.020 260);
+  --bg-3:      oklch(0.225 0.022 260);
+  --surface:   oklch(0.20 0.020 260);
+  --surface-2: oklch(0.235 0.022 260);
+  --line:      oklch(0.32 0.020 260 / 0.55);
+  --line-soft: oklch(0.30 0.018 260 / 0.30);
+  --fg:        oklch(0.97 0.005 260);
+  --fg-2:      oklch(0.78 0.012 260);
+  --fg-3:      oklch(0.60 0.012 260);
+  --fg-4:      oklch(0.46 0.012 260);
   --grid-line: oklch(1 0 0 / 0.04);
 
   --background:           var(--bg);
@@ -204,7 +204,7 @@
   --shadow-lg: 0 8px 20px -4px rgb(0 0 0 / 0.40), 0 18px 36px -8px rgb(0 0 0 / 0.55);
   --shadow-xl: 0 14px 28px -8px rgb(0 0 0 / 0.50), 0 28px 56px -12px rgb(0 0 0 / 0.65);
   --shadow-focus: 0 0 0 4px var(--accent-ring);
-  --shadow-brand-glow: 0 10px 30px -10px oklch(0.72 0.14 var(--accent-h) / 0.50);
+  --shadow-brand-glow: 0 10px 30px -10px oklch(0.62 0.22 var(--accent-h) / 0.50);
   --shadow:    0 1px 0 oklch(1 0 0 / 0.04) inset, 0 8px 24px oklch(0 0 0 / 0.35);
 }
 
@@ -440,7 +440,7 @@
 .brand-mark {
   width: 28px; height: 28px;
   border-radius: 8px;
-  background: linear-gradient(135deg, var(--accent-color), oklch(0.55 0.14 var(--accent-h)));
+  background: linear-gradient(135deg, var(--accent-color), oklch(0.45 0.20 var(--accent-h)));
   display: grid; place-items: center;
   color: var(--accent-fg-c);
   flex-shrink: 0;
@@ -449,12 +449,12 @@
 .brand-mark svg { width: 16px; height: 16px; }
 .brand-name {
   font-size: 14px; font-weight: 600; letter-spacing: -0.01em;
-  display: flex; flex-direction: column; line-height: 1.1;
+  display: flex; flex-direction: column; gap: 2px; line-height: 1.15;
   color: var(--fg);
 }
 .brand-name small {
-  font-size: 9.5px; font-weight: 500; letter-spacing: 0.04em;
-  color: var(--fg-4); text-transform: uppercase;
+  font-size: 9.5px; font-weight: 500; letter-spacing: 0.06em;
+  color: var(--fg-4); text-transform: uppercase; line-height: 1;
 }
 .side-collapse {
   margin-left: auto;
@@ -610,7 +610,7 @@
 .user-chip:hover { background: var(--bg-3); }
 .avatar {
   width: 24px; height: 24px; border-radius: 99px;
-  background: linear-gradient(135deg, var(--accent-color), oklch(0.55 0.14 var(--accent-h)));
+  background: linear-gradient(135deg, var(--accent-color), oklch(0.45 0.20 var(--accent-h)));
   color: var(--accent-fg-c);
   display: grid; place-items: center;
   font-size: 10.5px; font-weight: 600;
