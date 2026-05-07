@@ -15,7 +15,7 @@ export type ProspectListSearchParams = {
   street?: string;
   lat?: string;
   lng?: string;
-  radiusKm?: string;
+  radiusMiles?: string;
   load?: string;
   priceMin?: string;
   priceMax?: string;
@@ -40,6 +40,8 @@ export function parseProspectListFilters(
     status?: ProspectStatus;
     /** When true, ignore the URL `status` param entirely (used by single-status pages). */
     ignoreUrlStatus?: boolean;
+    /** Statuses to hide from the result set (e.g. All Leads hiding `not_viable`). */
+    excludeStatuses?: ProspectStatus[];
     /** When set, scope to prospects assigned to this user (rufero scoping). */
     assignedTo?: string;
     /** Override the default ordering (default: "created_desc"). */
@@ -65,12 +67,13 @@ export function parseProspectListFilters(
     street: params.street?.trim() || undefined,
     lat: num(params.lat),
     lng: num(params.lng),
-    radiusKm: num(params.radiusKm),
+    radiusMiles: num(params.radiusMiles),
     priceMin: num(params.priceMin),
     priceMax: num(params.priceMax),
     offset: 0,
     pageSize: effectiveSize,
     assignedTo: opts.assignedTo,
+    excludeStatuses: opts.excludeStatuses,
     sort: opts.sort,
   };
 }

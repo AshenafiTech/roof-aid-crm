@@ -60,136 +60,158 @@
 }
 
 /* ─────────────────────────────────────────────────────────────────
-   Light theme — Vibrant Modern SaaS
-   Cool-tinted bg, vibrant violet brand, multi-hue chart accents.
+   LIGHT THEME — Roof-Aid Redesign (warm off-white + violet accent)
+   Tokens map both shadcn names AND the redesign's naming so the
+   shell + redesigned pages share one source of truth.
    ───────────────────────────────────────────────────────────────── */
 :root {
-  /* Surfaces — cool-tinted off-white so white cards pop */
-  --background: oklch(0.975 0.008 265);        /* #F3F4FA cool */
-  --foreground: oklch(0.190 0.025 265);        /* #111428 */
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.190 0.025 265);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.190 0.025 265);
+  /* Geometry */
+  --radius: 0.625rem;          /* keeps shadcn happy (10px base) */
+  --radius-sm-r: 6px;
+  --radius-r:    8px;
+  --radius-lg-r: 12px;
+  --radius-xl-r: 16px;
 
-  /* Brand — vibrant violet (Stripe / Linear energy) */
-  --primary: oklch(0.585 0.250 275);            /* #6D4AFF vivid violet */
-  --primary-foreground: oklch(1 0 0);
+  /* Density (overridden by [data-density] on .app) */
+  --row-h: 44px;
+  --pad-x: 16px;
 
-  /* Secondary / muted — violet-tinted neutrals */
-  --secondary: oklch(0.955 0.012 275);
-  --secondary-foreground: oklch(0.275 0.035 275);
-  --muted: oklch(0.960 0.010 265);
-  --muted-foreground: oklch(0.530 0.030 265);
+  /* Accent — violet */
+  --accent-h: 285;
+  --accent-color: oklch(0.62 0.22 var(--accent-h));
+  --accent-soft: oklch(0.62 0.22 var(--accent-h) / 0.18);
+  --accent-fg-c: oklch(0.99 0.005 var(--accent-h));
+  --accent-ring: oklch(0.62 0.22 var(--accent-h) / 0.40);
 
-  /* Accent — vibrant violet pill for sidebar active / highlights */
-  --accent: oklch(0.930 0.055 280);             /* #E2DCFE soft lavender */
-  --accent-foreground: oklch(0.460 0.220 280);  /* deep violet text */
+  /* Status hues */
+  --danger: oklch(0.66 0.18 25);
+  --danger-soft: oklch(0.66 0.18 25 / 0.14);
+  --warn: oklch(0.78 0.13 75);
+  --warn-soft: oklch(0.78 0.13 75 / 0.14);
+  --info: oklch(0.72 0.10 230);
+  --info-soft: oklch(0.72 0.10 230 / 0.14);
 
-  /* Status */
-  --destructive: oklch(0.620 0.240 25);         /* #E5484D vivid red */
+  /* Redesign neutrals — light */
+  --bg:        oklch(0.985 0.003 80);
+  --bg-2:      oklch(0.965 0.004 80);
+  --bg-3:      oklch(0.94 0.005 80);
+  --surface:   oklch(1 0 0);
+  --surface-2: oklch(0.975 0.003 80);
+  --line:      oklch(0.88 0.005 80);
+  --line-soft: oklch(0.92 0.005 80);
+  --fg:        oklch(0.22 0.01 60);
+  --fg-2:      oklch(0.40 0.008 60);
+  --fg-3:      oklch(0.54 0.006 60);
+  --fg-4:      oklch(0.66 0.005 60);
+  --grid-line: oklch(0 0 0 / 0.04);
 
-  /* Borders & inputs */
-  --border: oklch(0.905 0.012 270);             /* subtle violet-tinted */
-  --input: oklch(0.960 0.012 270);              /* soft fill */
-  --ring: oklch(0.585 0.250 275);
+  /* shadcn token bridge — every existing component picks these up */
+  --background:           var(--bg);
+  --foreground:           var(--fg);
+  --card:                 var(--surface);
+  --card-foreground:      var(--fg);
+  --popover:              var(--surface);
+  --popover-foreground:   var(--fg);
+  --primary:              var(--accent-color);
+  --primary-foreground:   var(--accent-fg-c);
+  --secondary:            var(--bg-2);
+  --secondary-foreground: var(--fg-2);
+  --muted:                var(--bg-2);
+  --muted-foreground:     var(--fg-3);
+  --accent:               var(--accent-soft);
+  --accent-foreground:    var(--accent-color);
+  --destructive:          var(--danger);
+  --border:               var(--line);
+  --input:                var(--bg-2);
+  --ring:                 var(--accent-color);
 
-  /* Chart palette — bold multi-hue rainbow (violet → fuchsia → cyan → amber → emerald) */
-  --chart-1: oklch(0.585 0.250 275);            /* violet */
-  --chart-2: oklch(0.660 0.240 345);            /* fuchsia */
-  --chart-3: oklch(0.700 0.160 210);            /* cyan */
-  --chart-4: oklch(0.770 0.170 75);             /* amber */
-  --chart-5: oklch(0.700 0.170 160);            /* emerald */
+  /* Sidebar — same light surface, separated by border */
+  --sidebar:                       var(--bg-2);
+  --sidebar-foreground:            var(--fg-2);
+  --sidebar-primary:               var(--accent-color);
+  --sidebar-primary-foreground:    var(--accent-fg-c);
+  --sidebar-accent:                var(--accent-soft);
+  --sidebar-accent-foreground:     var(--accent-color);
+  --sidebar-border:                var(--line);
+  --sidebar-ring:                  var(--accent-color);
 
-  /* Radius — 10px base. Inputs/buttons ≈ 8px, Cards ≈ 14px */
-  --radius: 0.625rem;
+  /* Chart palette — violet-led, vibrant */
+  --chart-1: oklch(0.62 0.22 285);   /* violet (brand) */
+  --chart-2: oklch(0.700 0.160 210); /* cyan */
+  --chart-3: oklch(0.770 0.170 75);  /* amber */
+  --chart-4: oklch(0.660 0.240 345); /* fuchsia */
+  --chart-5: oklch(0.72 0.14 152);   /* emerald */
 
-  /* Sidebar — inverted, pure white so edge reads clean */
-  --sidebar: oklch(1 0 0);
-  --sidebar-foreground: oklch(0.275 0.025 265);
-  --sidebar-primary: oklch(0.585 0.250 275);
-  --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: oklch(0.930 0.055 280);
-  --sidebar-accent-foreground: oklch(0.460 0.220 280);
-  --sidebar-border: oklch(0.905 0.012 270);
-  --sidebar-ring: oklch(0.585 0.250 275);
-
-  /* Shadows — cool-tinted, layered, with a touch of violet on focus */
+  /* Shadows — cool-tinted, layered */
   --shadow-xs: 0 1px 2px 0 rgb(20 16 48 / 0.05);
-  --shadow-sm: 0 1px 2px 0 rgb(20 16 48 / 0.06), 0 1px 3px 0 rgb(20 16 48 / 0.08);
+  --shadow-sm: 0 1px 0 oklch(1 0 0 / 0.6) inset, 0 1px 2px oklch(0 0 0 / 0.06);
   --shadow-md: 0 2px 4px -2px rgb(20 16 48 / 0.07), 0 6px 16px -3px rgb(20 16 48 / 0.12);
   --shadow-lg: 0 8px 20px -4px rgb(20 16 48 / 0.12), 0 18px 36px -8px rgb(20 16 48 / 0.16);
   --shadow-xl: 0 14px 28px -8px rgb(20 16 48 / 0.16), 0 28px 56px -12px rgb(20 16 48 / 0.20);
-  --shadow-focus: 0 0 0 4px rgb(109 74 255 / 0.22);
-  --shadow-brand-glow: 0 10px 30px -10px rgb(109 74 255 / 0.45);  /* for primary button hover */
+  --shadow-focus: 0 0 0 4px var(--accent-ring);
+  --shadow-brand-glow: 0 10px 30px -10px oklch(0.62 0.22 var(--accent-h) / 0.45);
+  --shadow:    0 1px 0 oklch(1 0 0 / 0.6) inset, 0 6px 24px oklch(0 0 0 / 0.08);
 }
 
 /* ─────────────────────────────────────────────────────────────────
-   Dark theme — Elegant & Minimal
-   Background: deep gray (#0F1115)  Cards: #161A20
-   Primary: desaturated violet      Text: soft off-white
-   ───────────────────────────────────────────────────────────────── */
-/* ─────────────────────────────────────────────────────────────────
-   Dark theme — Telegram-inspired soft blue-gray
-   Not pitch black: muted blue-gray surfaces (#17212B / #232E3C),
-   calm blue accent for active states. Keeps the violet brand color
-   for primary so brand identity stays consistent across themes.
+   DARK THEME — Roof-Aid Redesign (cool navy + violet accent)
    ───────────────────────────────────────────────────────────────── */
 .dark {
-  /* Surfaces — Telegram dark palette */
-  --background: oklch(0.260 0.020 250);         /* #17212B */
-  --foreground: oklch(0.960 0.005 250);         /* #F5F5F5 */
-  --card: oklch(0.310 0.022 250);               /* #232E3C */
-  --card-foreground: oklch(0.960 0.005 250);
-  --popover: oklch(0.330 0.024 250);            /* slightly lifted */
-  --popover-foreground: oklch(0.960 0.005 250);
+  --bg:        oklch(0.155 0.020 260);
+  --bg-2:      oklch(0.185 0.020 260);
+  --bg-3:      oklch(0.225 0.022 260);
+  --surface:   oklch(0.20 0.020 260);
+  --surface-2: oklch(0.235 0.022 260);
+  --line:      oklch(0.32 0.020 260 / 0.55);
+  --line-soft: oklch(0.30 0.018 260 / 0.30);
+  --fg:        oklch(0.97 0.005 260);
+  --fg-2:      oklch(0.78 0.012 260);
+  --fg-3:      oklch(0.60 0.012 260);
+  --fg-4:      oklch(0.46 0.012 260);
+  --grid-line: oklch(1 0 0 / 0.04);
 
-  /* Brand — keep vibrant violet, glows nicely on the blue-gray */
-  --primary: oklch(0.735 0.195 285);            /* #A78BFA */
-  --primary-foreground: oklch(0.180 0.018 250);
+  --background:           var(--bg);
+  --foreground:           var(--fg);
+  --card:                 var(--surface);
+  --card-foreground:      var(--fg);
+  --popover:              var(--surface-2);
+  --popover-foreground:   var(--fg);
+  --primary:              var(--accent-color);
+  --primary-foreground:   var(--accent-fg-c);
+  --secondary:            var(--bg-2);
+  --secondary-foreground: var(--fg-2);
+  --muted:                var(--bg-2);
+  --muted-foreground:     var(--fg-3);
+  --accent:               var(--accent-soft);
+  --accent-foreground:    var(--accent-color);
+  --destructive:          var(--danger);
+  --border:               var(--line);
+  --input:                var(--bg-2);
+  --ring:                 var(--accent-color);
 
-  --secondary: oklch(0.330 0.022 250);          /* #2C384A */
-  --secondary-foreground: oklch(0.960 0.005 250);
-  --muted: oklch(0.310 0.020 250);
-  --muted-foreground: oklch(0.700 0.020 250);   /* #8A99AC subdued blue-gray */
+  --sidebar:                    var(--bg-2);
+  --sidebar-foreground:         var(--fg-2);
+  --sidebar-primary:            var(--accent-color);
+  --sidebar-primary-foreground: var(--accent-fg-c);
+  --sidebar-accent:             var(--accent-soft);
+  --sidebar-accent-foreground:  var(--accent-color);
+  --sidebar-border:             var(--line);
+  --sidebar-ring:               var(--accent-color);
 
-  /* Accent — calm Telegram blue pill for active rows */
-  --accent: oklch(0.435 0.090 250);             /* #2B5278 */
-  --accent-foreground: oklch(0.880 0.060 250);  /* light blue text */
-
-  --destructive: oklch(0.665 0.210 22);
-
-  /* Borders — nearly invisible; layering carries depth */
-  --border: oklch(1 0 0 / 8%);
-  --input: oklch(0.330 0.022 250);              /* soft fill, like card */
-  --ring: oklch(0.640 0.115 250);               /* Telegram-blue focus */
-
-  /* Chart palette — vibrant on the blue-gray base */
-  --chart-1: oklch(0.735 0.195 285);            /* violet */
-  --chart-2: oklch(0.720 0.220 345);            /* fuchsia */
-  --chart-3: oklch(0.720 0.140 220);            /* sky-cyan */
-  --chart-4: oklch(0.800 0.175 75);             /* amber */
-  --chart-5: oklch(0.755 0.160 160);            /* emerald */
-
-  /* Sidebar — Telegram convention: sidebar = same as background, separated by border */
-  --sidebar: oklch(0.260 0.020 250);            /* #17212B (matches bg) */
-  --sidebar-foreground: oklch(0.940 0.008 250);
-  --sidebar-primary: oklch(0.735 0.195 285);
-  --sidebar-primary-foreground: oklch(0.180 0.018 250);
-  --sidebar-accent: oklch(0.435 0.090 250);     /* #2B5278 active pill */
-  --sidebar-accent-foreground: oklch(0.940 0.040 250);
-  --sidebar-border: oklch(1 0 0 / 8%);
-  --sidebar-ring: oklch(0.640 0.115 250);
-
-  /* Shadows — soft blue-tinted black, not harsh */
   --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.30);
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.30), 0 1px 3px 0 rgb(0 0 0 / 0.35);
+  --shadow-sm: 0 1px 0 oklch(1 0 0 / 0.04) inset, 0 1px 2px oklch(0 0 0 / 0.30);
   --shadow-md: 0 2px 4px -2px rgb(0 0 0 / 0.30), 0 6px 16px -3px rgb(0 0 0 / 0.45);
   --shadow-lg: 0 8px 20px -4px rgb(0 0 0 / 0.40), 0 18px 36px -8px rgb(0 0 0 / 0.55);
   --shadow-xl: 0 14px 28px -8px rgb(0 0 0 / 0.50), 0 28px 56px -12px rgb(0 0 0 / 0.65);
-  --shadow-focus: 0 0 0 4px rgb(82 136 193 / 0.30);
-  --shadow-brand-glow: 0 10px 32px -10px rgb(167 139 250 / 0.50);
+  --shadow-focus: 0 0 0 4px var(--accent-ring);
+  --shadow-brand-glow: 0 10px 30px -10px oklch(0.62 0.22 var(--accent-h) / 0.50);
+  --shadow:    0 1px 0 oklch(1 0 0 / 0.04) inset, 0 8px 24px oklch(0 0 0 / 0.35);
 }
+
+/* Density variants — applied via [data-density] on .app */
+[data-density="compact"]     { --row-h: 36px; --pad-x: 12px; }
+[data-density="comfortable"] { --row-h: 44px; --pad-x: 16px; }
+[data-density="spacious"]    { --row-h: 56px; --pad-x: 20px; }
 
 @layer base {
   * {
@@ -205,11 +227,10 @@
 
   body {
     @apply bg-background text-foreground;
-    font-feature-settings: "cv11", "ss01", "ss03";  /* Inter stylistic sets for a cleaner look */
+    font-feature-settings: "cv11", "ss01", "ss03";
     letter-spacing: -0.005em;
   }
 
-  /* Typography rhythm — tighter tracking on display sizes, comfortable line-height on body */
   h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-heading);
     letter-spacing: -0.018em;
@@ -220,18 +241,15 @@
   h3 { @apply text-xl font-semibold; line-height: 1.3; }
   h4 { @apply text-lg font-semibold; line-height: 1.35; }
 
-  /* Numeric tabular figures in tables & metric cards */
   table, [data-slot="card"] {
     font-variant-numeric: tabular-nums;
   }
 
-  /* Selection tint — uses primary */
   ::selection {
     background-color: color-mix(in oklab, var(--primary) 22%, transparent);
     color: var(--foreground);
   }
 
-  /* Subtler, cohesive scrollbars (WebKit) */
   ::-webkit-scrollbar { width: 10px; height: 10px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb {
@@ -248,14 +266,9 @@
 }
 
 /* ─────────────────────────────────────────────────────────────────
-   Component polish — placed in @layer utilities and with doubled
-   attribute selectors so they beat shadcn's inline Tailwind classes
-   (ring-1, shadow-sm, bg-transparent, etc.) in the cascade.
-   No structural or API changes — visual only.
+   shadcn polish — preserved from the previous revision
    ───────────────────────────────────────────────────────────────── */
 @layer utilities {
-
-  /* Buttons — softer shadow, smooth transitions, crisper focus ring */
   [data-slot="button"][data-slot="button"] {
     transition:
       background-color 160ms ease,
@@ -286,7 +299,6 @@
     box-shadow: var(--shadow-xs);
   }
 
-  /* Inputs, textareas, select triggers — soft fill, focus ring */
   [data-slot="input"][data-slot="input"],
   [data-slot="textarea"][data-slot="textarea"],
   [data-slot="select-trigger"][data-slot="select-trigger"] {
@@ -314,11 +326,10 @@
     outline: none;
   }
 
-  /* Cards — soft elevation, generous radius, drop the heavy ring */
   [data-slot="card"][data-slot="card"] {
     border-radius: var(--radius-xl);
     box-shadow: var(--shadow-md);
-    --tw-ring-shadow: 0 0 #0000;   /* cancel shadcn's ring-1 */
+    --tw-ring-shadow: 0 0 #0000;
     --tw-ring-offset-shadow: 0 0 #0000;
     border: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
     transition: box-shadow 200ms ease, transform 200ms ease, border-color 200ms ease;
@@ -327,7 +338,6 @@
     box-shadow: var(--shadow-lg);
   }
 
-  /* Tables — quiet grid, row hover wash, tabular numbers */
   [data-slot="table"][data-slot="table"] {
     border-collapse: separate;
     border-spacing: 0;
@@ -350,7 +360,6 @@
     background-color: color-mix(in oklab, var(--primary) 10%, transparent);
   }
 
-  /* Dropdown / popover / select — layered shadow */
   [data-slot="dropdown-menu-content"][data-slot="dropdown-menu-content"],
   [data-slot="popover-content"][data-slot="popover-content"],
   [data-slot="select-content"][data-slot="select-content"] {
@@ -364,21 +373,18 @@
     box-shadow: var(--shadow-xl);
   }
 
-  /* Tooltip */
   [data-slot="tooltip-content"][data-slot="tooltip-content"] {
     box-shadow: var(--shadow-md);
     font-weight: 500;
     letter-spacing: 0.005em;
   }
 
-  /* Badge — slightly softer radius */
   [data-slot="badge"][data-slot="badge"] {
     border-radius: var(--radius-sm);
     font-weight: 500;
     letter-spacing: 0.005em;
   }
 
-  /* Highlights the row a user was viewing when they return to the prospect list */
   .prospect-row-flash {
     animation: prospect-row-flash 1.6s ease-out;
   }
@@ -393,3 +399,362 @@
     }
   }
 }
+
+/* ─────────────────────────────────────────────────────────────
+   Roof-Aid Redesign — utility classes used by the shell and
+   redesigned pages. Mirrors the prototype `styles.css` so we
+   can copy markup verbatim from the redesign folder.
+   ───────────────────────────────────────────────────────────── */
+
+.mono { font-family: 'Geist Mono', ui-monospace, 'JetBrains Mono', monospace; font-feature-settings: 'ss01'; }
+.tnum { font-variant-numeric: tabular-nums; }
+
+/* App shell */
+.app {
+  display: grid;
+  grid-template-columns: var(--sidebar-w, 232px) 1fr;
+  min-height: 100vh;
+  background: var(--bg);
+}
+.app[data-sidebar="icons"] { --sidebar-w: 56px; }
+
+/* SIDEBAR */
+.side {
+  border-right: 1px solid var(--line);
+  background: var(--bg-2);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+}
+.side-hd {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 14px 12px;
+  border-bottom: 1px solid var(--line-soft);
+  height: 56px;
+}
+.brand-mark {
+  width: 28px; height: 28px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--accent-color), oklch(0.45 0.20 var(--accent-h)));
+  display: grid; place-items: center;
+  color: var(--accent-fg-c);
+  flex-shrink: 0;
+  position: relative;
+}
+.brand-mark svg { width: 16px; height: 16px; }
+.brand-name {
+  font-size: 14px; font-weight: 600; letter-spacing: -0.01em;
+  display: flex; flex-direction: column; gap: 2px; line-height: 1.15;
+  color: var(--fg);
+}
+.brand-name small {
+  font-size: 9.5px; font-weight: 500; letter-spacing: 0.06em;
+  color: var(--fg-4); text-transform: uppercase; line-height: 1;
+}
+.side-collapse {
+  margin-left: auto;
+  width: 24px; height: 24px;
+  border-radius: 6px;
+  border: 0; background: transparent; color: var(--fg-3);
+  display: grid; place-items: center;
+  cursor: pointer;
+}
+.side-collapse:hover { background: var(--bg-3); color: var(--fg); }
+
+.app[data-sidebar="icons"] .brand-name,
+.app[data-sidebar="icons"] .side-collapse,
+.app[data-sidebar="icons"] .nav-group-label,
+.app[data-sidebar="icons"] .nav-item span,
+.app[data-sidebar="icons"] .side-foot .label {
+  display: none;
+}
+.app[data-sidebar="icons"] .side-hd { padding: 14px 0; justify-content: center; }
+.app[data-sidebar="icons"] .nav-item { justify-content: center; padding: 0; }
+
+.nav { padding: 10px 8px; flex: 1; overflow-y: auto; min-height: 0; }
+.nav-group-label {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.08em;
+  color: var(--fg-4);
+  text-transform: uppercase;
+  padding: 14px 10px 6px;
+}
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 7px;
+  color: var(--fg-2);
+  font-size: 13px;
+  font-weight: 450;
+  cursor: pointer;
+  border: 0;
+  background: transparent;
+  width: 100%;
+  text-align: left;
+  position: relative;
+  transition: background 0.12s, color 0.12s;
+  white-space: nowrap;
+  text-decoration: none;
+}
+.nav-item span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.nav-item:hover { background: var(--bg-3); color: var(--fg); }
+.nav-item.active {
+  background: var(--accent-soft);
+  color: var(--accent-color);
+  font-weight: 500;
+}
+.nav-item svg { width: 15px; height: 15px; flex-shrink: 0; }
+.nav-item .badge {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 600;
+  background: var(--bg-3);
+  color: var(--fg-3);
+  padding: 1px 6px;
+  border-radius: 99px;
+  min-width: 18px;
+  text-align: center;
+}
+.nav-item.active .badge { background: var(--accent-color); color: var(--accent-fg-c); }
+
+.side-foot {
+  padding: 10px;
+  border-top: 1px solid var(--line-soft);
+  display: flex; flex-direction: column; gap: 2px;
+}
+
+/* MAIN COLUMN */
+.app .main {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+
+/* Banner-aware viewport sizing.
+   Components like the prospects map view that pin themselves to the viewport
+   use `calc(100dvh - 3.5rem - var(--banner-h))` so they don't get pushed
+   below the fold when MissingNumberBanner is rendered above the page. */
+.app { --banner-h: 0px; }
+.app:has([data-banner="missing-number"]) { --banner-h: 4rem; }
+
+/* TOPBAR */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+  height: 56px;
+  position: sticky;
+  top: 0;
+  z-index: 30;
+}
+.crumb {
+  font-size: 13px;
+  color: var(--fg-3);
+  display: flex; align-items: center; gap: 8px;
+  white-space: nowrap;
+}
+.crumb b { color: var(--fg); font-weight: 500; }
+.status-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px;
+  color: var(--fg-2);
+  padding: 4px 9px;
+  border-radius: 99px;
+  background: var(--bg-2);
+  border: 1px solid var(--line-soft);
+  white-space: nowrap;
+}
+.status-pill .dot {
+  width: 7px; height: 7px; border-radius: 99px; background: var(--accent-color);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.icon-btn {
+  width: 32px; height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--line-soft);
+  background: var(--bg-2);
+  color: var(--fg-2);
+  display: grid; place-items: center;
+  cursor: pointer;
+  position: relative;
+}
+.icon-btn:hover { background: var(--bg-3); color: var(--fg); border-color: var(--line); }
+.icon-btn svg { width: 15px; height: 15px; }
+.icon-btn .ind {
+  position: absolute; top: 6px; right: 6px;
+  width: 6px; height: 6px; border-radius: 99px; background: var(--accent-color);
+  box-shadow: 0 0 0 2px var(--bg-2);
+}
+
+.user-chip {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 10px 4px 4px;
+  border-radius: 99px;
+  border: 1px solid var(--line-soft);
+  background: var(--bg-2);
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--fg);
+  white-space: nowrap;
+}
+.user-chip:hover { background: var(--bg-3); }
+.avatar {
+  width: 24px; height: 24px; border-radius: 99px;
+  background: linear-gradient(135deg, var(--accent-color), oklch(0.45 0.20 var(--accent-h)));
+  color: var(--accent-fg-c);
+  display: grid; place-items: center;
+  font-size: 10.5px; font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+/* PAGE CONTENT */
+.app main.page,
+.app .page {
+  flex: 1;
+  overflow: auto;
+  padding: 0;
+  position: relative;
+  min-height: 0;
+}
+.page-inner {
+  padding: 24px 28px 40px;
+  max-width: 1280px;
+}
+.page-title {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0 0 4px;
+}
+.page-sub {
+  color: var(--fg-3);
+  font-size: 13px;
+  margin: 0 0 24px;
+}
+
+/* Buttons (redesign variant) */
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 7px;
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  color: var(--fg);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.btn:hover { background: var(--bg-3); }
+.btn svg { width: 14px; height: 14px; }
+.btn.primary {
+  background: var(--accent-color);
+  color: var(--accent-fg-c);
+  border-color: transparent;
+}
+.btn.primary:hover { filter: brightness(1.05); }
+.btn.ghost { background: transparent; border-color: transparent; color: var(--fg-2); }
+.btn.ghost:hover { background: var(--bg-2); color: var(--fg); }
+.btn.danger { color: var(--danger); border-color: var(--danger-soft); }
+.btn.danger:hover { background: var(--danger-soft); }
+.btn.sm { height: 28px; padding: 0 10px; font-size: 12.5px; }
+.btn.lg { height: 38px; padding: 0 16px; font-size: 14px; }
+
+.seg {
+  display: inline-flex;
+  background: var(--bg-2);
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  padding: 2px;
+}
+.seg button {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  color: var(--fg-2);
+  font-size: 12.5px;
+  font-weight: 500;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.seg button svg { width: 13px; height: 13px; }
+.seg button.on {
+  background: var(--surface);
+  color: var(--fg);
+  box-shadow: 0 1px 0 oklch(1 0 0 / 0.04) inset, 0 1px 2px oklch(0 0 0 / 0.2);
+}
+
+/* Inputs / filters (redesign variant) */
+.field {
+  display: inline-flex; align-items: center; gap: 8px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 7px;
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  color: var(--fg);
+  font-size: 13px;
+  min-width: 0;
+}
+.field:focus-within { border-color: var(--accent-color); box-shadow: 0 0 0 3px var(--accent-ring); }
+.field svg { width: 14px; height: 14px; color: var(--fg-3); flex-shrink: 0; }
+.field input, .field select {
+  border: 0; outline: 0; background: transparent; color: inherit;
+  font-size: inherit; min-width: 0; flex: 1; padding: 0;
+}
+.field select { appearance: none; padding-right: 16px; cursor: pointer; }
+.field.select::after {
+  content: ''; width: 8px; height: 8px;
+  border-right: 1.5px solid var(--fg-3);
+  border-bottom: 1.5px solid var(--fg-3);
+  transform: rotate(45deg) translate(-2px, -2px);
+  margin-left: -10px;
+}
+.field-label {
+  font-size: 11px; font-weight: 500; color: var(--fg-3);
+  text-transform: uppercase; letter-spacing: 0.04em;
+  padding-right: 4px; border-right: 1px solid var(--line-soft);
+  margin-right: 2px;
+}
+.field.grow { flex: 1; min-width: 180px; }
+
+/* Status badges */
+.tag {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+.tag::before {
+  content: ''; width: 5px; height: 5px; border-radius: 99px;
+  background: currentColor;
+}
+.tag.tag-new      { background: var(--info-soft); color: var(--info); }
+.tag.tag-prospect { background: oklch(0.72 0.10 280 / 0.14); color: oklch(0.72 0.10 280); }
+.tag.tag-contact  { background: var(--accent-soft); color: var(--accent-color); }
+.tag.tag-followup { background: var(--warn-soft); color: var(--warn); }
+.tag.tag-closed   { background: oklch(0.72 0.06 30 / 0.14); color: oklch(0.78 0.06 30); }
+.tag.tag-notviable{ background: oklch(0.55 0.01 60 / 0.18); color: var(--fg-3); }
+.tag.tag-dnc      { background: var(--danger-soft); color: var(--danger); }
+
+/* misc */
+.divider { height: 1px; background: var(--line-soft); margin: 16px 0; }
+.spacer { flex: 1; }

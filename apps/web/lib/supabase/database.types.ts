@@ -191,10 +191,12 @@ export type Database = {
           from_number: string | null
           id: string
           prospect_id: string | null
+          provider_event_id: string | null
           recording_url: string | null
           source: string | null
           telnyx_call_id: string | null
           tenant_id: string
+          tenant_phone_number_id: string | null
           to_number: string | null
         }
         Insert: {
@@ -206,10 +208,12 @@ export type Database = {
           from_number?: string | null
           id?: string
           prospect_id?: string | null
+          provider_event_id?: string | null
           recording_url?: string | null
           source?: string | null
           telnyx_call_id?: string | null
           tenant_id: string
+          tenant_phone_number_id?: string | null
           to_number?: string | null
         }
         Update: {
@@ -221,10 +225,12 @@ export type Database = {
           from_number?: string | null
           id?: string
           prospect_id?: string | null
+          provider_event_id?: string | null
           recording_url?: string | null
           source?: string | null
           telnyx_call_id?: string | null
           tenant_id?: string
+          tenant_phone_number_id?: string | null
           to_number?: string | null
         }
         Relationships: [
@@ -247,6 +253,13 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "call_logs_tenant_phone_number_id_fkey"
+            columns: ["tenant_phone_number_id"]
+            isOneToOne: false
+            referencedRelation: "tenant_phone_numbers"
             referencedColumns: ["id"]
           },
         ]
@@ -393,6 +406,7 @@ export type Database = {
           direction: string
           id: string
           prospect_id: string | null
+          provider_message_id: string | null
           sendgrid_message_id: string | null
           status: string | null
           subject: string | null
@@ -405,6 +419,7 @@ export type Database = {
           direction: string
           id?: string
           prospect_id?: string | null
+          provider_message_id?: string | null
           sendgrid_message_id?: string | null
           status?: string | null
           subject?: string | null
@@ -417,6 +432,7 @@ export type Database = {
           direction?: string
           id?: string
           prospect_id?: string | null
+          provider_message_id?: string | null
           sendgrid_message_id?: string | null
           status?: string | null
           subject?: string | null
@@ -767,42 +783,66 @@ export type Database = {
       }
       sms_logs: {
         Row: {
+          acknowledged_warnings: string[]
           agent_id: string | null
           body: string | null
           created_at: string | null
+          delivery_status: string | null
           direction: string
+          error_code: string | null
           from_number: string | null
           id: string
           prospect_id: string | null
+          provider_message_id: string | null
+          read_at: string | null
+          segments: number | null
+          sent_at: string | null
           status: string | null
           telnyx_message_id: string | null
           tenant_id: string
+          tenant_phone_number_id: string | null
           to_number: string | null
         }
         Insert: {
+          acknowledged_warnings?: string[]
           agent_id?: string | null
           body?: string | null
           created_at?: string | null
+          delivery_status?: string | null
           direction: string
+          error_code?: string | null
           from_number?: string | null
           id?: string
           prospect_id?: string | null
+          provider_message_id?: string | null
+          read_at?: string | null
+          segments?: number | null
+          sent_at?: string | null
           status?: string | null
           telnyx_message_id?: string | null
           tenant_id: string
+          tenant_phone_number_id?: string | null
           to_number?: string | null
         }
         Update: {
+          acknowledged_warnings?: string[]
           agent_id?: string | null
           body?: string | null
           created_at?: string | null
+          delivery_status?: string | null
           direction?: string
+          error_code?: string | null
           from_number?: string | null
           id?: string
           prospect_id?: string | null
+          provider_message_id?: string | null
+          read_at?: string | null
+          segments?: number | null
+          sent_at?: string | null
           status?: string | null
           telnyx_message_id?: string | null
           tenant_id?: string
+          tenant_phone_number_id?: string | null
           to_number?: string | null
         }
         Relationships: [
@@ -825,6 +865,13 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sms_logs_tenant_phone_number_id_fkey"
+            columns: ["tenant_phone_number_id"]
+            isOneToOne: false
+            referencedRelation: "tenant_phone_numbers"
             referencedColumns: ["id"]
           },
         ]
@@ -921,65 +968,242 @@ export type Database = {
           },
         ]
       }
+      tasks: {
+        Row: {
+          attempts: number
+          created_at: string
+          id: string
+          kind: string
+          last_error: string | null
+          max_attempts: number
+          payload: Json
+          processed_at: string | null
+          scheduled_at: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          id?: string
+          kind: string
+          last_error?: string | null
+          max_attempts?: number
+          payload: Json
+          processed_at?: string | null
+          scheduled_at?: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          id?: string
+          kind?: string
+          last_error?: string | null
+          max_attempts?: number
+          payload?: Json
+          processed_at?: string | null
+          scheduled_at?: string
+        }
+        Relationships: []
+      }
+      tenant_phone_numbers: {
+        Row: {
+          capabilities: string[]
+          created_at: string
+          created_by: string | null
+          e164: string
+          id: string
+          is_primary: boolean
+          label: string
+          messaging_profile_id: string | null
+          released_at: string | null
+          routing_rule: Json
+          status: string
+          telnyx_number_id: string
+          tenant_id: string
+          voice_app_id: string | null
+        }
+        Insert: {
+          capabilities?: string[]
+          created_at?: string
+          created_by?: string | null
+          e164: string
+          id?: string
+          is_primary?: boolean
+          label?: string
+          messaging_profile_id?: string | null
+          released_at?: string | null
+          routing_rule?: Json
+          status?: string
+          telnyx_number_id: string
+          tenant_id: string
+          voice_app_id?: string | null
+        }
+        Update: {
+          capabilities?: string[]
+          created_at?: string
+          created_by?: string | null
+          e164?: string
+          id?: string
+          is_primary?: boolean
+          label?: string
+          messaging_profile_id?: string | null
+          released_at?: string | null
+          routing_rule?: Json
+          status?: string
+          telnyx_number_id?: string
+          tenant_id?: string
+          voice_app_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_phone_numbers_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tenant_phone_numbers_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenants: {
         Row: {
           billing_cycle: string | null
+          calling_hours: Json
           created_at: string | null
+          email_templates: Json
           features: Json | null
           id: string
           is_active: boolean | null
           is_suspended: boolean | null
           name: string
           plan_tier: number | null
+          recording_disclosure_audio_url: string | null
           sendgrid_subuser: string | null
           settings: Json | null
           slug: string
+          sms_templates: Json
           stripe_customer_id: string | null
           stripe_subscription_id: string | null
           telnyx_app_id: string | null
+          telnyx_credential_connection_id: string | null
           telnyx_main_number: string | null
+          timezone: string
           trial_expires_at: string | null
           updated_at: string | null
         }
         Insert: {
           billing_cycle?: string | null
+          calling_hours?: Json
           created_at?: string | null
+          email_templates?: Json
           features?: Json | null
           id?: string
           is_active?: boolean | null
           is_suspended?: boolean | null
           name: string
           plan_tier?: number | null
+          recording_disclosure_audio_url?: string | null
           sendgrid_subuser?: string | null
           settings?: Json | null
           slug: string
+          sms_templates?: Json
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
           telnyx_app_id?: string | null
+          telnyx_credential_connection_id?: string | null
           telnyx_main_number?: string | null
+          timezone?: string
           trial_expires_at?: string | null
           updated_at?: string | null
         }
         Update: {
           billing_cycle?: string | null
+          calling_hours?: Json
           created_at?: string | null
+          email_templates?: Json
           features?: Json | null
           id?: string
           is_active?: boolean | null
           is_suspended?: boolean | null
           name?: string
           plan_tier?: number | null
+          recording_disclosure_audio_url?: string | null
           sendgrid_subuser?: string | null
           settings?: Json | null
           slug?: string
+          sms_templates?: Json
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
           telnyx_app_id?: string | null
+          telnyx_credential_connection_id?: string | null
           telnyx_main_number?: string | null
+          timezone?: string
           trial_expires_at?: string | null
           updated_at?: string | null
         }
         Relationships: []
+      }
+      user_google_tokens: {
+        Row: {
+          access_token: string | null
+          access_token_expires_at: string | null
+          created_at: string | null
+          google_email: string
+          refresh_token_ciphertext: string
+          refresh_token_iv: string
+          refresh_token_tag: string
+          scopes: string[]
+          tenant_id: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          access_token?: string | null
+          access_token_expires_at?: string | null
+          created_at?: string | null
+          google_email: string
+          refresh_token_ciphertext: string
+          refresh_token_iv: string
+          refresh_token_tag: string
+          scopes?: string[]
+          tenant_id: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          access_token?: string | null
+          access_token_expires_at?: string | null
+          created_at?: string | null
+          google_email?: string
+          refresh_token_ciphertext?: string
+          refresh_token_iv?: string
+          refresh_token_tag?: string
+          scopes?: string[]
+          tenant_id?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_google_tokens_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_google_tokens_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       users: {
         Row: {
@@ -1042,6 +1266,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      webhook_events: {
+        Row: {
+          event_type: string
+          id: string
+          payload: Json
+          process_error: string | null
+          processed_at: string | null
+          provider: string
+          received_at: string
+          signature_ok: boolean
+        }
+        Insert: {
+          event_type: string
+          id?: string
+          payload: Json
+          process_error?: string | null
+          processed_at?: string | null
+          provider: string
+          received_at?: string
+          signature_ok: boolean
+        }
+        Update: {
+          event_type?: string
+          id?: string
+          payload?: Json
+          process_error?: string | null
+          processed_at?: string | null
+          provider?: string
+          received_at?: string
+          signature_ok?: boolean
+        }
+        Relationships: []
       }
     }
     Views: {
@@ -1106,6 +1363,10 @@ export type Database = {
       _postgis_stats: {
         Args: { ""?: string; att_name: string; tbl: unknown }
         Returns: string
+      }
+      _prospect_dnc_flagged: {
+        Args: { p_prospect_id: string }
+        Returns: boolean
       }
       _st_3dintersects: {
         Args: { geom1: unknown; geom2: unknown }
@@ -1216,6 +1477,8 @@ export type Database = {
             }
             Returns: string
           }
+      can_call: { Args: { p_prospect_id: string }; Returns: Json }
+      can_message: { Args: { p_prospect_id: string }; Returns: Json }
       disablelongtransactions: { Args: never; Returns: string }
       dropgeometrycolumn:
         | {
@@ -1351,6 +1614,7 @@ export type Database = {
       get_user_role: { Args: never; Returns: string }
       gettransactionid: { Args: never; Returns: unknown }
       longtransactionsenabled: { Args: never; Returns: boolean }
+      mark_sms_read: { Args: { p_prospect_id: string }; Returns: undefined }
       populate_geometry_columns:
         | { Args: { tbl_oid: unknown; use_typmod?: boolean }; Returns: number }
         | { Args: { use_typmod?: boolean }; Returns: string }
@@ -1391,6 +1655,14 @@ export type Database = {
       }
       postgis_version: { Args: never; Returns: string }
       postgis_wagyu_version: { Args: never; Returns: string }
+      prospect_by_phone: {
+        Args: { p_phone: string; p_tenant_id: string }
+        Returns: string
+      }
+      send_sms: {
+        Args: { p_body: string; p_prospect_id: string }
+        Returns: string
+      }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
       st_3dclosestpoint: {
@@ -1974,6 +2246,7 @@ export type Database = {
         Args: { geom: unknown; move: number; wrap: number }
         Returns: unknown
       }
+      tenant_by_telnyx_number: { Args: { p_number: string }; Returns: string }
       unlockrows: { Args: { "": string }; Returns: number }
       updategeometrysrid: {
         Args: {

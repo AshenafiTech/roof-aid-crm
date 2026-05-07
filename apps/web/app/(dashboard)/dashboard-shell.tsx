@@ -1,13 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import {
-  ChevronsLeft,
-  ChevronsRight,
-  Loader2,
-  LogOut,
-  Menu,
-} from "lucide-react";
+import { ChevronRight, Loader2, LogOut, Menu } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -17,7 +11,6 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { Separator } from "@/components/ui/separator";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
 import type { AuthUser } from "@/lib/types/auth";
@@ -26,16 +19,49 @@ import type { NotificationRow } from "@/lib/queries/notifications";
 import { signOut } from "./actions";
 import { NotificationBell } from "./notification-bell";
 import { SidebarNav } from "./sidebar-nav";
+import { Softphone } from "@/components/comms/softphone";
+
+function BrandMark({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path
+        d="M4 11l8-7 8 7v8a1 1 0 01-1 1H5a1 1 0 01-1-1z"
+        fill="currentColor"
+        fillOpacity="0.18"
+      />
+      <path d="M4 11l8-7 8 7" />
+      <path d="M12 4v16" />
+    </svg>
+  );
+}
+
+function getInitials(user: AuthUser) {
+  const first = user.firstName?.[0] ?? "";
+  const last = user.lastName?.[0] ?? "";
+  if (first || last) return `${first}${last}`.toUpperCase();
+  return (user.email?.[0] ?? "?").toUpperCase();
+}
 
 export function DashboardShell({
   user,
   unreadCount,
   recentNotifications,
+  banner,
   children,
 }: {
   user: AuthUser;
   unreadCount: number;
   recentNotifications: NotificationRow[];
+  banner?: React.ReactNode;
   children: React.ReactNode;
 }) {
   const [isPending, startTransition] = useTransition();
@@ -46,125 +72,117 @@ export function DashboardShell({
     user.firstName && user.lastName
       ? `${user.firstName} ${user.lastName}`
       : user.email;
+  const initials = getInitials(user);
+  const roleLabel = user.role
+    .replace("_", " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
 
   return (
-    <div className="flex min-h-screen">
+    <div className="app" data-sidebar={collapsed ? "icons" : "full"}>
       {/* Desktop sidebar */}
-      <aside
-        className={cn(
-          "sticky top-0 hidden h-screen shrink-0 border-r bg-background transition-[width] md:flex md:flex-col",
-          collapsed ? "w-16" : "w-60",
-        )}
-      >
-        <div
-          className={cn(
-            "flex h-14 items-center border-b px-3",
-            collapsed ? "justify-center" : "justify-between",
-          )}
-        >
+      <aside className="side hidden md:flex">
+        <div className="side-hd">
+          <div className="brand-mark">
+            <BrandMark size={16} />
+          </div>
           {!collapsed && (
-            <span className="text-base font-semibold tracking-tight">
-              Roof-Aid
-            </span>
+            <div className="brand-name">
+              Roof-Aid<small>CRM</small>
+            </div>
           )}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
+          <button
+            type="button"
+            className="side-collapse"
             onClick={() => setCollapsed((v) => !v)}
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
-            {collapsed ? (
-              <ChevronsRight className="h-4 w-4" />
-            ) : (
-              <ChevronsLeft className="h-4 w-4" />
-            )}
-          </Button>
+            <ChevronRight
+              className={cn(
+                "h-3.5 w-3.5 transition-transform",
+                !collapsed && "rotate-180",
+              )}
+            />
+          </button>
         </div>
-        <div className="flex-1 overflow-hidden">
-          <SidebarNav role={user.role} collapsed={collapsed} />
-        </div>
-        <div
-          className={cn(
-            "border-t p-2",
-            collapsed ? "flex justify-center" : "",
-          )}
-        >
+        <SidebarNav role={user.role} collapsed={collapsed} />
+        <div className="side-foot">
           <ThemeToggle collapsed={collapsed} />
         </div>
       </aside>
 
-      {/* Content column */}
-      <div className="flex min-w-0 flex-1 flex-col">
-        {/* Top bar */}
-        <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-          <div className="flex h-14 items-center justify-between px-4 sm:px-6">
-            <div className="flex items-center gap-3">
-              {/* Mobile hamburger */}
-              <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-                <SheetTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-9 w-9 md:hidden"
-                    aria-label="Open navigation"
-                  >
-                    <Menu className="h-5 w-5" />
-                  </Button>
-                </SheetTrigger>
-                <SheetContent side="left" className="w-64 p-0">
-                  <SheetHeader className="border-b p-4">
-                    <SheetTitle className="text-left">Roof-Aid</SheetTitle>
-                  </SheetHeader>
-                  <div className="flex h-[calc(100%-3.75rem)] flex-col">
-                    <div className="flex-1 overflow-y-auto">
-                      <SidebarNav
-                        role={user.role}
-                        onNavigate={() => setMobileOpen(false)}
-                      />
-                    </div>
-                    <div className="border-t p-2">
-                      <ThemeToggle />
-                    </div>
-                  </div>
-                </SheetContent>
-              </Sheet>
-              <span className="text-lg font-semibold tracking-tight md:hidden">
-                Roof-Aid
-              </span>
-              <span className="hidden text-xs capitalize text-muted-foreground sm:inline-block">
-                {user.role.replace("_", " ")}
-              </span>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <NotificationBell userId={user.id} initialCount={unreadCount} initialNotifications={recentNotifications} />
-              <span className="hidden text-sm text-muted-foreground md:inline-block">
-                {displayName}
-              </span>
-              <Separator
-                orientation="vertical"
-                className="hidden h-6 md:block"
-              />
+      <div className="main">
+        <header className="topbar">
+          {/* Mobile hamburger */}
+          <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+            <SheetTrigger asChild>
               <Button
                 variant="ghost"
-                size="sm"
-                disabled={isPending}
-                onClick={() => startTransition(() => signOut())}
-                aria-label="Sign out"
+                size="icon"
+                className="h-9 w-9 md:hidden"
+                aria-label="Open navigation"
               >
-                {isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <LogOut className="h-4 w-4" />
-                )}
-                <span className="ml-2 hidden sm:inline-block">Sign out</span>
+                <Menu className="h-5 w-5" />
               </Button>
-            </div>
+            </SheetTrigger>
+            <SheetContent side="left" className="w-64 p-0">
+              <SheetHeader className="border-b p-4">
+                <SheetTitle className="text-left">Roof-Aid</SheetTitle>
+              </SheetHeader>
+              <div className="flex h-[calc(100%-3.75rem)] flex-col">
+                <SidebarNav
+                  role={user.role}
+                  onNavigate={() => setMobileOpen(false)}
+                />
+                <div className="border-t p-2">
+                  <ThemeToggle />
+                </div>
+              </div>
+            </SheetContent>
+          </Sheet>
+
+          <div className="crumb">
+            <b>{roleLabel}</b>
+          </div>
+          <div className="status-pill hidden sm:inline-flex">
+            <span className="dot" />
+            Ready
+          </div>
+
+          <div className="topbar-right">
+            <NotificationBell
+              userId={user.id}
+              initialCount={unreadCount}
+              initialNotifications={recentNotifications}
+            />
+            <button type="button" className="user-chip" aria-label={displayName}>
+              <span className="avatar">{initials}</span>
+              <span className="hidden md:inline-block">{displayName}</span>
+            </button>
+            <button
+              type="button"
+              className="icon-btn"
+              onClick={() => startTransition(() => signOut())}
+              disabled={isPending}
+              aria-label="Sign out"
+              title="Sign out"
+            >
+              {isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <LogOut className="h-4 w-4" />
+              )}
+            </button>
           </div>
         </header>
 
-        <main className="flex-1 px-4 py-6 sm:px-6">{children}</main>
+        <Softphone />
+
+        {banner}
+
+        <main className="page">
+          <div className="px-4 py-6 sm:px-6">{children}</div>
+        </main>
       </div>
     </div>
   );

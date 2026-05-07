@@ -3,6 +3,7 @@ import { Clock } from "lucide-react";
 
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { CallButton } from "@/components/comms/call-button";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { createClient } from "@/lib/supabase/server";
 
@@ -39,32 +40,46 @@ export default async function ProspectDetailPage({
   const user = await getCurrentUser();
   const supabase = await createClient();
 
-  const [prospectRes, activitiesRes, notesRes, ruferosRes] = await Promise.all([
-    supabase
-      .from("prospects")
-      .select(
-        "*, assigned_user:users!assigned_to(id, first_name, last_name)",
-      )
-      .eq("id", id)
-      .maybeSingle(),
-    supabase
-      .from("activities")
-      .select("*, user:users!user_id(first_name, last_name)")
-      .eq("prospect_id", id)
-      .order("created_at", { ascending: false })
-      .limit(100),
-    supabase
-      .from("notes")
-      .select("*, author:users!author_id(first_name, last_name)")
-      .eq("prospect_id", id)
-      .order("created_at", { ascending: false }),
-    supabase
-      .from("users")
-      .select("id, first_name, last_name")
-      .eq("role", "rufero")
-      .eq("is_active", true)
-      .order("first_name", { ascending: true }),
-  ]);
+  const [prospectRes, activitiesRes, notesRes, ruferosRes, smsRes, tenantRes] =
+    await Promise.all([
+      supabase
+        .from("prospects")
+        .select(
+          "*, assigned_user:users!assigned_to(id, first_name, last_name)",
+        )
+        .eq("id", id)
+        .maybeSingle(),
+      supabase
+        .from("activities")
+        .select("*, user:users!user_id(first_name, last_name)")
+        .eq("prospect_id", id)
+        .order("created_at", { ascending: false })
+        .limit(100),
+      supabase
+        .from("notes")
+        .select("*, author:users!author_id(first_name, last_name)")
+        .eq("prospect_id", id)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("users")
+        .select("id, first_name, last_name")
+        .eq("role", "rufero")
+        .eq("is_active", true)
+        .order("first_name", { ascending: true }),
+      supabase
+        .from("sms_logs")
+        .select(
+          "id, direction, body, status, from_number, to_number, segments, error_code, agent_id, created_at",
+        )
+        .eq("prospect_id", id)
+        .order("created_at", { ascending: true })
+        .limit(500),
+      supabase
+        .from("tenants")
+        .select("sms_templates")
+        .eq("id", user.tenantId)
+        .maybeSingle(),
+    ]);
 
   const prospect = prospectRes.data as ProspectWithAssignee | null;
   if (!prospect) notFound();
@@ -76,6 +91,27 @@ export default async function ProspectDetailPage({
   const activities = (activitiesRes.data ?? []) as ActivityWithUser[];
   const notes = (notesRes.data ?? []) as NoteWithAuthor[];
   const ruferos = (ruferosRes.data ?? []) as UserLite[];
+  const smsMessages = (smsRes.data ?? []) as Array<{
+    id: string;
+    direction: "inbound" | "outbound";
+    body: string;
+    status: "queued" | "sent" | "delivered" | "failed" | "received";
+    from_number: string | null;
+    to_number: string | null;
+    segments: number | null;
+    error_code: string | null;
+    agent_id: string | null;
+    created_at: string;
+  }>;
+  const rawTemplates = (tenantRes.data?.sms_templates ?? []) as Array<{
+    id?: string;
+    name?: string;
+    body?: string;
+    active?: boolean;
+  }>;
+  const smsTemplates = rawTemplates
+    .filter((t) => t.active !== false && t.id && t.name && t.body)
+    .map((t) => ({ id: t.id!, name: t.name!, body: t.body! }));
 
   const locationParts = [prospect.address, prospect.city, prospect.state]
     .filter(Boolean)
@@ -90,7 +126,17 @@ export default async function ProspectDetailPage({
         <PageHeader
           title={prospect.name}
           description={locationParts || "No address on file"}
-          action={<StatusBadge status={prospect.status} />}
+          action={
+            <div className="flex items-center gap-2">
+              <CallButton
+                prospectId={prospect.id}
+                prospectName={prospect.name}
+                prospectPhone={(prospect.phones ?? [])[0] ?? null}
+                isDnc={prospect.do_not_call ?? false}
+              />
+              <StatusBadge status={prospect.status} />
+            </div>
+          }
         />
       </div>
       <ProspectTabs
@@ -99,6 +145,8 @@ export default async function ProspectDetailPage({
         notes={notes}
         ruferos={ruferos}
         currentUser={user}
+        smsMessages={smsMessages}
+        smsTemplates={smsTemplates}
       />
       {latestNote && (
         <div className="rounded-md border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/40 dark:bg-amber-950/30">
