@@ -88,30 +88,22 @@ class _ThreadListState extends State<_ThreadList> {
   final _scrollController = ScrollController();
 
   @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToEnd());
-  }
-
-  @override
   void didUpdateWidget(covariant _ThreadList oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Auto-scroll to latest when a message is added (length grew or last id
-    // changed). Don't scroll on every update or we'll yank the user away
-    // when they're reading older messages.
     final grew = widget.messages.length > oldWidget.messages.length;
     final lastChanged = widget.messages.isNotEmpty &&
         oldWidget.messages.isNotEmpty &&
         widget.messages.last.id != oldWidget.messages.last.id;
     if (grew || lastChanged) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToEnd());
+      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
     }
   }
 
-  void _scrollToEnd() {
+  void _scrollToBottom() {
     if (!_scrollController.hasClients) return;
+    // reverse: true → offset 0 is the bottom of the thread.
     _scrollController.animateTo(
-      _scrollController.position.maxScrollExtent,
+      0,
       duration: const Duration(milliseconds: 240),
       curve: Curves.easeOutCubic,
     );
@@ -125,12 +117,24 @@ class _ThreadListState extends State<_ThreadList> {
 
   @override
   Widget build(BuildContext context) {
+    // Sort defensively so the UI doesn't depend on upstream ordering.
+    // NULL sent_at on freshly-queued rows can put them at the front of an
+    // ASC SQL sort; this keeps the list strictly oldest → newest.
+    final ordered = [...widget.messages]
+      ..sort((a, b) => a.sentAt.compareTo(b.sentAt));
+
     return ListView.separated(
       controller: _scrollController,
-      padding: const EdgeInsets.fromLTRB(12, 16, 12, 12),
-      itemCount: widget.messages.length,
+      reverse: true,
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
+      itemCount: ordered.length,
       separatorBuilder: (_, _) => const SizedBox(height: 6),
-      itemBuilder: (_, i) => _Bubble(message: widget.messages[i]),
+      itemBuilder: (_, i) {
+        // reverse: true → item 0 paints at the bottom. Map it to the newest
+        // message so the conversation reads top (oldest) → bottom (newest).
+        final m = ordered[ordered.length - 1 - i];
+        return _Bubble(message: m);
+      },
     );
   }
 }

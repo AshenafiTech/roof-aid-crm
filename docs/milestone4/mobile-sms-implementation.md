@@ -71,6 +71,8 @@ The verdict's `blocksUi` getter encodes this: `!allowed && reason != 'dnc'`. The
 
 `_ThreadList.didUpdateWidget` only scrolls to bottom if message count grew or the last id changed. A delivery-status update on the existing tail doesn't yank the user away from older messages they're reading.
 
+The list uses `reverse: true` so bubbles stack from the bottom up (chat-app convention): newest sits just above the composer, older messages scroll off the top. Items are indexed `messages[length-1-i]` so the data model stays oldest→newest while the visual order is newest-at-bottom. With `reverse: true`, scroll offset `0` is the bottom of the thread; `_scrollToBottom()` animates to `0`, and the initial render naturally lands at the bottom without an explicit `initState` scroll.
+
 ### 7. Failed sends keep the bubble visible
 
 A `failed` row stays in the thread with a red border + error icon (instead of disappearing). The user can see what didn't go through. Retry-by-tap is a TODO when the backend exposes a `resend_sms` RPC.

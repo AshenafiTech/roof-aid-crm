@@ -38,11 +38,15 @@ class SmsRemoteDatasourceImpl implements SmsRemoteDatasource {
     _requireUser();
 
     try {
+      // Order by created_at (always populated, monotonically increasing on
+      // insert) rather than sent_at, which is NULL on freshly-queued rows
+      // until Telnyx's webhook confirms the send. The SmsMessageModel still
+      // exposes sent_at via its sentAt field with created_at as a fallback.
       final response = await client
           .from('sms_logs')
           .select(_selectWithAgent)
           .eq('prospect_id', prospectId)
-          .order('sent_at', ascending: true);
+          .order('created_at', ascending: true);
 
       return (response as List)
           .map((row) => SmsMessageModel.fromMap(row as Map<String, dynamic>))
