@@ -1148,6 +1148,63 @@ export type Database = {
         }
         Relationships: []
       }
+      user_google_tokens: {
+        Row: {
+          access_token: string | null
+          access_token_expires_at: string | null
+          created_at: string | null
+          google_email: string
+          refresh_token_ciphertext: string
+          refresh_token_iv: string
+          refresh_token_tag: string
+          scopes: string[]
+          tenant_id: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          access_token?: string | null
+          access_token_expires_at?: string | null
+          created_at?: string | null
+          google_email: string
+          refresh_token_ciphertext: string
+          refresh_token_iv: string
+          refresh_token_tag: string
+          scopes?: string[]
+          tenant_id: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          access_token?: string | null
+          access_token_expires_at?: string | null
+          created_at?: string | null
+          google_email?: string
+          refresh_token_ciphertext?: string
+          refresh_token_iv?: string
+          refresh_token_tag?: string
+          scopes?: string[]
+          tenant_id?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_google_tokens_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_google_tokens_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       users: {
         Row: {
           created_at: string | null

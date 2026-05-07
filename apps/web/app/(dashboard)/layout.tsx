@@ -27,8 +27,8 @@ export default async function DashboardLayout({
         user={user}
         unreadCount={unreadCount}
         recentNotifications={recentNotifications}
+        banner={<MissingNumberBanner tenantId={user.tenantId} role={user.role} />}
       >
-        <MissingNumberBanner tenantId={user.tenantId} role={user.role} />
         {children}
       </DashboardShell>
     </UserProvider>

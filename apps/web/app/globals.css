@@ -536,6 +536,13 @@
   min-width: 0;
 }
 
+/* Banner-aware viewport sizing.
+   Components like the prospects map view that pin themselves to the viewport
+   use `calc(100dvh - 3.5rem - var(--banner-h))` so they don't get pushed
+   below the fold when MissingNumberBanner is rendered above the page. */
+.app { --banner-h: 0px; }
+.app:has([data-banner="missing-number"]) { --banner-h: 4rem; }
+
 /* TOPBAR */
 .topbar {
   display: flex;

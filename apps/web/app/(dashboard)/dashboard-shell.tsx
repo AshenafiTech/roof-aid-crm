@@ -55,11 +55,13 @@ export function DashboardShell({
   user,
   unreadCount,
   recentNotifications,
+  banner,
   children,
 }: {
   user: AuthUser;
   unreadCount: number;
   recentNotifications: NotificationRow[];
+  banner?: React.ReactNode;
   children: React.ReactNode;
 }) {
   const [isPending, startTransition] = useTransition();
@@ -175,6 +177,8 @@ export function DashboardShell({
         </header>
 
         <Softphone />
+
+        {banner}
 
         <main className="page">
           <div className="px-4 py-6 sm:px-6">{children}</div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
@@ -78,6 +78,7 @@ import { cn } from "@/lib/utils";
 import type { ProspectListItem } from "@/lib/queries/prospects";
 import { sendSms } from "@/lib/sms/actions";
 import { canCallProspect } from "@/lib/calls/actions";
+import { sendEmailAction } from "@/lib/email/actions";
 import {
   DncConfirmDialog,
   type Warning as ComplianceWarning,
@@ -165,19 +166,6 @@ function matchPriceRange(min: string, max: string): string {
 
 const VIEW_MODE_KEY = "roofaid-view-mode";
 
-function haversineKm(aLat: number, aLng: number, bLat: number, bLng: number): number {
-  const R = 6371;
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const dLat = toRad(bLat - aLat);
-  const dLng = toRad(bLng - aLng);
-  const lat1 = toRad(aLat);
-  const lat2 = toRad(bLat);
-  const h =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(h));
-}
-
 type NoteSummary = { body: string; created_at: string; author_name: string | null };
 export type NotesByProspectId = Record<string, NoteSummary[]>;
 
@@ -212,7 +200,25 @@ export function ProspectListView({
     }
     return "map";
   });
-  const [proximity, setProximity] = useState<ProximitySearch | null>(null);
+  // Proximity is URL-driven so the server applies the radius across the
+  // entire tab (not just the current page of results). Right-clicking the
+  // map calls `setProximity`, which pushes lat/lng/radiusMiles to the URL
+  // and triggers a fresh server query.
+  const proximity = useMemo<ProximitySearch | null>(() => {
+    const lat = sp.get("lat");
+    const lng = sp.get("lng");
+    if (!lat || !lng) return null;
+    const nLat = Number(lat);
+    const nLng = Number(lng);
+    if (!Number.isFinite(nLat) || !Number.isFinite(nLng)) return null;
+    const r = sp.get("radiusMiles");
+    const nR = r ? Number(r) : 3;
+    return {
+      lat: nLat,
+      lng: nLng,
+      radiusMiles: Number.isFinite(nR) ? nR : 3,
+    };
+  }, [sp]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [overlayHidden, setOverlayHidden] = useState(false);
   const [showPriceFilter, setShowPriceFilter] = useState(false);
@@ -225,7 +231,7 @@ export function ProspectListView({
     localStorage.setItem(VIEW_MODE_KEY, mode);
   }, []);
 
-  // Staged (draft) filter state — only committed to the URL when the user clicks "Query Database".
+  // Staged (draft) filter state — only committed to the URL when the user clicks "Search".
   const spString = sp.toString();
   const [draft, setDraft] = useState<URLSearchParams>(() => new URLSearchParams(spString));
   useEffect(() => {
@@ -240,14 +246,6 @@ export function ProspectListView({
       return next;
     });
   }
-
-  const _proximityRows = proximity
-    ? rows.filter((r) => {
-        const c = parseCoordinates(r.coordinates);
-        if (!c) return false;
-        return haversineKm(proximity.lat, proximity.lng, c.lat, c.lng) <= proximity.radiusKm;
-      })
-    : rows;
 
   const selected = rows.find((r) => r.id === selectedId) ?? null;
 
@@ -279,26 +277,15 @@ export function ProspectListView({
   const street = draft.get("street") ?? "";
   const coordLat = draft.get("lat") ?? "";
   const coordLng = draft.get("lng") ?? "";
-  const coordRadius = draft.get("radiusKm") ?? "";
+  const coordRadius = draft.get("radiusMiles") ?? "";
   const priceMin = draft.get("priceMin") ?? "";
   const priceMax = draft.get("priceMax") ?? "";
   const hasFilters = !!(city || stateParam || status || q || street || coordLat || priceMin || priceMax);
 
-  const coordFilterLat = coordLat ? Number(coordLat) : null;
-  const coordFilterLng = coordLng ? Number(coordLng) : null;
-  const coordFilterRadius = coordRadius ? Number(coordRadius) : 5;
-
-  const displayRows = (() => {
-    let filtered = _proximityRows;
-    if (coordFilterLat != null && coordFilterLng != null && Number.isFinite(coordFilterLat) && Number.isFinite(coordFilterLng)) {
-      filtered = filtered.filter((r) => {
-        const c = parseCoordinates(r.coordinates);
-        if (!c) return false;
-        return haversineKm(coordFilterLat, coordFilterLng, c.lat, c.lng) <= coordFilterRadius;
-      });
-    }
-    return filtered;
-  })();
+  // Proximity + coord radius are applied server-side via the
+  // search_prospects_proximity_ids RPC; whatever the server returns is what
+  // we render here.
+  const displayRows = rows;
 
   const allChecked = displayRows.length > 0 && displayRows.every((r) => checkedIds.has(r.id));
   const someChecked = checkedIds.size > 0;
@@ -355,8 +342,32 @@ export function ProspectListView({
     setOverlayHidden(false);
   }
 
+  // Commit a circle from the map straight to the URL so the server query
+  // re-runs against the entire tab. Passing null clears the radius.
+  const setProximity = useCallback(
+    (next: ProximitySearch | null) => {
+      const params = new URLSearchParams(sp);
+      if (next) {
+        params.set("lat", String(next.lat));
+        params.set("lng", String(next.lng));
+        params.set("radiusMiles", String(next.radiusMiles));
+      } else {
+        params.delete("lat");
+        params.delete("lng");
+        params.delete("radiusMiles");
+      }
+      params.delete("load");
+      const qs = params.toString();
+      start(() => router.push(qs ? `${basePath}?${qs}` : basePath));
+    },
+    [sp, router, basePath, start],
+  );
+
   return (
-    <div className="-mx-4 -mt-6 -mb-6 sm:-mx-6 flex flex-col" style={{ height: "calc(100vh - 3.5rem)" }}>
+    <div
+      className="-mx-4 -mt-6 -mb-6 sm:-mx-6 flex flex-col"
+      style={{ height: "calc(100dvh - 3.5rem - var(--banner-h, 0px))" }}
+    >
       {/* Filter bar */}
       <div className="border-b bg-background px-4 py-3 sm:px-6 space-y-2">
         <div className="flex flex-wrap items-center gap-3">
@@ -503,8 +514,8 @@ export function ProspectListView({
               disabled={pending}
               className={cn(draftDirty && "ring-2 ring-primary ring-offset-2 ring-offset-background")}
             >
-              {pending ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-2 h-3.5 w-3.5" />}
-              Query Database
+              {pending ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Search className="mr-2 h-3.5 w-3.5" />}
+              Search
               {draftDirty && <span className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-yellow-300" aria-hidden />}
             </Button>
           </div>
@@ -534,16 +545,16 @@ export function ProspectListView({
             <Input
               type="number"
               step="any"
-              placeholder="Radius (km)"
+              placeholder="Radius (mi)"
               value={coordRadius}
-              onChange={(e) => setDraftParam("radiusKm", e.target.value || undefined)}
+              onChange={(e) => setDraftParam("radiusMiles", e.target.value || undefined)}
               className="h-7 w-[100px] text-xs"
             />
             <Button type="button" variant="ghost" size="sm" className="h-7 text-xs px-2" onClick={() => {
               setShowCoordSearch(false);
               setDraftParam("lat", undefined);
               setDraftParam("lng", undefined);
-              setDraftParam("radiusKm", undefined);
+              setDraftParam("radiusMiles", undefined);
             }}>
               <X className="h-3 w-3 mr-1" /> Clear
             </Button>
@@ -632,7 +643,7 @@ export function ProspectListView({
                 {proximity ? (
                   <>
                     <span>
-                      {showing} within {proximity.radiusKm.toFixed(1)} km of pinned point
+                      {showing} within {proximity.radiusMiles.toFixed(1)} mi of pinned point
                     </span>
                     <Button
                       variant="ghost"
@@ -1884,6 +1895,7 @@ function EmailDialog({
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [template, setTemplate] = useState("manual");
+  const [sending, startSending] = useTransition();
   const email = prospect.email ?? "";
 
   function applyTemplate(value: string) {
@@ -1905,15 +1917,35 @@ function EmailDialog({
   }
 
   function handleSend() {
+    if (!email) {
+      toast.error("This prospect has no email address.");
+      return;
+    }
     if (!subject.trim() || !body.trim()) {
       toast.error("Please fill in subject and message");
       return;
     }
-    toast.success(`Email queued for ${prospect.name}. Integration with SendGrid coming in M4.`);
-    setSubject("");
-    setBody("");
-    setTemplate("manual");
-    onOpenChange(false);
+    startSending(async () => {
+      const result = await sendEmailAction({
+        to: email,
+        subject: subject.trim(),
+        body: body.trim(),
+        prospectId: prospect.id,
+      });
+      if (result.ok) {
+        toast.success(`Email sent to ${prospect.name} from ${result.from}`);
+        setSubject("");
+        setBody("");
+        setTemplate("manual");
+        onOpenChange(false);
+        return;
+      }
+      if (result.needsConnect) {
+        toast.error("Connect your Gmail first at Quick Email (sidebar).");
+        return;
+      }
+      toast.error(result.error);
+    });
   }
 
   return (
@@ -1985,8 +2017,13 @@ function EmailDialog({
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button onClick={handleSend} disabled={!email}>
-              <Send className="mr-2 h-4 w-4" /> Send Email
+            <Button onClick={handleSend} disabled={!email || sending}>
+              {sending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="mr-2 h-4 w-4" />
+              )}
+              Send Email
             </Button>
           </div>
         </div>
