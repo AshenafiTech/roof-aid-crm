@@ -175,17 +175,64 @@ export async function handleOutboundSmsStatus(
     update.error_code = payload.errors?.[0]?.code ?? "unknown";
   }
 
-  const { error } = await admin
+  // Phase A — already-stamped row with this provider_message_id.
+  // (Web /actions inserts the row with provider_message_id at send time
+  // because it does a synchronous Telnyx fetch, so this is the common case.)
+  const { data: byId } = await admin
     .from("sms_logs")
-    .update(update)
-    .eq("provider_message_id", messageId);
+    .select("id")
+    .eq("provider_message_id", messageId)
+    .maybeSingle();
 
-  if (error) {
-    console.error(
-      `[handleOutboundSmsStatus] update failed for ${messageId}`,
-      error,
-    );
+  if (byId) {
+    const { error } = await admin
+      .from("sms_logs")
+      .update(update)
+      .eq("id", byId.id);
+    if (error) {
+      console.error(
+        `[handleOutboundSmsStatus] update failed for ${messageId}`,
+        error,
+      );
+    }
+    return;
   }
+
+  // Phase B — first webhook for this message id; row was queued by
+  // the mobile send_sms RPC (migration 022), which uses pg_net
+  // (fire-and-forget) and therefore can't capture the Telnyx response
+  // synchronously. Match the most recent queued/sent outbound row
+  // to this destination with no provider_message_id yet, then stamp
+  // both the status and the provider_message_id.
+  const toNum = payload.to?.[0]?.phone_number;
+  if (!toNum) return;
+
+  const { data: queued } = await admin
+    .from("sms_logs")
+    .select("id")
+    .eq("direction", "outbound")
+    .eq("to_number", toNum)
+    .in("status", ["queued", "sent"])
+    .is("provider_message_id", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (queued) {
+    const { error } = await admin
+      .from("sms_logs")
+      .update({ ...update, provider_message_id: messageId })
+      .eq("id", queued.id);
+    if (error) {
+      console.error(
+        `[handleOutboundSmsStatus] phase B stamp failed for ${messageId}`,
+        error,
+      );
+    }
+  }
+  // If neither phase matched, the message was sent outside our system
+  // (e.g. Telnyx Portal test). Drop silently — already audited in
+  // webhook_events.
 }
 
 // ----------------------------------------------------------------------------
