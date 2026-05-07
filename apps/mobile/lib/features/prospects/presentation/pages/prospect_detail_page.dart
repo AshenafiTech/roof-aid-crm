@@ -5,11 +5,14 @@ import '../../../../core/di/injection_container.dart';
 import '../../domain/entities/prospect_entity.dart';
 import '../bloc/notes_bloc.dart';
 import '../bloc/notes_event.dart';
+import '../bloc/sms_bloc.dart';
+import '../bloc/sms_event.dart';
 import '../widgets/dnc_banner.dart';
 import '../widgets/quick_actions_bar.dart';
 import '../widgets/tabs/notes_tab.dart';
 import '../widgets/tabs/overview_tab.dart';
 import '../widgets/tabs/placeholder_tabs.dart';
+import '../widgets/tabs/sms_tab.dart';
 
 /// The 7-tab prospect detail screen a Rufero lands on after tapping a row
 /// on the list or an info window on the map. M3 only wires the Overview
@@ -35,9 +38,9 @@ class ProspectDetailPage extends StatelessWidget {
             tabAlignment: TabAlignment.start,
             tabs: [
               Tab(text: 'Overview'),
+              Tab(text: 'Appointments'),
               Tab(text: 'Calls'),
               Tab(text: 'SMS'),
-              Tab(text: 'Appointments'),
               Tab(text: 'Documents'),
               Tab(text: 'Inspection'),
               Tab(text: 'Notes'),
@@ -51,9 +54,13 @@ class ProspectDetailPage extends StatelessWidget {
               child: TabBarView(
                 children: [
                   OverviewTab(prospect: prospect),
-                  const CallsTab(),
-                  const SmsTab(),
                   const AppointmentsTab(),
+                  const CallsTab(),
+                  BlocProvider<SmsBloc>(
+                    create: (_) =>
+                        sl<SmsBloc>()..add(SmsLoadRequested(prospect.id)),
+                    child: const SmsTab(),
+                  ),
                   const DocumentsTab(),
                   const InspectionTab(),
                   BlocProvider<NotesBloc>(

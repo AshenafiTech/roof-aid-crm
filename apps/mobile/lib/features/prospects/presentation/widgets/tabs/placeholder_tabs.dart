@@ -20,20 +20,6 @@ class CallsTab extends StatelessWidget {
   }
 }
 
-class SmsTab extends StatelessWidget {
-  const SmsTab({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const EmptyState(
-      icon: Icons.chat_bubble_outline,
-      title: 'No SMS conversation',
-      description:
-          'Inbound and outbound messages will appear here once Telnyx SMS is live (M4).',
-    );
-  }
-}
-
 class AppointmentsTab extends StatelessWidget {
   const AppointmentsTab({super.key});
 
