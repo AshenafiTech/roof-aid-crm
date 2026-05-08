@@ -276,6 +276,7 @@ export function Softphone() {
 
       {/* Persistent status bar */}
       <div
+        data-softphone-bar
         className={cn(
           "sticky top-14 z-30 border-b backdrop-blur-md transition-colors",
           status === "in_call"
