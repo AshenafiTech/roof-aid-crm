@@ -71,6 +71,7 @@ import {
   PROSPECT_STATUSES,
   PROSPECT_STATUS_LABELS,
   PROSPECT_STATUS_ACCENTS,
+  PROSPECT_STATUS_BAR_COLORS,
   isProspectStatus,
   type ProspectStatus,
 } from "@/lib/constants/prospect-status";
@@ -285,7 +286,35 @@ export function ProspectListView({
   // Proximity + coord radius are applied server-side via the
   // search_prospects_proximity_ids RPC; whatever the server returns is what
   // we render here.
-  const displayRows = rows;
+  //
+  // Status changes (and other mutations) call `revalidatePath` server-side,
+  // which causes Next to refetch `rows`. On pages sorted by `updated_at` (and
+  // visually for any sort) that re-fetch reshuffles the list under the user's
+  // cursor. We keep a stable client-side order: existing rows hold their slot,
+  // their fields are updated from the incoming snapshot, rows that no longer
+  // match the view are dropped, and net-new rows are appended. The user sees
+  // the badge they just changed update without the whole list reshuffling.
+  const [displayRows, setDisplayRows] = useState(rows);
+  useEffect(() => {
+    setDisplayRows((prev) => {
+      // `Map` is shadowed by the lucide-react Map icon import at the top of
+      // this file — use globalThis to reach the built-ins.
+      const incoming = new globalThis.Map(rows.map((r) => [r.id, r]));
+      const merged: typeof rows = [];
+      const seen = new globalThis.Set<string>();
+      for (const r of prev) {
+        const fresh = incoming.get(r.id);
+        if (fresh) {
+          merged.push(fresh);
+          seen.add(r.id);
+        }
+      }
+      for (const r of rows) {
+        if (!seen.has(r.id)) merged.push(r);
+      }
+      return merged;
+    });
+  }, [rows]);
 
   const allChecked = displayRows.length > 0 && displayRows.every((r) => checkedIds.has(r.id));
   const someChecked = checkedIds.size > 0;
@@ -366,7 +395,10 @@ export function ProspectListView({
   return (
     <div
       className="-mx-4 -mt-6 -mb-6 sm:-mx-6 flex flex-col"
-      style={{ height: "calc(100dvh - 3.5rem - var(--banner-h, 0px))" }}
+      style={{
+        height:
+          "calc(100dvh - 3.5rem - var(--banner-h, 0px) - var(--softphone-h, 0px))",
+      }}
     >
       {/* Filter bar */}
       <div className="border-b bg-background px-4 py-3 sm:px-6 space-y-2">
@@ -489,7 +521,18 @@ export function ProspectListView({
 
           <div className="flex items-center gap-2 ml-auto">
             {hasFilters && (
-              <Button variant="ghost" size="sm" onClick={() => { setShowPriceFilter(false); setDraft(new URLSearchParams()); }} disabled={pending}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setShowPriceFilter(false);
+                  setDraft(new URLSearchParams());
+                  // Apply immediately — Clear should restore the original
+                  // list without needing a second click on Search.
+                  start(() => router.push(basePath));
+                }}
+                disabled={pending}
+              >
                 <X className="mr-1 h-3.5 w-3.5" /> Clear
               </Button>
             )}
@@ -761,12 +804,6 @@ export function ProspectListView({
               className="absolute inset-0"
               bottomInset={selected && !overlayHidden ? 280 : 0}
             />
-            {!proximity && (
-              <div className="pointer-events-none absolute left-3 top-3 z-[500] rounded-md bg-background/90 backdrop-blur-sm px-2.5 py-1 text-[11px] text-muted-foreground shadow-sm border">
-                Right-click the map to search by radius
-              </div>
-            )}
-
             {selected && !overlayHidden && (
               <div className="absolute bottom-0 inset-x-0 bg-background/95 backdrop-blur-sm border-t shadow-2xl max-h-[50%] overflow-y-auto">
                 <ProspectDetailPanel
@@ -1444,6 +1481,7 @@ function ProspectDetailPanel({
                 }
               >
                 <Navigation className="h-3.5 w-3.5" />
+                Navigate
               </Button>
             </TooltipTrigger>
             <TooltipContent>Navigate to address</TooltipContent>
@@ -1457,6 +1495,7 @@ function ProspectDetailPanel({
                 trigger={
                   <Button size="sm" variant="ghost" className="gap-1.5">
                     <StickyNote className="h-3.5 w-3.5" />
+                    Note
                   </Button>
                 }
               />
@@ -1600,27 +1639,46 @@ function ProspectDetailPanel({
 
           <div className="space-y-3">
             <div className="flex items-center justify-between gap-3">
-              <p className="text-sm text-muted-foreground">Status</p>
-              <div className="flex items-center gap-2">
-                <Select
-                  value={prospect.status ?? undefined}
-                  onValueChange={onStatusChange}
-                  disabled={statusPending}
-                >
-                  <SelectTrigger className="h-7 w-[150px] text-xs">
-                    {statusPending ? (
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                    ) : (
-                      <SelectValue />
-                    )}
-                  </SelectTrigger>
-                  <SelectContent>
-                    {PROSPECT_STATUSES.map((s) => (
-                      <SelectItem key={s} value={s}>{PROSPECT_STATUS_LABELS[s]}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <p className="text-xs font-bold uppercase tracking-widest text-primary">
+                Change Status
+              </p>
+              <Select
+                value={prospect.status ?? undefined}
+                onValueChange={onStatusChange}
+                disabled={statusPending}
+              >
+                <SelectTrigger className="h-9 w-[180px] gap-2 border-2 bg-muted/30 px-3 text-sm font-medium hover:bg-muted/50 focus:ring-2 focus:ring-primary/40">
+                  {statusPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <span className="flex items-center gap-2">
+                      {isProspectStatus(prospect.status) && (
+                        <span
+                          className={cn(
+                            "h-2.5 w-2.5 rounded-full ring-2 ring-background",
+                            PROSPECT_STATUS_BAR_COLORS[prospect.status],
+                          )}
+                          aria-hidden
+                        />
+                      )}
+                      <SelectValue placeholder="Select status…" />
+                    </span>
+                  )}
+                </SelectTrigger>
+                <SelectContent>
+                  {PROSPECT_STATUSES.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      <span className="flex items-center gap-2">
+                        <span
+                          className={cn("h-2 w-2 rounded-full", PROSPECT_STATUS_BAR_COLORS[s])}
+                          aria-hidden
+                        />
+                        {PROSPECT_STATUS_LABELS[s]}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <Separator />
@@ -2161,6 +2219,13 @@ function CallDialog({
   const [pending, startTransition] = useTransition();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingWarnings, setPendingWarnings] = useState<ComplianceWarning[]>([]);
+
+  // Re-sync the picked number whenever the dialog opens for a (possibly different) prospect.
+  // Without this, useState(phone) only seeds once at mount — switching from a no-phone prospect
+  // (Susan Dupree, James Bloodworth) to one with a number leaves selectedPhone stuck at "".
+  useEffect(() => {
+    if (open) setSelectedPhone(prospect.phones?.[0] ?? "");
+  }, [open, prospect.id, prospect.phones]);
 
   const softphoneReady = status === "ready" && !!client;
 

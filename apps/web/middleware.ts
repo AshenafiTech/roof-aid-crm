@@ -52,6 +52,13 @@ export async function middleware(request: NextRequest) {
 
   // --- Unauthenticated user trying to access a protected route ---
   if (!user && !isPublicRoute) {
+    // API routes return JSON 401 instead of redirecting to /login.
+    // A redirect to the HTML login page poisons callers that do
+    // `await res.json()` (e.g. the softphone's credentials fetch),
+    // since fetch follows the 302 and the login page returns 200 HTML.
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     const redirectUrl = new URL("/login", request.url);
     // Preserve the original destination so we can redirect back after login
     redirectUrl.searchParams.set("next", pathname);

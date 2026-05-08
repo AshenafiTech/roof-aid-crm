@@ -78,10 +78,10 @@
 
   /* Accent — violet */
   --accent-h: 285;
-  --accent-color: oklch(0.62 0.22 var(--accent-h));
-  --accent-soft: oklch(0.62 0.22 var(--accent-h) / 0.18);
+  --accent-color: oklch(0.60 0.17 var(--accent-h));
+  --accent-soft: oklch(0.60 0.17 var(--accent-h) / 0.18);
   --accent-fg-c: oklch(0.99 0.005 var(--accent-h));
-  --accent-ring: oklch(0.62 0.22 var(--accent-h) / 0.40);
+  --accent-ring: oklch(0.60 0.17 var(--accent-h) / 0.40);
 
   /* Status hues */
   --danger: oklch(0.66 0.18 25);
@@ -136,7 +136,7 @@
   --sidebar-ring:                  var(--accent-color);
 
   /* Chart palette — violet-led, vibrant */
-  --chart-1: oklch(0.62 0.22 285);   /* violet (brand) */
+  --chart-1: oklch(0.60 0.17 285);   /* violet (brand) */
   --chart-2: oklch(0.700 0.160 210); /* cyan */
   --chart-3: oklch(0.770 0.170 75);  /* amber */
   --chart-4: oklch(0.660 0.240 345); /* fuchsia */
@@ -149,7 +149,7 @@
   --shadow-lg: 0 8px 20px -4px rgb(20 16 48 / 0.12), 0 18px 36px -8px rgb(20 16 48 / 0.16);
   --shadow-xl: 0 14px 28px -8px rgb(20 16 48 / 0.16), 0 28px 56px -12px rgb(20 16 48 / 0.20);
   --shadow-focus: 0 0 0 4px var(--accent-ring);
-  --shadow-brand-glow: 0 10px 30px -10px oklch(0.62 0.22 var(--accent-h) / 0.45);
+  --shadow-brand-glow: 0 10px 30px -10px oklch(0.60 0.17 var(--accent-h) / 0.45);
   --shadow:    0 1px 0 oklch(1 0 0 / 0.6) inset, 0 6px 24px oklch(0 0 0 / 0.08);
 }
 
@@ -204,7 +204,7 @@
   --shadow-lg: 0 8px 20px -4px rgb(0 0 0 / 0.40), 0 18px 36px -8px rgb(0 0 0 / 0.55);
   --shadow-xl: 0 14px 28px -8px rgb(0 0 0 / 0.50), 0 28px 56px -12px rgb(0 0 0 / 0.65);
   --shadow-focus: 0 0 0 4px var(--accent-ring);
-  --shadow-brand-glow: 0 10px 30px -10px oklch(0.62 0.22 var(--accent-h) / 0.50);
+  --shadow-brand-glow: 0 10px 30px -10px oklch(0.60 0.17 var(--accent-h) / 0.50);
   --shadow:    0 1px 0 oklch(1 0 0 / 0.04) inset, 0 8px 24px oklch(0 0 0 / 0.35);
 }
 
@@ -440,7 +440,7 @@
 .brand-mark {
   width: 28px; height: 28px;
   border-radius: 8px;
-  background: linear-gradient(135deg, var(--accent-color), oklch(0.45 0.20 var(--accent-h)));
+  background: linear-gradient(135deg, var(--accent-color), oklch(0.42 0.15 var(--accent-h)));
   display: grid; place-items: center;
   color: var(--accent-fg-c);
   flex-shrink: 0;
@@ -543,6 +543,13 @@
 .app { --banner-h: 0px; }
 .app:has([data-banner="missing-number"]) { --banner-h: 4rem; }
 
+/* Softphone-aware viewport sizing.
+   The Telnyx softphone status bar lives between the topbar and the page
+   content (when active). Pages that pin themselves to the viewport must
+   subtract its height too — otherwise content is pulled under it. */
+.app { --softphone-h: 0px; }
+.app:has([data-softphone-bar]) { --softphone-h: 2.75rem; }
+
 /* TOPBAR */
 .topbar {
   display: flex;
@@ -610,7 +617,7 @@
 .user-chip:hover { background: var(--bg-3); }
 .avatar {
   width: 24px; height: 24px; border-radius: 99px;
-  background: linear-gradient(135deg, var(--accent-color), oklch(0.45 0.20 var(--accent-h)));
+  background: linear-gradient(135deg, var(--accent-color), oklch(0.42 0.15 var(--accent-h)));
   color: var(--accent-fg-c);
   display: grid; place-items: center;
   font-size: 10.5px; font-weight: 600;
