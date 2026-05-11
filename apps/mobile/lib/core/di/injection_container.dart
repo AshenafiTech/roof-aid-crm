@@ -8,6 +8,12 @@ import '../../features/auth/domain/usecases/get_current_user.dart';
 import '../../features/auth/domain/usecases/sign_in.dart';
 import '../../features/auth/domain/usecases/sign_out.dart';
 import '../../features/auth/presentation/bloc/auth_bloc.dart';
+import '../../features/messages/data/datasources/conversations_remote_datasource.dart';
+import '../../features/messages/data/repositories/conversations_repository_impl.dart';
+import '../../features/messages/domain/repositories/conversations_repository.dart';
+import '../../features/messages/domain/usecases/get_conversations.dart';
+import '../../features/messages/domain/usecases/watch_conversations.dart';
+import '../../features/messages/presentation/bloc/conversations_bloc.dart';
 import '../../features/prospects/data/datasources/note_remote_datasource.dart';
 import '../../features/prospects/data/datasources/prospect_remote_datasource.dart';
 import '../../features/prospects/data/datasources/sms_remote_datasource.dart';
@@ -133,6 +139,30 @@ Future<void> initDependencies() async {
       sendMessage: sl(),
       checkCanMessage: sl(),
       markRead: sl(),
+    ),
+  );
+
+  // ── Messages (SMS inbox) Feature ──────────────────────────
+
+  // Datasources
+  sl.registerLazySingleton<ConversationsRemoteDatasource>(
+    () => ConversationsRemoteDatasourceImpl(sl()),
+  );
+
+  // Repositories
+  sl.registerLazySingleton<ConversationsRepository>(
+    () => ConversationsRepositoryImpl(sl()),
+  );
+
+  // Use cases
+  sl.registerLazySingleton(() => GetConversations(sl()));
+  sl.registerLazySingleton(() => WatchConversations(sl()));
+
+  // BLoC
+  sl.registerFactory(
+    () => ConversationsBloc(
+      getConversations: sl(),
+      watchConversations: sl(),
     ),
   );
 }
