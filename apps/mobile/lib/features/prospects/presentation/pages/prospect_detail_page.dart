@@ -20,12 +20,22 @@ import '../widgets/tabs/sms_tab.dart';
 class ProspectDetailPage extends StatelessWidget {
   final ProspectEntity prospect;
 
-  const ProspectDetailPage({super.key, required this.prospect});
+  /// Tab to open on first paint. 0=Overview, 1=Appointments, 2=Calls,
+  /// 3=SMS, 4=Documents, 5=Inspection, 6=Notes. Used by the Messages tab
+  /// inbox to land the user directly on the SMS thread.
+  final int initialTabIndex;
+
+  const ProspectDetailPage({
+    super.key,
+    required this.prospect,
+    this.initialTabIndex = 0,
+  });
 
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
       length: 7,
+      initialIndex: initialTabIndex,
       child: Scaffold(
         appBar: AppBar(
           title: Text(

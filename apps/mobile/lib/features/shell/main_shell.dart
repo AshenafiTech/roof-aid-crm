@@ -6,6 +6,9 @@ import '../../core/theme/theme_controller.dart';
 import '../auth/presentation/bloc/auth_bloc.dart';
 import '../auth/presentation/bloc/auth_event.dart';
 import '../auth/presentation/bloc/auth_state.dart';
+import '../messages/presentation/bloc/conversations_bloc.dart';
+import '../messages/presentation/bloc/conversations_event.dart';
+import '../messages/presentation/pages/messages_page.dart';
 import '../prospects/presentation/bloc/prospects_bloc.dart';
 import '../prospects/presentation/bloc/prospects_event.dart';
 import '../prospects/presentation/pages/prospects_map_view.dart';
@@ -152,10 +155,10 @@ class _MainShellState extends State<MainShell> {
             title: 'Documents',
             subtitle: 'Contracts and signed documents will appear here',
           ),
-          const PlaceholderPage(
-            icon: Icons.chat_bubble_outline,
-            title: 'Messages',
-            subtitle: 'SMS conversations with prospects will appear here',
+          BlocProvider<ConversationsBloc>(
+            create: (_) => sl<ConversationsBloc>()
+              ..add(const ConversationsLoadRequested()),
+            child: const MessagesPage(),
           ),
           const PlaceholderPage(
             icon: Icons.settings_outlined,
