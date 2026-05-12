@@ -17,10 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
 import { sendSms } from "@/lib/sms/actions";
-import {
-  DncConfirmDialog,
-  type Warning,
-} from "@/components/comms/dnc-confirm-dialog";
+import type { Warning } from "@/components/comms/dnc-confirm-dialog";
 
 export interface SmsTemplate {
   id: string;
@@ -52,8 +49,6 @@ export function SmsComposer({
 }: SmsComposerProps) {
   const [body, setBody] = useState("");
   const [pending, startTransition] = useTransition();
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [pendingWarnings, setPendingWarnings] = useState<Warning[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const meta = useMemo(() => segmentsFor(body), [body]);
@@ -81,22 +76,21 @@ export function SmsComposer({
         acknowledgedWarnings: acknowledged,
       });
       if (!res.ok) {
+        // DNC / calling-hours warnings: silently re-send with them ack'd.
+        // No user-facing dialog — override is still recorded server-side via
+        // the acknowledgedWarnings header for the compliance audit log.
         if (res.requiresAcknowledgement && res.requiresAcknowledgement.length > 0) {
-          setPendingWarnings(res.requiresAcknowledgement);
-          setConfirmOpen(true);
+          send(res.requiresAcknowledgement);
           return;
         }
         toast.error(res.error);
         return;
       }
       setBody("");
-      setPendingWarnings([]);
-      setConfirmOpen(false);
     });
   };
 
   const handleSend = () => send([]);
-  const handleConfirm = () => send(pendingWarnings);
 
   const insertTemplate = (text: string) => {
     setBody(text);
@@ -133,20 +127,6 @@ export function SmsComposer({
           </div>
         </div>
       )}
-      {isDnc && hasPhone && (
-        <div className="rounded-lg border border-amber-500/40 bg-amber-50 dark:bg-amber-950/20 p-3 text-sm flex items-start gap-2">
-          <AlertTriangle className="size-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
-          <div>
-            <p className="font-medium text-amber-900 dark:text-amber-200">
-              On the Do Not Call list
-            </p>
-            <p className="text-xs mt-0.5 text-amber-800/80 dark:text-amber-300/80">
-              You&rsquo;ll be asked to confirm before any message goes out.
-            </p>
-          </div>
-        </div>
-      )}
-
       <div
         className={cn(
           "rounded-xl border bg-card transition-shadow",
@@ -254,14 +234,6 @@ export function SmsComposer({
         </div>
       </div>
 
-      <DncConfirmDialog
-        open={confirmOpen}
-        onOpenChange={setConfirmOpen}
-        warnings={pendingWarnings}
-        prospectName={prospectName}
-        onConfirm={handleConfirm}
-        busy={pending}
-      />
     </div>
   );
 }

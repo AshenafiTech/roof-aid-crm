@@ -1,5 +1,6 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
-import { CheckCircle2 } from "lucide-react";
+import { ArrowLeft, CheckCircle2 } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/server";
@@ -55,7 +56,14 @@ export default async function OnboardingPage() {
   return (
     <main className="container mx-auto px-4 py-12 space-y-6">
       <div className="max-w-2xl mx-auto">
-        <h1 className="text-2xl font-semibold">Welcome to Roof-Aid</h1>
+        <Link
+          href="/"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+        >
+          <ArrowLeft className="size-3.5" />
+          Back to dashboard
+        </Link>
+        <h1 className="mt-3 text-2xl font-semibold">Welcome to Roof-Aid</h1>
         <p className="text-sm text-muted-foreground mt-1">
           One quick step before you can call and text homeowners.
         </p>

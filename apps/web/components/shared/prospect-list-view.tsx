@@ -80,10 +80,7 @@ import type { ProspectListItem } from "@/lib/queries/prospects";
 import { sendSms } from "@/lib/sms/actions";
 import { canCallProspect } from "@/lib/calls/actions";
 import { sendEmailAction } from "@/lib/email/actions";
-import {
-  DncConfirmDialog,
-  type Warning as ComplianceWarning,
-} from "@/components/comms/dnc-confirm-dialog";
+import type { Warning as ComplianceWarning } from "@/components/comms/dnc-confirm-dialog";
 import { useSoftphoneStore } from "@/lib/stores/softphone-store";
 import { REMOTE_AUDIO_ID } from "@/components/comms/softphone";
 
@@ -295,7 +292,20 @@ export function ProspectListView({
   // match the view are dropped, and net-new rows are appended. The user sees
   // the badge they just changed update without the whole list reshuffling.
   const [displayRows, setDisplayRows] = useState(rows);
+  const prevQueryKeyRef = useRef(spString);
   useEffect(() => {
+    // Two refresh kinds reach this component:
+    //   1. URL change (filter / proximity / search / pagination) — the user
+    //      asked for a different slice; replace the list wholesale so the
+    //      new server snapshot is what's visible.
+    //   2. Server revalidation with the same URL (status toggles, DNC, etc.)
+    //      — rows refetched but the user expects the row order they're
+    //      looking at to stay put; reconcile field-by-field.
+    if (prevQueryKeyRef.current !== spString) {
+      prevQueryKeyRef.current = spString;
+      setDisplayRows(rows);
+      return;
+    }
     setDisplayRows((prev) => {
       // `Map` is shadowed by the lucide-react Map icon import at the top of
       // this file — use globalThis to reach the built-ins.
@@ -314,7 +324,7 @@ export function ProspectListView({
       }
       return merged;
     });
-  }, [rows]);
+  }, [rows, spString]);
 
   const allChecked = displayRows.length > 0 && displayRows.every((r) => checkedIds.has(r.id));
   const someChecked = checkedIds.size > 0;
@@ -503,8 +513,8 @@ export function ProspectListView({
                 name="street"
                 value={street}
                 onChange={(e) => setDraftParam("street", e.target.value || undefined)}
-                placeholder="Search by address..."
-                aria-label="Search prospects by street address"
+                placeholder="Address, city, or ZIP..."
+                aria-label="Search prospects by address, city, state, or ZIP"
                 className="h-8 text-sm pl-8"
               />
             </div>
@@ -1820,8 +1830,6 @@ function SmsDialog({
 }) {
   const [message, setMessage] = useState("");
   const [pending, startTransition] = useTransition();
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [pendingWarnings, setPendingWarnings] = useState<ComplianceWarning[]>([]);
   const phone = prospect.phones?.[0] ?? "";
 
   function send(acknowledged: ComplianceWarning[]) {
@@ -1837,9 +1845,10 @@ function SmsDialog({
         acknowledgedWarnings: acknowledged,
       });
       if (!res.ok) {
+        // Silently re-send with the warnings ack'd — no popup, no friction.
+        // The override is still recorded server-side for the audit trail.
         if (res.requiresAcknowledgement && res.requiresAcknowledgement.length > 0) {
-          setPendingWarnings(res.requiresAcknowledgement);
-          setConfirmOpen(true);
+          send(res.requiresAcknowledgement);
           return;
         }
         toast.error(res.error);
@@ -1847,18 +1856,12 @@ function SmsDialog({
       }
       toast.success(`SMS sent to ${prospect.name}`);
       setMessage("");
-      setPendingWarnings([]);
-      setConfirmOpen(false);
       onOpenChange(false);
     });
   }
 
   function handleSend() {
     send([]);
-  }
-
-  function handleConfirm() {
-    send(pendingWarnings);
   }
 
   return (
@@ -1906,13 +1909,6 @@ function SmsDialog({
             />
           </div>
 
-          {prospect.do_not_call && (
-            <div className="rounded-md border border-amber-500/40 bg-amber-50 dark:bg-amber-950/20 p-2 text-xs text-amber-800 dark:text-amber-300">
-              <strong>DNC.</strong> This prospect is on the Do Not Call list.
-              You&rsquo;ll be asked to confirm before any message goes out.
-            </div>
-          )}
-
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>
               Cancel
@@ -1928,14 +1924,6 @@ function SmsDialog({
           </div>
         </div>
       </DialogContent>
-      <DncConfirmDialog
-        open={confirmOpen}
-        onOpenChange={setConfirmOpen}
-        warnings={pendingWarnings}
-        prospectName={prospect.name}
-        onConfirm={handleConfirm}
-        busy={pending}
-      />
     </Dialog>
   );
 }
@@ -2217,8 +2205,6 @@ function CallDialog({
   const [selectedPhone, setSelectedPhone] = useState(phone);
   const { client, callerNumber, status, setOutgoingContext } = useSoftphoneStore();
   const [pending, startTransition] = useTransition();
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [pendingWarnings, setPendingWarnings] = useState<ComplianceWarning[]>([]);
 
   // Re-sync the picked number whenever the dialog opens for a (possibly different) prospect.
   // Without this, useState(phone) only seeds once at mount — switching from a no-phone prospect
@@ -2261,8 +2247,6 @@ function CallDialog({
         prospectName: prospect.name,
         destinationNumber: selectedPhone,
       });
-      setConfirmOpen(false);
-      setPendingWarnings([]);
       onOpenChange(false);
     } catch (err) {
       console.error("[CallDialog] dial failed", err);
@@ -2278,17 +2262,10 @@ function CallDialog({
         toast.error(verdict.error);
         return;
       }
-      if (verdict.warnings.length > 0) {
-        setPendingWarnings(verdict.warnings);
-        setConfirmOpen(true);
-        return;
-      }
-      dial([]);
+      // Silently auto-ack any warnings (DNC, outside calling hours).
+      // No popup; ack still rides on the SIP header for the audit trail.
+      dial(verdict.warnings);
     });
-  }
-
-  function handleConfirm() {
-    dial(pendingWarnings);
   }
 
   return (
@@ -2369,14 +2346,6 @@ function CallDialog({
           )}
         </div>
       </DialogContent>
-      <DncConfirmDialog
-        open={confirmOpen}
-        onOpenChange={setConfirmOpen}
-        warnings={pendingWarnings}
-        prospectName={prospect.name}
-        onConfirm={handleConfirm}
-        busy={pending}
-      />
     </Dialog>
   );
 }

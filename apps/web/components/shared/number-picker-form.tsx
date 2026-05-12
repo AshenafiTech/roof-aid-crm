@@ -49,6 +49,15 @@ export function NumberPickerForm({
   const [searching, startSearch] = useTransition();
   const [purchasing, startPurchase] = useTransition();
 
+  // Clear the result set and return to the initial state so the user can
+  // try a different area code (with the Popular Markets chips visible again).
+  const resetSearch = () => {
+    setAreaCode("");
+    setResults([]);
+    setSelected(null);
+    setSearched(false);
+  };
+
   // Hint shown next to the input as the user types (e.g. "479 — NW Arkansas").
   const metroHint = useMemo(
     () => (areaCode.length === 3 ? metroForNpa(areaCode) : null),
@@ -186,8 +195,17 @@ export function NumberPickerForm({
 
       {searched && results.length > 0 && (
         <div className="space-y-3">
-          <div className="text-sm font-medium text-muted-foreground">
-            {results.length} numbers available
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-medium text-muted-foreground">
+              {results.length} numbers available
+            </div>
+            <button
+              type="button"
+              onClick={resetSearch}
+              className="text-xs font-medium text-primary hover:underline"
+            >
+              ← Try another area code
+            </button>
           </div>
           <div className="rounded-lg border divide-y max-h-80 overflow-y-auto">
             {results.map((n) => (
@@ -203,17 +221,12 @@ export function NumberPickerForm({
                   onChange={() => setSelected(n.e164)}
                   className="size-4"
                 />
-                <div className="flex-1 flex items-center justify-between gap-4">
-                  <div>
-                    <div className="font-medium tabular-nums">{formatE164(n.e164)}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {[n.city, n.region].filter(Boolean).join(", ") || "United States"}
-                      {" · "}
-                      {n.capabilities.join(" / ").toUpperCase()}
-                    </div>
-                  </div>
-                  <div className="text-sm tabular-nums text-muted-foreground">
-                    ${n.monthly_cost_usd.toFixed(2)}/mo
+                <div className="flex-1">
+                  <div className="font-medium tabular-nums">{formatE164(n.e164)}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {[n.city, n.region].filter(Boolean).join(", ") || "United States"}
+                    {" · "}
+                    {n.capabilities.join(" / ").toUpperCase()}
                   </div>
                 </div>
               </label>
@@ -252,6 +265,13 @@ export function NumberPickerForm({
           <p className="text-sm text-muted-foreground">
             No numbers available in {areaCode} right now.
           </p>
+          <button
+            type="button"
+            onClick={resetSearch}
+            className="text-xs font-medium text-primary hover:underline"
+          >
+            ← Try another area code
+          </button>
           {siblings.length > 0 ? (
             <div className="space-y-2">
               <p className="text-xs text-muted-foreground">
