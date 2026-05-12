@@ -295,7 +295,20 @@ export function ProspectListView({
   // match the view are dropped, and net-new rows are appended. The user sees
   // the badge they just changed update without the whole list reshuffling.
   const [displayRows, setDisplayRows] = useState(rows);
+  const prevQueryKeyRef = useRef(spString);
   useEffect(() => {
+    // Two refresh kinds reach this component:
+    //   1. URL change (filter / proximity / search / pagination) — the user
+    //      asked for a different slice; replace the list wholesale so the
+    //      new server snapshot is what's visible.
+    //   2. Server revalidation with the same URL (status toggles, DNC, etc.)
+    //      — rows refetched but the user expects the row order they're
+    //      looking at to stay put; reconcile field-by-field.
+    if (prevQueryKeyRef.current !== spString) {
+      prevQueryKeyRef.current = spString;
+      setDisplayRows(rows);
+      return;
+    }
     setDisplayRows((prev) => {
       // `Map` is shadowed by the lucide-react Map icon import at the top of
       // this file — use globalThis to reach the built-ins.
@@ -314,7 +327,7 @@ export function ProspectListView({
       }
       return merged;
     });
-  }, [rows]);
+  }, [rows, spString]);
 
   const allChecked = displayRows.length > 0 && displayRows.every((r) => checkedIds.has(r.id));
   const someChecked = checkedIds.size > 0;
@@ -503,8 +516,8 @@ export function ProspectListView({
                 name="street"
                 value={street}
                 onChange={(e) => setDraftParam("street", e.target.value || undefined)}
-                placeholder="Search by address..."
-                aria-label="Search prospects by street address"
+                placeholder="Address, city, or ZIP..."
+                aria-label="Search prospects by address, city, state, or ZIP"
                 className="h-8 text-sm pl-8"
               />
             </div>

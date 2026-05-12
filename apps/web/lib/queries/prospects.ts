@@ -116,15 +116,34 @@ export async function listProspects(filters: ProspectFilters) {
     );
   }
 
-  // Separation of concerns:
-  //   `search` → NAME only.   `street` → ADDRESS only.
+  // `search` → NAME only.
+  // `street` → location search across address + city + state + zip, tokenized
+  //   so "colcord rd" requires both "colcord" and "rd" to appear somewhere
+  //   in the location columns. Tolerant of users typing the city or ZIP
+  //   into the address box.
   const nameTerm = filters.search?.trim();
   if (nameTerm) {
     query = query.ilike("name", `%${escapeIlike(nameTerm)}%`);
   }
   const streetTerm = filters.street?.trim();
   if (streetTerm) {
-    query = query.ilike("address", `%${escapeIlike(streetTerm)}%`);
+    const tokens = streetTerm
+      .split(/\s+/)
+      // PostgREST .or() parses commas/parens as filter delimiters — strip them
+      // from user input so a stray "Colcord, OK" doesn't break the query.
+      .map((t) => t.replace(/[,()]/g, "").trim())
+      .filter(Boolean);
+    for (const token of tokens) {
+      const escaped = escapeIlike(token);
+      query = query.or(
+        [
+          `address.ilike.%${escaped}%`,
+          `city.ilike.%${escaped}%`,
+          `state.ilike.%${escaped}%`,
+          `zip.ilike.%${escaped}%`,
+        ].join(","),
+      );
+    }
   }
 
   if (filters.assignedTo) query = query.eq("assigned_to", filters.assignedTo);
