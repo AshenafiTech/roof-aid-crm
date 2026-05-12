@@ -10,10 +10,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { sendAdHocSms } from "@/lib/sms/adhoc-actions";
-import {
-  DncConfirmDialog,
-  type Warning,
-} from "@/components/comms/dnc-confirm-dialog";
 
 function segmentsFor(text: string) {
   const isUnicode = /[^\x00-\x7F]/.test(text);
@@ -26,8 +22,6 @@ export function SmsComposer() {
   const [number, setNumber] = useState("");
   const [message, setMessage] = useState("");
   const [pending, startTransition] = useTransition();
-  const [dncOpen, setDncOpen] = useState(false);
-  const [pendingWarnings, setPendingWarnings] = useState<Warning[]>([]);
 
   const meta = segmentsFor(message);
   const charsInSegment = message.length === 0 ? 0 : ((message.length - 1) % meta.cap) + 1;
@@ -39,9 +33,10 @@ export function SmsComposer() {
     startTransition(async () => {
       const res = await sendAdHocSms({ to, body, acknowledgedDnc });
       if (!res.ok) {
+        // Silently re-send with the DNC ack — no popup, no friction.
+        // Server still records the override for compliance audit.
         if (res.requiresAcknowledgement?.includes("dnc")) {
-          setPendingWarnings(["dnc"]);
-          setDncOpen(true);
+          send(true);
           return;
         }
         toast.error(res.error);
@@ -49,16 +44,13 @@ export function SmsComposer() {
       }
       toast.success(`Sent to ${res.to}`);
       setMessage("");
-      setPendingWarnings([]);
-      setDncOpen(false);
     });
   };
 
   const sendDisabled = pending || number.trim().length < 7 || message.trim().length === 0;
 
   return (
-    <>
-      <Card className="p-6 space-y-4">
+    <Card className="p-6 space-y-4">
         <h2 className="text-lg font-semibold">New Message</h2>
         <div className="space-y-3">
           <div className="flex flex-col gap-1">
@@ -111,16 +103,6 @@ export function SmsComposer() {
             Send
           </Button>
         </div>
-      </Card>
-
-      <DncConfirmDialog
-        open={dncOpen}
-        onOpenChange={setDncOpen}
-        warnings={pendingWarnings}
-        prospectName={null}
-        onConfirm={() => send(true)}
-        busy={pending}
-      />
-    </>
+    </Card>
   );
 }

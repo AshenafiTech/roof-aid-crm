@@ -1,15 +1,12 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useTransition } from "react";
 import { Loader2, Phone, PhoneOff } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { useSoftphoneStore } from "@/lib/stores/softphone-store";
-import {
-  DncConfirmDialog,
-  type Warning as ComplianceWarning,
-} from "@/components/comms/dnc-confirm-dialog";
+import type { Warning as ComplianceWarning } from "@/components/comms/dnc-confirm-dialog";
 import { REMOTE_AUDIO_ID } from "@/components/comms/softphone";
 
 import { canCallProspect } from "@/lib/calls/actions";
@@ -30,10 +27,6 @@ export function CallButton({
   const { status, client, callerNumber, activeCall, setOutgoingContext } =
     useSoftphoneStore();
   const [pending, startTransition] = useTransition();
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [pendingWarnings, setPendingWarnings] = useState<ComplianceWarning[]>(
-    [],
-  );
 
   const noPhone = !prospectPhone;
   const softphoneNotReady = status !== "ready";
@@ -73,8 +66,6 @@ export function CallButton({
         prospectName,
         destinationNumber: prospectPhone,
       });
-      setConfirmOpen(false);
-      setPendingWarnings([]);
     } catch (err) {
       console.error("[CallButton] dial failed", err);
       toast.error(
@@ -86,23 +77,17 @@ export function CallButton({
   const handleClick = () => {
     if (!prospectPhone) return;
     startTransition(async () => {
-      // Check `can_call()` server-side — DNC + outside calling hours come
-      // back as advisory warnings (per memory note); other reasons hard-block.
+      // can_call() returns warnings for DNC / outside-calling-hours; we
+      // silently auto-ack them and dial without prompting the user. The
+      // acknowledgement still rides on the SIP custom header for audit.
       const verdict = await canCallProspect({ prospectId });
       if (!verdict.ok) {
         toast.error(verdict.error);
         return;
       }
-      if (verdict.warnings.length > 0) {
-        setPendingWarnings(verdict.warnings);
-        setConfirmOpen(true);
-        return;
-      }
-      dial([]);
+      dial(verdict.warnings);
     });
   };
-
-  const handleConfirm = () => dial(pendingWarnings);
 
   const disabled =
     pending ||
@@ -117,42 +102,25 @@ export function CallButton({
       ? "Softphone not ready"
       : inAnotherCall
         ? "Already on a call"
-        : isDnc
-          ? "On Do Not Call — confirm before dialing"
-          : "Call";
+        : "Call";
 
   return (
-    <>
-      <Button
-        size="sm"
-        variant={isDnc ? "outline" : "default"}
-        onClick={handleClick}
-        disabled={disabled}
-        title={tooltip}
-        className={
-          isDnc
-            ? "gap-1.5 border-amber-500/40 text-amber-700 hover:bg-amber-50 dark:text-amber-400"
-            : "gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
-        }
-      >
-        {pending ? (
-          <Loader2 className="size-4 animate-spin" />
-        ) : status === "in_call" ? (
-          <PhoneOff className="size-4" />
-        ) : (
-          <Phone className="size-4 fill-current" />
-        )}
-        Call
-      </Button>
-
-      <DncConfirmDialog
-        open={confirmOpen}
-        onOpenChange={setConfirmOpen}
-        warnings={pendingWarnings}
-        prospectName={prospectName}
-        onConfirm={handleConfirm}
-        busy={pending}
-      />
-    </>
+    <Button
+      size="sm"
+      variant="default"
+      onClick={handleClick}
+      disabled={disabled}
+      title={tooltip}
+      className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
+    >
+      {pending ? (
+        <Loader2 className="size-4 animate-spin" />
+      ) : status === "in_call" ? (
+        <PhoneOff className="size-4" />
+      ) : (
+        <Phone className="size-4 fill-current" />
+      )}
+      Call
+    </Button>
   );
 }

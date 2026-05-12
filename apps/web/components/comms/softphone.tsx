@@ -202,7 +202,14 @@ export function Softphone() {
           break;
         case "trying":
         case "early":
-          if (direction === "outbound") setStatus("ringing_out");
+          // Stash the call object as soon as we know it exists so the
+          // Cancel button can hang up before the SDK reaches "ringing".
+          // Without this, clicking Cancel during early dialing was a no-op
+          // because activeCall was still null.
+          if (direction === "outbound") {
+            setStatus("ringing_out");
+            setActiveCall(call);
+          }
           break;
         case "active":
           setStatus("in_call");
