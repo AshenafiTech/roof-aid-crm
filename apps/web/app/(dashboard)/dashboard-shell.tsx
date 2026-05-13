@@ -55,12 +55,14 @@ export function DashboardShell({
   user,
   unreadCount,
   recentNotifications,
+  emailUnreadCount,
   banner,
   children,
 }: {
   user: AuthUser;
   unreadCount: number;
   recentNotifications: NotificationRow[];
+  emailUnreadCount: number;
   banner?: React.ReactNode;
   children: React.ReactNode;
 }) {
@@ -105,7 +107,11 @@ export function DashboardShell({
             />
           </button>
         </div>
-        <SidebarNav role={user.role} collapsed={collapsed} />
+        <SidebarNav
+          role={user.role}
+          collapsed={collapsed}
+          emailUnreadCount={emailUnreadCount}
+        />
         <div className="side-foot">
           <ThemeToggle collapsed={collapsed} />
         </div>
@@ -132,6 +138,7 @@ export function DashboardShell({
               <div className="flex h-[calc(100%-3.75rem)] flex-col">
                 <SidebarNav
                   role={user.role}
+                  emailUnreadCount={emailUnreadCount}
                   onNavigate={() => setMobileOpen(false)}
                 />
                 <div className="border-t p-2">

@@ -6,7 +6,13 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import {
   GmailNotConnectedError,
+  getGmailMessage,
+  getGmailUnreadCount,
+  listGmailMessages,
+  markGmailRead,
   sendGmail,
+  type GmailListResult,
+  type GmailMessageDetail,
 } from "@/lib/email/gmail";
 
 const sendSchema = z.object({
@@ -132,4 +138,109 @@ export async function disconnectGmail(): Promise<{ ok: boolean }> {
 
   await supabase.from("user_google_tokens").delete().eq("user_id", user.id);
   return { ok: true };
+}
+
+const EMAIL_PAGE_SIZE = 20;
+
+export type ListEmailsResult =
+  | { ok: true; data: GmailListResult; unreadCount: number }
+  | { ok: false; error: string; needsConnect?: boolean };
+
+export async function listEmailsAction(input: {
+  folder: "INBOX" | "SENT";
+  pageToken?: string | null;
+}): Promise<ListEmailsResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Unauthorized" };
+
+  try {
+    const [data, unreadCount] = await Promise.all([
+      listGmailMessages({
+        userId: user.id,
+        labelId: input.folder,
+        pageToken: input.pageToken ?? null,
+        pageSize: EMAIL_PAGE_SIZE,
+      }),
+      input.folder === "INBOX"
+        ? getGmailUnreadCount(user.id)
+        : Promise.resolve(0),
+    ]);
+    return { ok: true, data, unreadCount };
+  } catch (err) {
+    if (err instanceof GmailNotConnectedError) {
+      return {
+        ok: false,
+        error: "Connect your Gmail account to read email.",
+        needsConnect: true,
+      };
+    }
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Failed to load emails",
+    };
+  }
+}
+
+export type GetEmailResult =
+  | { ok: true; data: GmailMessageDetail }
+  | { ok: false; error: string; needsConnect?: boolean };
+
+export async function getEmailAction(input: {
+  messageId: string;
+  markRead?: boolean;
+}): Promise<GetEmailResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Unauthorized" };
+
+  try {
+    const data = await getGmailMessage(user.id, input.messageId);
+    if (input.markRead && data.unread) {
+      try {
+        await markGmailRead(user.id, input.messageId);
+        data.unread = false;
+      } catch {
+        // Non-fatal — viewer still shows the message.
+      }
+    }
+    return { ok: true, data };
+  } catch (err) {
+    if (err instanceof GmailNotConnectedError) {
+      return {
+        ok: false,
+        error: "Connect your Gmail account to read email.",
+        needsConnect: true,
+      };
+    }
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Failed to load email",
+    };
+  }
+}
+
+export async function getUnreadEmailCount(): Promise<number> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return 0;
+
+  const { data: connected } = await supabase
+    .from("user_google_tokens")
+    .select("user_id")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (!connected) return 0;
+
+  try {
+    return await getGmailUnreadCount(user.id);
+  } catch {
+    return 0;
+  }
 }

@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
+  GMAIL_API_BASE,
   GMAIL_SEND_URL,
   GOOGLE_TOKEN_URL,
   getOAuthConfig,
@@ -206,3 +207,275 @@ export async function sendGmail(input: SendGmailInput): Promise<SendGmailResult>
   const data = (await res.json()) as { id: string; threadId: string };
   return { messageId: data.id, threadId: data.threadId, fromEmail };
 }
+
+// ============================================================
+// Gmail read API helpers (list / get / unread count)
+// ============================================================
+
+export type GmailMessageSummary = {
+  id: string;
+  threadId: string;
+  from: string;
+  fromName: string | null;
+  fromEmail: string;
+  to: string;
+  subject: string;
+  snippet: string;
+  date: string;
+  unread: boolean;
+  hasAttachments: boolean;
+};
+
+export type GmailMessageDetail = GmailMessageSummary & {
+  bodyText: string;
+  bodyHtml: string | null;
+};
+
+export type GmailListResult = {
+  messages: GmailMessageSummary[];
+  nextPageToken: string | null;
+  resultSizeEstimate: number;
+};
+
+async function gmailFetch(
+  userId: string,
+  path: string,
+  init?: RequestInit,
+): Promise<Response> {
+  const { accessToken } = await getValidAccessToken(userId);
+  const res = await fetch(`${GMAIL_API_BASE}${path}`, {
+    ...init,
+    headers: {
+      ...(init?.headers ?? {}),
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+  if (res.status === 401) {
+    const admin = createAdminClient();
+    await admin.from("user_google_tokens").delete().eq("user_id", userId);
+    throw new GmailNotConnectedError();
+  }
+  return res;
+}
+
+function parseAddressHeader(value: string | undefined): {
+  name: string | null;
+  email: string;
+} {
+  if (!value) return { name: null, email: "" };
+  const match = value.match(/^\s*"?([^"<]*?)"?\s*<([^>]+)>\s*$/);
+  if (match) {
+    return { name: match[1].trim() || null, email: match[2].trim() };
+  }
+  return { name: null, email: value.trim() };
+}
+
+function getHeader(
+  headers: Array<{ name: string; value: string }>,
+  name: string,
+): string | undefined {
+  const lower = name.toLowerCase();
+  return headers.find((h) => h.name.toLowerCase() === lower)?.value;
+}
+
+function base64UrlDecode(input: string): string {
+  const normalized = input.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
+  return Buffer.from(padded, "base64").toString("utf8");
+}
+
+type GmailPayloadPart = {
+  partId?: string;
+  mimeType?: string;
+  filename?: string;
+  headers?: Array<{ name: string; value: string }>;
+  body?: { size?: number; data?: string; attachmentId?: string };
+  parts?: GmailPayloadPart[];
+};
+
+type GmailMessageRaw = {
+  id: string;
+  threadId: string;
+  labelIds?: string[];
+  snippet?: string;
+  payload?: GmailPayloadPart;
+  internalDate?: string;
+};
+
+function extractBody(payload: GmailPayloadPart | undefined): {
+  text: string;
+  html: string | null;
+  hasAttachments: boolean;
+} {
+  const state: {
+    text: string;
+    html: string | null;
+    hasAttachments: boolean;
+  } = { text: "", html: null, hasAttachments: false };
+
+  const walk = (part: GmailPayloadPart) => {
+    if (part.filename && part.filename.length > 0) {
+      state.hasAttachments = true;
+    }
+    if (part.mimeType === "text/plain" && part.body?.data && !state.text) {
+      state.text = base64UrlDecode(part.body.data);
+    } else if (
+      part.mimeType === "text/html" &&
+      part.body?.data &&
+      !state.html
+    ) {
+      state.html = base64UrlDecode(part.body.data);
+    }
+    if (part.parts) part.parts.forEach(walk);
+  };
+
+  if (payload) walk(payload);
+  if (!state.text && state.html) {
+    state.text = state.html
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+  return state;
+}
+
+function buildSummary(raw: GmailMessageRaw): GmailMessageSummary {
+  const headers = raw.payload?.headers ?? [];
+  const fromRaw = getHeader(headers, "From");
+  const { name: fromName, email: fromEmail } = parseAddressHeader(fromRaw);
+  const dateMs = raw.internalDate ? Number(raw.internalDate) : Date.now();
+  const { hasAttachments } = extractBody(raw.payload);
+
+  return {
+    id: raw.id,
+    threadId: raw.threadId,
+    from: fromRaw ?? "",
+    fromName,
+    fromEmail,
+    to: getHeader(headers, "To") ?? "",
+    subject: getHeader(headers, "Subject") ?? "(no subject)",
+    snippet: raw.snippet ?? "",
+    date: new Date(dateMs).toISOString(),
+    unread: (raw.labelIds ?? []).includes("UNREAD"),
+    hasAttachments,
+  };
+}
+
+export type GmailListOptions = {
+  userId: string;
+  labelId: "INBOX" | "SENT";
+  pageToken?: string | null;
+  pageSize?: number;
+  query?: string;
+};
+
+export async function listGmailMessages(
+  opts: GmailListOptions,
+): Promise<GmailListResult> {
+  const pageSize = Math.min(Math.max(opts.pageSize ?? 20, 1), 100);
+  const params = new URLSearchParams({
+    labelIds: opts.labelId,
+    maxResults: String(pageSize),
+  });
+  if (opts.pageToken) params.set("pageToken", opts.pageToken);
+  if (opts.query) params.set("q", opts.query);
+
+  const res = await gmailFetch(opts.userId, `/messages?${params.toString()}`);
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Gmail list failed (${res.status}): ${body}`);
+  }
+  const listData = (await res.json()) as {
+    messages?: Array<{ id: string; threadId: string }>;
+    nextPageToken?: string;
+    resultSizeEstimate?: number;
+  };
+
+  const ids = (listData.messages ?? []).map((m) => m.id);
+  if (ids.length === 0) {
+    return {
+      messages: [],
+      nextPageToken: listData.nextPageToken ?? null,
+      resultSizeEstimate: listData.resultSizeEstimate ?? 0,
+    };
+  }
+
+  // Fetch metadata for each id in parallel (Gmail has no batch metadata
+  // endpoint that's simpler than this for small page sizes).
+  const summaries = await Promise.all(
+    ids.map(async (id) => {
+      const metaParams = new URLSearchParams({
+        format: "metadata",
+        metadataHeaders: "From",
+      });
+      metaParams.append("metadataHeaders", "To");
+      metaParams.append("metadataHeaders", "Subject");
+      metaParams.append("metadataHeaders", "Date");
+      const metaRes = await gmailFetch(
+        opts.userId,
+        `/messages/${id}?${metaParams.toString()}`,
+      );
+      if (!metaRes.ok) {
+        const body = await metaRes.text();
+        throw new Error(`Gmail get failed (${metaRes.status}): ${body}`);
+      }
+      const raw = (await metaRes.json()) as GmailMessageRaw;
+      return buildSummary(raw);
+    }),
+  );
+
+  return {
+    messages: summaries,
+    nextPageToken: listData.nextPageToken ?? null,
+    resultSizeEstimate: listData.resultSizeEstimate ?? 0,
+  };
+}
+
+export async function getGmailMessage(
+  userId: string,
+  messageId: string,
+): Promise<GmailMessageDetail> {
+  const res = await gmailFetch(
+    userId,
+    `/messages/${encodeURIComponent(messageId)}?format=full`,
+  );
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Gmail get failed (${res.status}): ${body}`);
+  }
+  const raw = (await res.json()) as GmailMessageRaw;
+  const summary = buildSummary(raw);
+  const { text, html } = extractBody(raw.payload);
+  return { ...summary, bodyText: text, bodyHtml: html };
+}
+
+export async function getGmailUnreadCount(userId: string): Promise<number> {
+  // Use labels endpoint — Gmail returns messagesUnread on each label.
+  const res = await gmailFetch(userId, `/labels/INBOX`);
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Gmail unread fetch failed (${res.status}): ${body}`);
+  }
+  const data = (await res.json()) as { messagesUnread?: number };
+  return data.messagesUnread ?? 0;
+}
+
+export async function markGmailRead(
+  userId: string,
+  messageId: string,
+): Promise<void> {
+  const res = await gmailFetch(
+    userId,
+    `/messages/${encodeURIComponent(messageId)}/modify`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ removeLabelIds: ["UNREAD"] }),
+    },
+  );
+  if (!res.ok && res.status !== 404) {
+    const body = await res.text();
+    throw new Error(`Gmail modify failed (${res.status}): ${body}`);
+  }
+}
+
