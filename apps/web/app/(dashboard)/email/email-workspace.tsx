@@ -161,7 +161,7 @@ export function EmailWorkspace({
             <Inbox className="h-4 w-4" />
             Inbox
             {unreadCount > 0 && (
-              <Badge variant="destructive" className="ml-1">
+              <Badge variant="destructive" className="ml-1 text-white">
                 {unreadCount > 99 ? "99+" : unreadCount}
               </Badge>
             )}
