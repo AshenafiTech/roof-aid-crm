@@ -24,20 +24,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  APPOINTMENT_STATUS_CHIP,
+  type AppointmentStatus,
+} from "@/lib/constants/appointment-status";
 import type { AppointmentListItem } from "@/lib/queries/appointments";
 
 import { assignAppointmentRufero } from "./actions";
 import type { RuferoOption } from "./appointment-filters";
-
-const STATUS_STYLES: Record<string, string> = {
-  pending: "bg-amber-50 text-amber-700 border-amber-200",
-  confirmed: "bg-blue-50 text-blue-700 border-blue-200",
-  scheduled: "bg-blue-50 text-blue-700 border-blue-200",
-  completed: "bg-emerald-50 text-emerald-700 border-emerald-200",
-  cancelled: "bg-gray-50 text-gray-500 border-gray-200",
-  "no-show": "bg-red-50 text-red-700 border-red-200",
-  rescheduled: "bg-purple-50 text-purple-700 border-purple-200",
-};
 
 function formatDate(iso: string): string {
   const d = new Date(iso);
@@ -236,7 +230,7 @@ export function AppointmentTable({
               {/* Status */}
               <Badge
                 variant="outline"
-                className={`w-fit capitalize ${STATUS_STYLES[appt.status] ?? ""}`}
+                className={`w-fit capitalize ${APPOINTMENT_STATUS_CHIP[appt.status as AppointmentStatus] ?? ""}`}
               >
                 {appt.status}
               </Badge>

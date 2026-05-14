@@ -198,3 +198,56 @@ export async function createAppointment(input: z.infer<typeof createSchema>) {
 
   return { id: appointment.id };
 }
+
+const transitionSchema = z.object({
+  appointmentId: z.string().uuid(),
+  to: z.enum([
+    "confirmed",
+    "cancelled",
+    "completed",
+    "no_show",
+    "rescheduled",
+  ]),
+  reason: z.string().trim().max(500).optional(),
+});
+
+export type AppointmentTransitionInput = z.infer<typeof transitionSchema>;
+
+export async function transitionAppointment(input: AppointmentTransitionInput) {
+  const parsed = transitionSchema.parse(input);
+  const { supabase } = await requireUserWithProfile();
+
+  // Cast until database.types.ts is regenerated post-migration 026.
+  const { data, error } = await (
+    supabase.rpc as unknown as (
+      fn: string,
+      args: Record<string, unknown>,
+    ) => Promise<{ data: unknown; error: { message: string } | null }>
+  )("transition_appointment", {
+    p_appointment_id: parsed.appointmentId,
+    p_to: parsed.to,
+    p_reason: parsed.reason ?? null,
+  });
+  if (error) throw new Error(error.message);
+
+  const envelope = data as
+    | { ok: true }
+    | { ok: false; error: { code: string; message: string } };
+
+  if (!envelope.ok) {
+    const err = new Error(envelope.error.message) as Error & { code?: string };
+    err.code = envelope.error.code;
+    throw err;
+  }
+
+  const { data: appt } = await supabase
+    .from("appointments")
+    .select("prospect_id")
+    .eq("id", parsed.appointmentId)
+    .single();
+
+  revalidatePath("/appointments");
+  if (appt?.prospect_id) {
+    revalidatePath(`/prospects/${appt.prospect_id}`);
+  }
+}

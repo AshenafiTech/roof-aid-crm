@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS photos (
   inspection_id       uuid REFERENCES inspection_reports(id) ON DELETE CASCADE,
   prospect_id         uuid NOT NULL REFERENCES prospects(id) ON DELETE CASCADE,
   storage_path        text NOT NULL,            -- {tenant}/inspections/{inspection_id}/{photo_id}.jpg
-  tags                text[] NOT NULL,           -- ['overview', 'front', 'damage', ...]
+  tags                text[] NOT NULL,           -- ['overview', 'front', 'close_up_damage', ...]
   gps_lat             double precision,
   gps_lng             double precision,
   taken_at            timestamptz NOT NULL,
@@ -178,7 +178,7 @@ class InspectionPage extends StatelessWidget {
 |  +-------+ +-------+ +-------+ +---+ |
 |  |       | |       | |       | | + | |
 |  |[image]| |[image]| |[image]| |   | |
-|  | front | | damage| | gutter| |   | |
+|  | front | |close_up_damage| | gutters| |   | |
 |  +-------+ +-------+ +-------+ +---+ |
 |                                       |
 |  Damage report                        |
@@ -270,7 +270,7 @@ Validation:
 
 `Save & Continue` disabled until required fields are valid AND at least 1 photo is in the grid.
 
-Required-photo policy: enforce **at least 3 photos** with at least one tagged `overview` and at least one tagged `damage` — this prevents incomplete reports. Show inline guidance ("Add an overview photo to continue") if missing.
+Required-photo policy: enforce **at least 3 photos** with at least one tagged `overview` and at least one tagged `close_up_damage` — this prevents incomplete reports. Show inline guidance ("Add an overview photo to continue") if missing.
 
 ---
 

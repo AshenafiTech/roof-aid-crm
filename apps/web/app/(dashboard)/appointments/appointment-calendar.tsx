@@ -7,19 +7,13 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import {
+  APPOINTMENT_STATUS_CALENDAR_CHIP,
+  type AppointmentStatus,
+} from "@/lib/constants/appointment-status";
 import type { AppointmentListItem } from "@/lib/queries/appointments";
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
-const STATUS_CHIP: Record<string, string> = {
-  pending: "border-l-amber-400 bg-amber-50 text-amber-900",
-  confirmed: "border-l-blue-500 bg-blue-50 text-blue-900",
-  scheduled: "border-l-blue-500 bg-blue-50 text-blue-900",
-  completed: "border-l-emerald-500 bg-emerald-50 text-emerald-900",
-  cancelled: "border-l-gray-300 bg-gray-50 text-gray-500 line-through",
-  "no-show": "border-l-red-500 bg-red-50 text-red-900",
-  rescheduled: "border-l-purple-500 bg-purple-50 text-purple-900",
-};
 
 function parseMonth(value: string | null): Date {
   if (value && /^\d{4}-\d{2}$/.test(value)) {
@@ -198,8 +192,9 @@ export function AppointmentCalendar({
                 <div className="space-y-1">
                   {visible.map((a) => {
                     const chipClass =
-                      STATUS_CHIP[a.status] ??
-                      "border-l-gray-300 bg-gray-50 text-gray-700";
+                      APPOINTMENT_STATUS_CALENDAR_CHIP[
+                        a.status as AppointmentStatus
+                      ] ?? "border-l-gray-300 bg-gray-50 text-gray-700";
                     const name = a.prospect?.name ?? "Unknown";
                     const href = a.prospect
                       ? `/prospects/${a.prospect.id}`
