@@ -71,9 +71,63 @@ ALTER TABLE tenants
     "sat": {"start": "09:00", "end": "14:00"},
     "sun": null
   }'::jsonb;
+
+-- 6. Per-rufero override of tenant working hours.
+-- NULL = inherit from tenants.working_hours.
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS working_hours jsonb;
+
+-- 7. Explicit availability blocks (busy ranges + extra-availability windows).
+-- Used by the mobile rufero Calendar page (Stage 9) and admin "Block rufero time" action.
+CREATE TABLE IF NOT EXISTS rufero_availability_blocks (
+  id                       uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id                uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  rufero_id                uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  starts_at                timestamptz NOT NULL,
+  ends_at                  timestamptz NOT NULL,
+  all_day                  boolean DEFAULT false,
+  kind                     text NOT NULL CHECK (kind IN ('busy', 'available_extra')),
+  reason                   text,                         -- 'sick','pto','office','personal','other'
+  notes                    text,
+  recurrence_rule          text,                         -- iCal RRULE (e.g. 'FREQ=WEEKLY;BYDAY=WE')
+  recurrence_parent_id     uuid REFERENCES rufero_availability_blocks(id) ON DELETE CASCADE,
+  created_by               uuid REFERENCES users(id),
+  created_at               timestamptz DEFAULT now(),
+  -- Generated range for overlap checks.
+  block_range              tstzrange GENERATED ALWAYS AS (tstzrange(starts_at, ends_at, '[)')) STORED,
+  CONSTRAINT ends_after_starts CHECK (ends_at > starts_at)
+);
+
+CREATE INDEX rufero_blocks_rufero_range_gist
+  ON rufero_availability_blocks USING gist (rufero_id, block_range);
+
+-- A rufero can't have two overlapping busy blocks. (Two available_extra blocks could overlap
+-- harmlessly, so the constraint is scoped to busy via a partial WHERE.)
+ALTER TABLE rufero_availability_blocks
+  ADD CONSTRAINT availability_blocks_no_overlap
+  EXCLUDE USING gist (rufero_id WITH =, block_range WITH &&)
+  WHERE (kind = 'busy');
+
+ALTER TABLE rufero_availability_blocks ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY rufero_blocks_select_tenant ON rufero_availability_blocks FOR SELECT
+  USING (tenant_id = current_tenant_id());
+
+-- Ruferos manage their own blocks; admin/owner manage anyone's.
+CREATE POLICY rufero_blocks_modify_self_or_admin ON rufero_availability_blocks
+  FOR ALL
+  USING (
+    tenant_id = current_tenant_id()
+    AND (rufero_id = auth.uid() OR current_user_role() IN ('admin', 'owner'))
+  )
+  WITH CHECK (
+    tenant_id = current_tenant_id()
+    AND (rufero_id = auth.uid() OR current_user_role() IN ('admin', 'owner'))
+  );
 ```
 
 > The `EXCLUDE` constraint requires `btree_gist` — should already be enabled in `001_extensions.sql`. Verify before applying.
+> `current_user_role()` is the existing M1 helper; if its name differs in your codebase, swap accordingly.
 
 ### 2.2 RPC: `can_schedule(rufero_id, slot_start, duration_minutes)`
 
@@ -90,18 +144,22 @@ AS $$
 DECLARE
   v_tenant_id uuid;
   v_tz text;
-  v_working_hours jsonb;
+  v_tenant_hours jsonb;
+  v_user_hours jsonb;
+  v_effective_hours jsonb;
   v_day_key text;
   v_day_window jsonb;
   v_local_time time;
   v_slot_end timestamptz;
   v_conflict_id uuid;
   v_rufero_active boolean;
+  v_busy_block_id uuid;
+  v_extra_block_count int;
 BEGIN
   v_slot_end := p_slot_start + (p_duration_minutes * interval '1 minute');
 
   -- 1. Rufero exists, is active, role = rufero
-  SELECT tenant_id, is_active INTO v_tenant_id, v_rufero_active
+  SELECT tenant_id, is_active, working_hours INTO v_tenant_id, v_rufero_active, v_user_hours
   FROM users
   WHERE id = p_rufero_id AND role = 'rufero';
 
@@ -113,26 +171,54 @@ BEGIN
     RETURN jsonb_build_object('allowed', false, 'reason', 'rufero_inactive');
   END IF;
 
-  -- 2. Within tenant working hours (in tenant timezone)
-  SELECT timezone, working_hours INTO v_tz, v_working_hours
+  -- Tenant-context guard.
+  IF v_tenant_id != (SELECT tenant_id FROM users WHERE id = auth.uid()) THEN
+    RETURN jsonb_build_object('allowed', false, 'reason', 'forbidden');
+  END IF;
+
+  -- 2. Effective working hours = per-rufero override falling back to tenant default.
+  SELECT timezone, working_hours INTO v_tz, v_tenant_hours
   FROM tenants
   WHERE id = v_tenant_id;
 
+  v_effective_hours := COALESCE(v_user_hours, v_tenant_hours);
   v_day_key := lower(to_char(p_slot_start AT TIME ZONE v_tz, 'dy'));
-  v_day_window := v_working_hours->v_day_key;
-
-  IF v_day_window IS NULL OR v_day_window = 'null'::jsonb THEN
-    RETURN jsonb_build_object('allowed', false, 'reason', 'outside_working_hours');
-  END IF;
-
+  v_day_window := v_effective_hours->v_day_key;
   v_local_time := (p_slot_start AT TIME ZONE v_tz)::time;
 
-  IF v_local_time < (v_day_window->>'start')::time
+  -- Outside effective working hours? Allow only if covered by an 'available_extra' block.
+  IF v_day_window IS NULL
+     OR v_day_window = 'null'::jsonb
+     OR v_local_time < (v_day_window->>'start')::time
      OR (v_slot_end AT TIME ZONE v_tz)::time > (v_day_window->>'end')::time THEN
-    RETURN jsonb_build_object('allowed', false, 'reason', 'outside_working_hours');
+    SELECT count(*) INTO v_extra_block_count
+    FROM rufero_availability_blocks
+    WHERE rufero_id = p_rufero_id
+      AND kind = 'available_extra'
+      AND block_range @> tstzrange(p_slot_start, v_slot_end, '[)');
+
+    IF v_extra_block_count = 0 THEN
+      RETURN jsonb_build_object('allowed', false, 'reason', 'outside_working_hours');
+    END IF;
   END IF;
 
-  -- 3. No overlapping appointment for this rufero (incl. 120-min buffer)
+  -- 3. No overlapping availability block (busy).
+  SELECT id INTO v_busy_block_id
+  FROM rufero_availability_blocks
+  WHERE rufero_id = p_rufero_id
+    AND kind = 'busy'
+    AND block_range && tstzrange(p_slot_start, v_slot_end, '[)')
+  LIMIT 1;
+
+  IF v_busy_block_id IS NOT NULL THEN
+    RETURN jsonb_build_object(
+      'allowed', false,
+      'reason', 'overlap_with_block',
+      'conflicting_block_id', v_busy_block_id
+    );
+  END IF;
+
+  -- 4. No overlapping appointment for this rufero (incl. 120-min buffer).
   SELECT id INTO v_conflict_id
   FROM appointments
   WHERE rufero_id = p_rufero_id
@@ -159,9 +245,11 @@ $$;
 GRANT EXECUTE ON FUNCTION can_schedule TO authenticated;
 ```
 
+**Order matters:** we check working hours **before** busy blocks so an `outside_working_hours` reason is more informative than `overlap_with_block` when both apply. Busy blocks then take precedence over appointments because they're more user-friendly to surface ("Blocked: Lunch" vs "Conflicts with appointment X").
+
 ### 2.3 RPC: `suggest_rufero_for_prospect(prospect_id, slot_start, duration_minutes)`
 
-Returns the closest available rufero, plus distance + working-hours fit.
+Returns the closest available rufero, plus distance + working-hours fit. Internally calls `can_schedule()` so blocks and per-rufero working hours are consulted automatically.
 
 ```sql
 CREATE OR REPLACE FUNCTION suggest_rufero_for_prospect(
@@ -358,6 +446,9 @@ What Stage 1 *does* update on mobile:
 - [ ] Booking outside tenant working hours → `{allowed: false, reason: 'outside_working_hours'}`
 - [ ] Booking for a deactivated rufero → `{allowed: false, reason: 'rufero_inactive'}`
 - [ ] Booking 30 min after another appointment ends → `{allowed: false, reason: 'overlap'}` (because of 120-min buffer)
+- [ ] Booking over a `kind='busy'` block → `{allowed: false, reason: 'overlap_with_block', conflicting_block_id: ...}`
+- [ ] Booking outside tenant working hours but inside a `kind='available_extra'` block → `{allowed: true}`
+- [ ] Booking inside the per-rufero `users.working_hours` override (which is *narrower* than tenant default) → respects the override, not the tenant default
 - [ ] `suggest_rufero_for_prospect` returns ruferos ordered by distance, with `null` distance ruferos last
 - [ ] Web: scheduler modal opens from prospect card → defaults to closest rufero, tomorrow 09:00, 60 min
 - [ ] Picking an overlapping slot shows inline "Conflict" warning within 300ms of input
@@ -376,16 +467,19 @@ What Stage 1 *does* update on mobile:
 - **Don't** show ruferos who fail `rufero_inactive` in the suggestion list at all. Showing them with a disabled state confuses the Telefonista.
 - **Don't** set `prospect.status = 'appointment_set'` if the prospect is already `signed` or `closed` — those are terminal states. Add a check before the status update.
 - **Don't** allow scheduling in the past. Add a server-action check: `if (new Date(scheduledAt) < new Date()) return error`. The DB doesn't enforce this; the UI must.
+- **Don't** check availability blocks separately at the API layer. `can_schedule()` is the single source of truth — every caller (scheduler modal, mobile, future bulk-assign tool) goes through it. Anything that doesn't is a bug.
+- **Don't** apply the 120-min travel buffer to availability blocks. The buffer exists to give travel time between appointment sites; lunch + PTO already represent finite intervals the rufero chose. Adding 2h buffer to a 1h "Lunch" block would lock out half their day.
+- **Don't** silently expand recurring blocks at write-time into many DB rows. Store the master row + `recurrence_rule` once, expand at read-time on the mobile / web client (or use a SQL helper if needed for `can_schedule` performance). M5 recurrence presets are simple enough that runtime expansion is cheap.
 
 ---
 
 ## 7. What ships at end of Stage 1
 
-- 1 migration file: `0XX_m5_appointments.sql`
-- 2 SQL functions: `can_schedule`, `suggest_rufero_for_prospect`
+- 1 migration file: `0XX_m5_appointments.sql` (now also adds `users.working_hours`, `rufero_availability_blocks` table + EXCLUDE + RLS)
+- 2 SQL functions: `can_schedule` (consults blocks + per-rufero hours), `suggest_rufero_for_prospect`
 - 1 web modal: `scheduler-modal.tsx`
 - 1 server action: `scheduleAppointment`
 - 1 hook to the existing prospect card **Appt** button
 - Updated `prospects.status` write path (activity log + revalidate)
 
-Stage 2 picks up the calendar consumer for these rows.
+Stage 2 picks up the web calendar consumer for these rows + the admin "Block rufero time" action. Stage 9 is the mobile consumer (Calendar page with availability editor).
