@@ -342,7 +342,7 @@ export async function getRiskCounts(scope: Scope = {}): Promise<RiskCounts> {
   const noShowQ = supabase
     .from("appointments")
     .select("id", { count: "exact", head: true })
-    .eq("status", "no-show")
+    .eq("status", "no_show")
     .gte("scheduled_at", sevenDaysAgo);
 
   let dncQ = supabase
