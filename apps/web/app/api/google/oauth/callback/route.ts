@@ -99,6 +99,9 @@ export async function GET(req: NextRequest) {
   if (!grantedScopes.includes("https://www.googleapis.com/auth/gmail.send")) {
     return redirectToEmail(req, { gmail_error: "missing_send_scope" });
   }
+  if (!grantedScopes.includes("https://www.googleapis.com/auth/gmail.readonly")) {
+    return redirectToEmail(req, { gmail_error: "missing_readonly_scope" });
+  }
 
   const enc = encryptSecret(tokens.refresh_token);
   const expiresAt = new Date(Date.now() + tokens.expires_in * 1000).toISOString();

@@ -1,11 +1,15 @@
 import { PageHeader } from "@/components/shared/page-header";
 import { getCurrentUser } from "@/lib/auth/current-user";
-import { getGmailConnection } from "@/lib/email/actions";
+import {
+  getGmailConnection,
+  getUnreadEmailCount,
+  listEmailsAction,
+} from "@/lib/email/actions";
 import { Card } from "@/components/ui/card";
-import { EmailComposer } from "./email-composer";
+import { EmailWorkspace } from "./email-workspace";
 
 export const metadata = {
-  title: "Quick Email — Roof-Aid CRM",
+  title: "Email — Roof-Aid CRM",
 };
 
 export default async function EmailPage({
@@ -20,12 +24,12 @@ export default async function EmailPage({
     return (
       <div className="space-y-6">
         <PageHeader
-          title="Quick Email"
+          title="Email"
           description="Send emails to prospects and leads."
         />
         <Card className="max-w-2xl p-6">
           <p className="text-sm text-muted-foreground">
-            Email send is only available for telefonista and owner users.
+            Email is only available for telefonista and owner users.
           </p>
         </Card>
       </div>
@@ -34,18 +38,36 @@ export default async function EmailPage({
 
   const connection = await getGmailConnection();
 
+  let initialInbox = null;
+  let initialUnread = 0;
+  if (connection.connected) {
+    const [inboxRes, unread] = await Promise.all([
+      listEmailsAction({ folder: "INBOX" }),
+      getUnreadEmailCount(),
+    ]);
+    initialUnread = unread;
+    if (inboxRes.ok) {
+      initialInbox = {
+        messages: inboxRes.data.messages,
+        nextPageToken: inboxRes.data.nextPageToken,
+      };
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Quick Email"
-        description="Send emails to prospects and leads."
+        title="Email"
+        description="Send and read email from your connected Gmail account."
       />
-      <EmailComposer
+      <EmailWorkspace
         initialConnection={connection}
         initialFlash={{
           connected: params.gmail_connected === "1",
           error: params.gmail_error ?? null,
         }}
+        initialInbox={initialInbox}
+        initialUnread={initialUnread}
       />
     </div>
   );
