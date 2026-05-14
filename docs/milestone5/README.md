@@ -35,28 +35,31 @@ After M5, the demo is no longer "we have a CRM" — it's "we replaced the entire
 | M5-10 | Mobile damage form — roof age, material type, storm date, affected-areas checklist, severity scale, scope notes → `inspection_reports` row | Mobile |
 | M5-11 | Mobile signature capture — full-screen pad, homeowner name + date, Clear/Confirm, sig PNG → embed Edge Function | Mobile |
 | M5-12 | Mobile offline inspection — photos + status updates + notes + signature queued locally (Hive), synced on reconnect with last-write-wins, sync indicator in header | Mobile |
+| M5-13 | Mobile rufero availability calendar — Google-Calendar-style Day/Week/Month view with appointments + availability blocks; in-page tab toggle to switch to a list view of assigned appointments; create/edit/delete availability blocks; personal working-hours editor | Mobile + DB |
 
 ---
 
-## 3. Execution plan — 8 stages
+## 3. Execution plan — 9 stages
 
 | Stage | Focus | Doc |
 |-------|-------|-----|
-| 1 | Appointment scheduler — schema additions, modal, rufero availability check, proximity suggestion | [stage-1-appointment-scheduler.md](stage-1-appointment-scheduler.md) |
-| 2 | Calendar views + appointment status management + reschedule flow | [stage-2-calendar-and-status.md](stage-2-calendar-and-status.md) |
+| 1 | Appointment scheduler — schema additions (incl. `rufero_availability_blocks` + per-rufero working hours), modal, availability check, proximity suggestion | [stage-1-appointment-scheduler.md](stage-1-appointment-scheduler.md) |
+| 2 | Web calendar views + appointment status management + reschedule flow + admin "Block rufero time" action | [stage-2-calendar-and-status.md](stage-2-calendar-and-status.md) |
 | 3 | Appointment reminders Edge Function (24h + 2h SMS) | [stage-3-appointment-reminders.md](stage-3-appointment-reminders.md) |
 | 4 | PDF generation Edge Function — pdf-lib templates | [stage-4-pdf-generation.md](stage-4-pdf-generation.md) |
 | 5 | Document workflow + Documents page | [stage-5-documents-page.md](stage-5-documents-page.md) |
 | 6 | E-signature web flow — sig pad → embed → signed PDF → auto-email | [stage-6-esignature-web.md](stage-6-esignature-web.md) |
 | 7 | Mobile inspection screen + damage form | [stage-7-mobile-inspection.md](stage-7-mobile-inspection.md) |
 | 8 | Mobile signature + offline inspection sync | [stage-8-mobile-signature-offline.md](stage-8-mobile-signature-offline.md) |
+| 9 | Mobile availability calendar — Google-Calendar-style Day/Week/Month view, in-page List tab, availability blocks editor, personal working hours | [stage-9-mobile-availability-calendar.md](stage-9-mobile-availability-calendar.md) |
 
 **Parallelization:**
 - Stages 1 → 2 are sequential (calendar consumes scheduler).
 - Stage 3 (reminders) can start once Stage 1's schema lands.
 - Stage 4 (PDF Edge Function) is independent — can ship in parallel with appointments work.
 - Stages 5–6 chain after Stage 4.
-- Stages 7–8 (mobile) need Stage 1's schema (`appointments`, `inspection_reports`) and Stage 4's signature embed Edge Function, but otherwise run in parallel with the web track.
+- Stages 7–8 (mobile inspection track) need Stage 1's schema (`appointments`, `inspection_reports`) and Stage 4's signature embed Edge Function, but otherwise run in parallel with the web track.
+- Stage 9 (mobile calendar track) needs Stage 1's schema (`rufero_availability_blocks`, `users.working_hours`). Runs in parallel with Stages 2–8. Mobile builds the Calendar page against stubs while the web finishes the migration.
 
 ---
 
@@ -74,6 +77,7 @@ After M5, the demo is no longer "we have a CRM" — it's "we replaced the entire
 - [ ] **pdf-lib in Edge Functions runtime** — Deno-compatible build, pinned version. Verify it imports cleanly in a scratch function before Stage 4.
 - [ ] **`signature_pad` package available on web** — `react-signature-canvas` or equivalent. Stage 6.
 - [ ] **Flutter `image_picker` + `flutter_signature_pad`** already in `pubspec.yaml` (M1 added `image_picker`; signature_pad needs to be added in Stage 7).
+- [ ] **Flutter `calendar_view` package** (MIT-licensed, pub.dev) — added in Stage 9 for the rufero Calendar UI.
 - [ ] **Hive boxes** for offline queue — already wired in M1 (`hive_flutter` in `pubspec.yaml`). Stage 8 adds typed adapters for `PendingPhoto`, `PendingInspection`, `PendingSignature`.
 - [ ] **FCM not required for M5** — push notifications land in M6. M5 reminders use SMS only.
 - [ ] **Environment variables added** to `.env.example`:
@@ -150,6 +154,18 @@ E-signature is fully in-house: HTML5 canvas → PNG → pdf-lib `drawImage()` in
 
 **Why:** $0.50–$3.00 per signed envelope from DocuSign at our volume is a $4k–$15k/month line item. Our use case is single-party signing, single-page acknowledgement — DocuSign's full audit-trail machinery is overkill.
 
+### 5.11 Explicit rufero availability via blocks table + per-rufero working hours
+
+`can_schedule()` resolves availability from three layers, in order:
+
+1. **Effective working hours** — `users.working_hours` (per-rufero) falls back to `tenants.working_hours` if null. Each rufero can override their schedule (Carlos 7–3, Maria 10–7) without affecting the tenant default.
+2. **`rufero_availability_blocks`** — explicit busy ranges (sick, PTO, lunch, "in office"). A `kind='busy'` block makes the rufero unavailable for that range; a `kind='available_extra'` block makes them available outside their normal working hours (rare — covers "I'll work Saturday this week"). The blocks table participates in the same GiST `EXCLUDE` overlap pattern as `appointments`.
+3. **Existing appointments** — pending / confirmed appointments still hold their slots (existing 5.1, 5.2).
+
+The mobile **Calendar page (Stage 9)** is the rufero's primary self-service surface for blocks + personal working hours. The web admin can also block on behalf of a rufero from the appointment side drawer.
+
+**Why:** Pure-implicit availability (just working hours + bookings) is too naive for real field ops — sick days and ad-hoc unavailability happen weekly. Pure-explicit (rufero maintains every minute of their calendar) is the failure pattern of every roofing-industry app — field workers don't keep schedules current. The blocks-as-override model gives zero-effort defaults with a real escape hatch when needed.
+
 ### 5.10 Reminder SMS body is template-driven, but the *template ID* is tenant-scoped
 
 Stage 3 uses `tenants.sms_templates` (already populated in M4 schema). Reminder Edge Function picks the template tagged `kind: 'appointment_reminder_24h'` / `kind: 'appointment_reminder_2h'`. Fallback to a hardcoded default if a tenant hasn't configured one.
@@ -202,6 +218,20 @@ Stage 3 uses `tenants.sms_templates` (already populated in M4 schema). Reminder 
 - [ ] Save form → `inspection_reports` row written (online) or queued (offline)
 - [ ] Photo count badge shows "5 of 7 uploaded" while queue drains in background
 
+### Mobile — Availability Calendar
+- [ ] Bottom-tab **Calendar** entry opens the Calendar page with a [Calendar] | [List] tab toggle at the top
+- [ ] Calendar tab: Day / Week / Month view switcher; default is Day on phone, Week on tablet
+- [ ] Day view shows appointments (color-coded by status) + availability blocks (striped) + a "now" indicator
+- [ ] List tab shows the same assigned appointments as the old "My Schedule" — grouped by day, scannable
+- [ ] Tap empty slot in Day/Week → block-editor opens with time pre-filled
+- [ ] Create busy block (Sick / PTO / Office / Personal / Other) → appears in Day/Week immediately
+- [ ] Telefonista trying to book a rufero over a busy block → scheduler modal refuses with `overlap_with_block` reason
+- [ ] Edit / delete an existing block from a bottom sheet
+- [ ] Personal Working Hours screen lets rufero set per-day hours or mark a day Off
+- [ ] Outside effective working hours: scheduler refuses unless an `available_extra` block covers that slot
+- [ ] Recurring presets work: "Every weekday," "Weekly on {day}"
+- [ ] All blocks tenant-scoped via RLS (verified with cross-tenant query test)
+
 ### Mobile — Signature + Offline
 - [ ] Sign button → full-screen pad → homeowner name + date displayed → Clear / Confirm
 - [ ] Confirm offline → signature PNG queued locally, status shown as "Pending sync"
@@ -228,6 +258,9 @@ Stage 3 uses `tenants.sms_templates` (already populated in M4 schema). Reminder 
 - **Calendar sync to Google / Outlook** → M-future.
 - **Photo annotation / drawing on photos** → M-future. M5 captures raw photos only.
 - **Damage form custom field builder** → M7+. M5 has a fixed schema.
+- **Custom recurrence builder for availability blocks** (e.g., "every 2nd Tuesday") → M7+. M5 ships 3 presets (None / Every weekday / Weekly on this day).
+- **Drag-to-create / drag-to-move blocks on the calendar** → M7+ polish pass. M5 ships tap-to-create + tap-to-edit only.
+- **PTO request workflow** (rufero requests → admin approves) → M7+. M5 lets ruferos create blocks directly without approval.
 - **Per-tenant PDF template customization** beyond header color/logo → M7. M5 uses 3 hardcoded templates.
 
 ---
@@ -245,6 +278,8 @@ Stage 3 uses `tenants.sms_templates` (already populated in M4 schema). Reminder 
 | Homeowner doesn't receive emailed signed PDF | Medium | Medium | SendGrid bounce webhook (already in M4) updates `documents.email_status`. Surface "Email bounced — re-send to a different address" in the Document detail. |
 | Storage costs balloon (photos + signed PDFs) | Low | Medium | Lifecycle policy on `inspection-photos` bucket: cold tier after 90d. PDFs are tiny (~50KB) — no policy needed. |
 | Concurrent edits during long-running offline sync | Low | Medium | Last-write-wins (5.7) with `activities` audit log; surface lost edits in admin view in M7. |
+| Ruferos don't maintain their availability calendar → stale blocks → Telefonistas avoid booking phantom-busy slots | Medium | Medium | (a) Implicit working-hours stays the default (zero effort), blocks are only an override; (b) admin can clear stale blocks from the side drawer; (c) M7 follow-up: notify rufero if a block extends >7 days into the future and ask "still accurate?" |
+| Custom recurrence rules misfire (M5 uses iCal RRULE strings) | Low | Medium | M5 ships only 3 presets ("Every weekday", "Weekly on this day", "Does not repeat"). Each preset maps to a known-good RRULE the backend has tested. Custom RRULE editor lands in M7 once the data model is proven. |
 
 ---
 
@@ -259,8 +294,9 @@ Stage 3 uses `tenants.sms_templates` (already populated in M4 schema). Reminder 
 7. **Stage 6** — e-signature web flow. Depends on Stages 4 + 5.
 8. **Stage 7** — mobile inspection screen + damage form. Can start once Stage 1's schema (`appointments`) lands; parallelizes with Stages 2–6.
 9. **Stage 8** — mobile signature + offline sync. Depends on Stage 4's embed Edge Function + Stage 7's inspection write path.
+10. **Stage 9** — mobile availability calendar (Google-Calendar-style + List tab). Depends on Stage 1's `rufero_availability_blocks` + `users.working_hours`. Runs in parallel with the mobile inspection track (Stages 7–8). Mobile dev can stub the datasource while waiting for Stage 1.
 
-Estimated total: **9–11 days** end-to-end (Week 6 + buffer). M5 is the largest milestone — protect the buffer.
+Estimated total: **11–13 days** end-to-end (Week 6 + buffer + 2.5 days for the new mobile calendar). M5 is the largest milestone — protect the buffer.
 
 ---
 
@@ -283,5 +319,9 @@ Ten minutes, two devices (web + phone), scripted:
 13. Back on web → refresh the prospect → Documents tab now shows the signed Authorization with status `signed`, signature embedded
 14. QA homeowner inbox shows the signed PDF email arrived
 15. Cancel the 2:00 PM appointment with reason "Homeowner requested" → confirm the 2h reminder does NOT send by waiting through the window
+16. On the rufero's phone → open **Calendar** tab → see today's two appointments laid out in the hour grid → tap an empty 12:00–13:00 slot → create a **Lunch** block → confirm it shows striped
+17. Switch to the **List** tab inside the Calendar page → same appointments shown as a grouped list (faster to scan when driving)
+18. Back on web → Telefonista tries to schedule a new appointment for this rufero at 12:30 PM → scheduler modal refuses with "Blocked: Lunch 12:00–13:00"
+19. From the rufero's phone → **Profile → My working hours** → mark Friday as ending at 14:00 → save → Telefonista trying to book at 15:00 on Friday gets refused with "Outside working hours"
 
-If all 15 steps work end-to-end with real Telnyx SMS, real PDF generation, real offline → online sync, M5 is done.
+If all 19 steps work end-to-end with real Telnyx SMS, real PDF generation, real offline → online sync, and real availability blocks driving scheduler conflicts, M5 is done.

@@ -283,79 +283,92 @@ export async function transitionAppointment(input: {
 
 ---
 
-## 6. Mobile — list view of own appointments
+## 6. Mobile — moved to Stage 9
 
-Stage 2 also ships the mobile "My Schedule" list (not full calendar — that lands in M6). Ruferos need to see their day before Stage 7 ships the inspection screen.
+> **Mobile work for assigned-appointment viewing + status actions now ships as part of [Stage 9 — Mobile Availability Calendar](stage-9-mobile-availability-calendar.md).** The List tab inside Stage 9's Calendar page is exactly what this section used to describe ("My Schedule"). Keeping it in one place avoids the rufero having two different screens for "see my day" depending on whether they want grid or list.
+>
+> The status-transition contract that the mobile List-tab Action buttons (Mark complete / No-show) call is still defined in §3 of this doc — Stage 9 just consumes the same `transition_appointment` RPC the web uses.
 
-### 6.1 Feature folder
+### 6.1 Web admin — "Block rufero time" action
 
-Following the prospects-module pattern from M2:
+The web side of Stage 2 adds one extra action in the appointment side drawer (§5.2) and the rufero's row in admin tools: **Block this rufero's time**. Visible to admin/owner only.
+
+Opens a small modal:
 
 ```
-apps/mobile/lib/features/appointments/
-├── domain/
-│   ├── entities/
-│   │   └── appointment_entity.dart
-│   ├── repositories/
-│   │   └── appointment_repository.dart
-│   └── usecases/
-│       ├── get_my_appointments.dart
-│       └── watch_my_appointments.dart
-├── data/
-│   ├── models/
-│   │   └── appointment_model.dart
-│   ├── datasources/
-│   │   └── appointment_remote_datasource.dart
-│   └── repositories/
-│       └── appointment_repository_impl.dart
-└── presentation/
-    ├── bloc/
-    │   ├── appointments_bloc.dart
-    │   ├── appointments_event.dart
-    │   └── appointments_state.dart
-    ├── pages/
-    │   └── my_schedule_page.dart
-    └── widgets/
-        └── appointment_card.dart
+Block <Rufero name>'s time
+────────────────────────────────────
+Date:    [ May 14, 2026          ]
+From:    [ 12:00 ▾]   To: [ 13:00 ▾]
+☐ All day
+
+Reason
+( Sick )  ( PTO )  ( Office )
+( Personal )  ( Other )
+
+Notes
+[___________________________________]
+
+🔁 Repeat
+◉ Does not repeat
+○ Every weekday (Mon–Fri)
+○ Weekly on Tue
+
+                              [ Cancel ] [ Save ]
 ```
 
-Reuse the auth-module conventions: `dartz` Either, abstract datasource + impl, sealed events/states, Supabase `.stream()` (or the polling-augmented variant the prospects module ended up using).
+Server action:
 
-### 6.2 Query
-
-```dart
-// In AppointmentRemoteDatasource:
-Future<List<AppointmentModel>> fetchMine() async {
-  final userId = client.auth.currentUser!.id;
-  final response = await client
-    .from('appointments')
-    .select('*, prospect:prospects(id, name, address, city, phones)')
-    .eq('rufero_id', userId)
-    .gte('scheduled_at', DateTime.now().toIso8601String())
-    .order('scheduled_at', ascending: true);
-
-  return (response as List).map((r) => AppointmentModel.fromMap(r)).toList();
-}
+```ts
+// apps/web/app/actions/availability.ts
+export async function createAvailabilityBlock(input: {
+  ruferoId: string;
+  startsAt: string;            // ISO
+  endsAt: string;
+  allDay?: boolean;
+  reason: 'sick' | 'pto' | 'office' | 'personal' | 'other';
+  notes?: string;
+  recurrenceRule?: string;     // iCal RRULE
+}): Promise<Result<{ blockId: string }>>;
 ```
 
-### 6.3 UI
+Inserts into `rufero_availability_blocks` with `kind='busy'`, `created_by = auth.uid()`. RLS allows admin/owner to write for any rufero in their tenant (Stage 1 §2.1 policy).
 
-A grouped list — sections by day (`Today`, `Tomorrow`, day of week). Each `AppointmentCard` shows:
-- Time (left, big)
-- Prospect name + address
-- Status badge (matching web colors via shared `apps/mobile/lib/core/constants/appointment_status.dart`)
-- "Navigate" button (M3 maps deep-link)
-- "Call homeowner" button (existing M4 dial intent)
+### 6.2 Web calendar — show availability blocks
 
-Tap a card → navigate to **AppointmentDetailPage** (lighter than web's drawer; just the action buttons for `Mark complete` / `No-show`).
+FullCalendar renders busy blocks as **background events** (`display: 'background'`) — diagonal-striped overlays in the rufero's column. They don't capture clicks the way appointments do, so Telefonistas can still click into the underlying time grid to schedule.
 
-### 6.4 Status actions on mobile
+```tsx
+// In CalendarView's events prop:
+events={[
+  ...appointments.map(a => ({
+    id: a.id,
+    title: a.prospect_name,
+    start: a.scheduled_at,
+    end: a.end_at,
+    backgroundColor: STATUS_COLORS[a.status],
+    extendedProps: a,
+  })),
+  ...availabilityBlocks.map(b => ({
+    id: `block-${b.id}`,
+    start: b.starts_at,
+    end: b.ends_at,
+    display: 'background',
+    backgroundColor: 'rgba(220, 38, 38, 0.18)',   // red-600 @ 18%
+    overlap: false,
+    title: b.reason ?? 'Blocked',
+    extendedProps: { kind: 'block', ...b },
+  })),
+]}
+```
 
-Rufero can only:
-- `confirmed → completed` (button: **Mark complete** — opens Stage 7's inspection flow first, then sets the status on completion)
-- `confirmed → no_show` (button: **No-show** — requires reason text input)
+Per-rufero working hours (`users.working_hours`) shape the per-day `slotMinTime` / `slotMaxTime` when the filter is set to a single rufero.
 
-Both go through the same `transitionAppointment` Supabase RPC the web uses. M5 doesn't add new mobile RPCs; it's the same server contract.
+### 6.3 Personal working hours editor (web)
+
+For admin convenience, the user-edit panel in `/admin/users/[id]` (full admin UI lands in M7, but a minimal editor goes in here) gets a "Working hours" section that writes `users.working_hours`. Same JSON shape as `tenants.working_hours`. NULL means "inherit tenant default."
+
+Mobile owns the rufero's self-service version of this in Stage 9.
 
 ---
 
@@ -374,10 +387,15 @@ Both go through the same `transitionAppointment` Supabase RPC the web uses. M5 d
 - [ ] Status history shows every transition with actor + timestamp + reason
 
 ### Mobile
-- [ ] Rufero opens "My Schedule" → sees today's + upcoming appointments grouped by day
-- [ ] Tap **Mark complete** → opens inspection flow (Stage 7 placeholder for now) → on save, status → `completed`
-- [ ] Tap **No-show** → reason input → submit → status → `no_show`
-- [ ] Cancelled appointments don't show up in the rufero's list (filter)
+
+Mobile acceptance criteria for assigned-appointment viewing + status actions live in [Stage 9](stage-9-mobile-availability-calendar.md) (Calendar page's List tab + side-sheet actions). Stage 2 only ships the **contract** (`transition_appointment` RPC, transition matrix, side-effects table) that Stage 9 consumes.
+
+### Web admin — block rufero time
+- [ ] Side drawer for an appointment shows **Block this rufero's time** action for admin/owner only
+- [ ] Modal accepts date + time range OR all-day; requires a reason chip
+- [ ] Recurrence preset "Every weekday" creates a single master row with `recurrence_rule='FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR'`
+- [ ] Saving conflicts with an existing busy block for the same rufero → EXCLUDE constraint fires; inline error "Rufero already blocked at this time"
+- [ ] Created block appears as a striped background event on the calendar within 1s (realtime)
 
 ### Cross-cutting
 - [ ] `appointment_status_history` rows match every status transition
@@ -402,11 +420,14 @@ Both go through the same `transitionAppointment` Supabase RPC the web uses. M5 d
 ## 9. What ships at end of Stage 2
 
 - 1 migration: `appointment_status_history` table + trigger
-- 1 calendar page route + view component (FullCalendar)
-- 1 side drawer with role-gated actions
-- 1 `transitionAppointment` server action
+- 1 calendar page route + view component (FullCalendar) — renders both appointments + availability blocks (blocks as background events)
+- 1 side drawer with role-gated actions (incl. admin-only **Block rufero time**)
+- 1 `transitionAppointment` server action **also exposed as a Supabase RPC** named `transition_appointment` so mobile can call it identically
+- 1 `createAvailabilityBlock` server action (admin/owner)
 - 1 helper module: `isTransitionAllowed` + `maybeUpdateProspectStatus`
-- 1 mobile feature module: `features/appointments/` with My Schedule page
-- Shared `appointment_status.dart` constants on mobile
+- Minimal "Working hours" editor in `/admin/users/[id]` (writes `users.working_hours`)
+- Shared `appointment_status.{ts,dart}` constants kept in sync between web and mobile
+
+Mobile pickup happens in **Stage 9** (Calendar page + List tab + availability editor).
 
 Stage 3 picks up reminders, which read from the same `appointments` rows + their `appointment_reminders` companion.
