@@ -14,6 +14,44 @@ import '../../features/messages/domain/repositories/conversations_repository.dar
 import '../../features/messages/domain/usecases/get_conversations.dart';
 import '../../features/messages/domain/usecases/watch_conversations.dart';
 import '../../features/messages/presentation/bloc/conversations_bloc.dart';
+// ── M5 imports ─────────────────────────────────────────────
+import '../../features/appointments/data/datasources/appointment_remote_datasource.dart';
+import '../../features/appointments/data/repositories/appointment_repository_impl.dart';
+import '../../features/appointments/domain/repositories/appointment_repository.dart';
+import '../../features/appointments/domain/usecases/get_my_appointments.dart';
+import '../../features/appointments/domain/usecases/transition_appointment.dart';
+import '../../features/appointments/domain/usecases/watch_my_appointments.dart';
+import '../../features/appointments/presentation/bloc/appointments_bloc.dart';
+import '../../features/availability/data/datasources/availability_remote_datasource.dart';
+import '../../features/availability/data/repositories/availability_repository_impl.dart';
+import '../../features/availability/domain/repositories/availability_repository.dart';
+import '../../features/availability/domain/usecases/create_availability_block.dart';
+import '../../features/availability/domain/usecases/delete_availability_block.dart';
+import '../../features/availability/domain/usecases/get_my_availability_blocks.dart';
+import '../../features/availability/domain/usecases/get_my_working_hours.dart';
+import '../../features/availability/domain/usecases/update_availability_block.dart';
+import '../../features/availability/domain/usecases/update_my_working_hours.dart';
+import '../../features/availability/domain/usecases/watch_my_availability_blocks.dart';
+import '../../features/availability/presentation/bloc/block_editor_bloc.dart';
+import '../../features/availability/presentation/bloc/calendar_bloc.dart';
+import '../../features/availability/presentation/bloc/working_hours_bloc.dart';
+import '../../features/documents/data/datasources/document_remote_datasource.dart';
+import '../../features/documents/data/repositories/document_repository_impl.dart';
+import '../../features/documents/domain/repositories/document_repository.dart';
+import '../../features/documents/domain/usecases/embed_signature_usecase.dart';
+import '../../features/documents/domain/usecases/generate_pdf_document.dart';
+import '../../features/documents/domain/usecases/get_prospect_documents.dart';
+import '../../features/documents/presentation/bloc/signature_bloc.dart';
+import '../../features/inspection/data/datasources/inspection_remote_datasource.dart';
+import '../../features/inspection/data/repositories/inspection_repository_impl.dart';
+import '../../features/inspection/domain/repositories/inspection_repository.dart';
+import '../../features/inspection/domain/usecases/delete_inspection_photo.dart';
+import '../../features/inspection/domain/usecases/get_or_create_inspection.dart';
+import '../../features/inspection/domain/usecases/mark_inspection_complete.dart';
+import '../../features/inspection/domain/usecases/save_inspection_report.dart';
+import '../../features/inspection/domain/usecases/upload_inspection_photo.dart';
+import '../../features/inspection/domain/usecases/watch_inspection_photos.dart';
+import '../../features/inspection/presentation/bloc/inspection_bloc.dart';
 import '../../features/prospects/data/datasources/note_remote_datasource.dart';
 import '../../features/prospects/data/datasources/prospect_remote_datasource.dart';
 import '../../features/prospects/data/datasources/sms_remote_datasource.dart';
@@ -163,6 +201,89 @@ Future<void> initDependencies() async {
     () => ConversationsBloc(
       getConversations: sl(),
       watchConversations: sl(),
+    ),
+  );
+
+  // ── M5 Appointments Feature ───────────────────────────────
+  sl.registerLazySingleton<AppointmentRemoteDatasource>(
+    () => AppointmentRemoteDatasourceImpl(sl()),
+  );
+  sl.registerLazySingleton<AppointmentRepository>(
+    () => AppointmentRepositoryImpl(sl()),
+  );
+  sl.registerLazySingleton(() => GetMyAppointments(sl()));
+  sl.registerLazySingleton(() => WatchMyAppointments(sl()));
+  sl.registerLazySingleton(() => TransitionAppointment(sl()));
+  sl.registerFactory(
+    () => AppointmentsBloc(
+      get: sl(),
+      watch: sl(),
+      transition: sl(),
+    ),
+  );
+
+  // ── M5 Availability Feature ───────────────────────────────
+  sl.registerLazySingleton<AvailabilityRemoteDatasource>(
+    () => AvailabilityRemoteDatasourceImpl(sl()),
+  );
+  sl.registerLazySingleton<AvailabilityRepository>(
+    () => AvailabilityRepositoryImpl(sl()),
+  );
+  sl.registerLazySingleton(() => GetMyAvailabilityBlocks(sl()));
+  sl.registerLazySingleton(() => WatchMyAvailabilityBlocks(sl()));
+  sl.registerLazySingleton(() => CreateAvailabilityBlock(sl()));
+  sl.registerLazySingleton(() => UpdateAvailabilityBlock(sl()));
+  sl.registerLazySingleton(() => DeleteAvailabilityBlock(sl()));
+  sl.registerLazySingleton(() => GetMyWorkingHours(sl()));
+  sl.registerLazySingleton(() => UpdateMyWorkingHours(sl()));
+  sl.registerFactory(
+    () => CalendarBloc(
+      getBlocks: sl(),
+      watchBlocks: sl(),
+      getWorkingHours: sl(),
+    ),
+  );
+  sl.registerFactory(
+    () => BlockEditorBloc(create: sl(), update: sl(), delete: sl()),
+  );
+  sl.registerFactory(
+    () => WorkingHoursBloc(get: sl(), update: sl()),
+  );
+
+  // ── M5 Documents Feature ──────────────────────────────────
+  sl.registerLazySingleton<DocumentRemoteDatasource>(
+    () => DocumentRemoteDatasourceImpl(sl()),
+  );
+  sl.registerLazySingleton<DocumentRepository>(
+    () => DocumentRepositoryImpl(sl()),
+  );
+  sl.registerLazySingleton(() => GetProspectDocuments(sl()));
+  sl.registerLazySingleton(() => GeneratePdfDocument(sl()));
+  sl.registerLazySingleton(() => EmbedSignature(sl()));
+  sl.registerFactory(
+    () => SignatureBloc(generate: sl(), embed: sl()),
+  );
+
+  // ── M5 Inspection Feature ─────────────────────────────────
+  sl.registerLazySingleton<InspectionRemoteDatasource>(
+    () => InspectionRemoteDatasourceImpl(sl()),
+  );
+  sl.registerLazySingleton<InspectionRepository>(
+    () => InspectionRepositoryImpl(sl()),
+  );
+  sl.registerLazySingleton(() => GetOrCreateInspection(sl()));
+  sl.registerLazySingleton(() => SaveInspectionReport(sl()));
+  sl.registerLazySingleton(() => MarkInspectionComplete(sl()));
+  sl.registerLazySingleton(() => UploadInspectionPhoto(sl()));
+  sl.registerLazySingleton(() => DeleteInspectionPhoto(sl()));
+  sl.registerLazySingleton(() => WatchInspectionPhotos(sl()));
+  sl.registerFactory(
+    () => InspectionBloc(
+      getOrCreate: sl(),
+      saveReport: sl(),
+      uploadPhoto: sl(),
+      deletePhoto: sl(),
+      watchPhotos: sl(),
     ),
   );
 }

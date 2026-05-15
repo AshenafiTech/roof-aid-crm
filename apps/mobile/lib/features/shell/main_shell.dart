@@ -6,6 +6,7 @@ import '../../core/theme/theme_controller.dart';
 import '../auth/presentation/bloc/auth_bloc.dart';
 import '../auth/presentation/bloc/auth_event.dart';
 import '../auth/presentation/bloc/auth_state.dart';
+import '../availability/presentation/pages/calendar_page.dart';
 import '../messages/presentation/bloc/conversations_bloc.dart';
 import '../messages/presentation/bloc/conversations_event.dart';
 import '../messages/presentation/pages/messages_page.dart';
@@ -140,11 +141,7 @@ class _MainShellState extends State<MainShell> {
       body: IndexedStack(
         index: _currentIndex,
         children: [
-          const PlaceholderPage(
-            icon: Icons.calendar_month_outlined,
-            title: 'Schedule',
-            subtitle: 'Your appointments will appear here',
-          ),
+          const CalendarPage(),
           BlocProvider<ProspectsBloc>(
             create: (_) =>
                 sl<ProspectsBloc>()..add(const ProspectsLoadRequested()),
