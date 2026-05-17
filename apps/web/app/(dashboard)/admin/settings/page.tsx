@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Clock, Mail, Phone, Users } from "lucide-react";
+import { ArrowRight, Bell, Clock, Mail, Phone, Users } from "lucide-react";
 
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -54,6 +54,13 @@ export default async function AdminSettingsPage() {
       href: null,
       icon: Clock,
       status: { label: "Coming in M7", tone: "soon" },
+    },
+    {
+      title: "Notifications",
+      description:
+        "Choose when Roof-Aid sends browser push notifications — like a new email arriving in your inbox.",
+      href: "/admin/settings/notifications",
+      icon: Bell,
     },
     {
       title: "Users",

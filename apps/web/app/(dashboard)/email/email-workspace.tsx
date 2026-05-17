@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import {
   ArrowLeft,
   ChevronLeft,
@@ -60,21 +60,88 @@ type InitialInbox = {
   nextPageToken: string | null;
 } | null;
 
+const EMAIL_POLL_INTERVAL_MS = 60_000;
+
 export function EmailWorkspace({
   initialConnection,
   initialFlash,
   initialInbox,
   initialUnread,
+  emailNotificationsEnabled,
 }: {
   initialConnection: GmailConnection;
   initialFlash: { connected: boolean; error: string | null };
   initialInbox: InitialInbox;
   initialUnread: number;
+  emailNotificationsEnabled: boolean;
 }) {
   const [connection, setConnection] = useState(initialConnection);
   const [tab, setTab] = useState<"compose" | "inbox" | "sent">("compose");
   const [unreadCount, setUnreadCount] = useState(initialUnread);
   const [isDisconnecting, startDisconnect] = useTransition();
+
+  // Track the newest message date we've already shown a notification for.
+  // Initialised from the latest message in the initial inbox so we only
+  // notify about emails that arrive *after* the page loads.
+  const lastNotifiedAtRef = useRef<number>(
+    initialInbox?.messages?.[0]?.date
+      ? new Date(initialInbox.messages[0].date).getTime()
+      : Date.now(),
+  );
+
+  useEffect(() => {
+    if (!connection.connected || !emailNotificationsEnabled) return;
+    if (typeof window === "undefined" || !("Notification" in window)) return;
+
+    let cancelled = false;
+
+    async function poll() {
+      const res = await listEmailsAction({ folder: "INBOX" });
+      if (cancelled || !res.ok) return;
+
+      setUnreadCount(res.unreadCount);
+
+      const fresh = res.data.messages.filter((m) => {
+        if (!m.unread) return false;
+        const ts = new Date(m.date).getTime();
+        return Number.isFinite(ts) && ts > lastNotifiedAtRef.current;
+      });
+
+      if (fresh.length === 0) return;
+
+      lastNotifiedAtRef.current = Math.max(
+        lastNotifiedAtRef.current,
+        ...fresh.map((m) => new Date(m.date).getTime()),
+      );
+
+      if (Notification.permission !== "granted") return;
+
+      // Show one combined notification when several arrive in the same tick.
+      if (fresh.length === 1) {
+        const m = fresh[0];
+        showEmailNotification({
+          title: m.fromName ?? m.fromEmail ?? "New email",
+          body: `${m.subject}\n${m.snippet}`,
+          tag: `email:${m.id}`,
+        });
+      } else {
+        showEmailNotification({
+          title: `${fresh.length} new emails`,
+          body: fresh
+            .slice(0, 3)
+            .map((m) => `• ${m.fromName ?? m.fromEmail}: ${m.subject}`)
+            .join("\n"),
+          tag: "email:batch",
+        });
+      }
+    }
+
+    const id = window.setInterval(poll, EMAIL_POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [connection.connected, emailNotificationsEnabled]);
 
   useEffect(() => {
     if (initialFlash.connected) {
@@ -563,6 +630,31 @@ function EmailViewer({
       </div>
     </Card>
   );
+}
+
+function showEmailNotification({
+  title,
+  body,
+  tag,
+}: {
+  title: string;
+  body: string;
+  tag: string;
+}) {
+  try {
+    const n = new Notification(title, {
+      body,
+      tag,
+      icon: "/favicon.ico",
+    });
+    n.onclick = () => {
+      window.focus();
+      window.location.href = "/email";
+      n.close();
+    };
+  } catch {
+    // Notifications can throw on some browsers when called outside a user gesture.
+  }
 }
 
 function formatRelative(iso: string): string {
