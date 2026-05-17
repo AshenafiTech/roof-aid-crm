@@ -10,9 +10,25 @@ import '../../domain/entities/inspection_entity.dart';
 import '../models/inspection_model.dart';
 import '../models/photo_model.dart';
 
+/// Raw shape returned by the `start_ad_hoc_inspection` RPC.
+class AdHocInspectionResult {
+  final String appointmentId;
+  final String inspectionId;
+  const AdHocInspectionResult({
+    required this.appointmentId,
+    required this.inspectionId,
+  });
+}
+
 abstract class InspectionRemoteDatasource {
   Future<InspectionModel> getOrCreateForAppointment({
     required String appointmentId,
+    required String prospectId,
+  });
+
+  /// Calls `start_ad_hoc_inspection(prospect_id)` RPC. Returns the
+  /// freshly-created appointment + inspection ids.
+  Future<AdHocInspectionResult> startAdHocInspection({
     required String prospectId,
   });
 
@@ -44,6 +60,10 @@ abstract class InspectionRemoteDatasource {
     required String photoId,
     required List<String> tags,
   });
+
+  Future<String> getPhotoSignedUrl(String storagePath);
+
+  Future<List<InspectionModel>> fetchForProspect(String prospectId);
 }
 
 class InspectionRemoteDatasourceImpl implements InspectionRemoteDatasource {
@@ -66,6 +86,43 @@ class InspectionRemoteDatasourceImpl implements InspectionRemoteDatasource {
         .eq('id', uid)
         .single();
     return me['tenant_id'] as String;
+  }
+
+  @override
+  Future<AdHocInspectionResult> startAdHocInspection({
+    required String prospectId,
+  }) async {
+    _requireUid();
+    try {
+      final response = await client.rpc(
+        'start_ad_hoc_inspection',
+        params: {'p_prospect_id': prospectId},
+      );
+
+      if (response is! Map<String, dynamic>) {
+        throw ServerException('Unexpected response from server.');
+      }
+      if (response['ok'] != true) {
+        final err = response['error'];
+        final code = err is Map ? err['code']?.toString() : null;
+        final message = err is Map
+            ? (err['message']?.toString() ?? 'Could not start inspection.')
+            : 'Could not start inspection.';
+        throw ServerException(
+          code != null ? '$code: $message' : message,
+        );
+      }
+      return AdHocInspectionResult(
+        appointmentId: response['appointment_id'] as String,
+        inspectionId: response['inspection_id'] as String,
+      );
+    } on ServerException {
+      rethrow;
+    } catch (e) {
+      if (isNetworkError(e)) throw NetworkException(offlineMessage);
+      if (e is PostgrestException) throw ServerException(e.message);
+      throw ServerException('Failed to start inspection: $e');
+    }
   }
 
   @override
@@ -309,6 +366,44 @@ class InspectionRemoteDatasourceImpl implements InspectionRemoteDatasource {
       if (isNetworkError(e)) throw NetworkException(offlineMessage);
       if (e is PostgrestException) throw ServerException(e.message);
       throw ServerException('Failed to delete photo: $e');
+    }
+  }
+
+  @override
+  Future<List<InspectionModel>> fetchForProspect(String prospectId) async {
+    _requireUid();
+    try {
+      final response = await client
+          .from('inspection_reports')
+          .select()
+          .eq('prospect_id', prospectId)
+          .order('created_at', ascending: false);
+      return (response as List)
+          .map((r) => InspectionModel.fromMap(r as Map<String, dynamic>))
+          .toList(growable: false);
+    } on ServerException {
+      rethrow;
+    } catch (e) {
+      if (isNetworkError(e)) throw NetworkException(offlineMessage);
+      if (e is PostgrestException) throw ServerException(e.message);
+      throw ServerException('Failed to load inspections: $e');
+    }
+  }
+
+  @override
+  Future<String> getPhotoSignedUrl(String storagePath) async {
+    _requireUid();
+    try {
+      final url = await client.storage
+          .from('inspection-photos')
+          .createSignedUrl(storagePath, 60 * 60);
+      return url;
+    } on ServerException {
+      rethrow;
+    } catch (e) {
+      if (isNetworkError(e)) throw NetworkException(offlineMessage);
+      if (e is StorageException) throw ServerException(e.message);
+      throw ServerException('Failed to get photo link: $e');
     }
   }
 

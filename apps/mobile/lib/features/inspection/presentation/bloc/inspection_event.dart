@@ -58,3 +58,10 @@ class InspectionPhotosStreamUpdated extends InspectionEvent {
 class InspectionSaveRequested extends InspectionEvent {
   const InspectionSaveRequested();
 }
+
+/// Internal: fires from a debounce timer after the user stops editing
+/// the damage form for ~1.5 s. Persists the latest draft to the server
+/// quietly (no UI state changes) so the form survives navigating away.
+class InspectionAutoSaveRequested extends InspectionEvent {
+  const InspectionAutoSaveRequested();
+}

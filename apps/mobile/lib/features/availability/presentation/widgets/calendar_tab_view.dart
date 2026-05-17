@@ -39,8 +39,8 @@ class CalendarTabView extends StatefulWidget {
 }
 
 class _CalendarTabViewState extends State<CalendarTabView> {
-  final EventController<_CalendarEvent> _controller =
-      EventController<_CalendarEvent>();
+  final EventController _controller =
+      EventController();
 
   @override
   void dispose() {
@@ -53,7 +53,7 @@ class _CalendarTabViewState extends State<CalendarTabView> {
     List<AppointmentEntity> appointments,
   ) {
     _controller.removeWhere((_) => true);
-    final events = <CalendarEventData<_CalendarEvent>>[];
+    final events = <CalendarEventData>[];
 
     // Window for which we expand recurrences. ±6 weeks around today is
     // plenty for the visible views; bigger windows hurt perf for nothing.
@@ -68,7 +68,7 @@ class _CalendarTabViewState extends State<CalendarTabView> {
       if (AppointmentStatus.terminal.contains(a.status)) continue;
       final color = AppointmentStatus.color(a.status);
       events.add(
-        CalendarEventData<_CalendarEvent>(
+        CalendarEventData(
           date: DateTime(a.scheduledAt.year, a.scheduledAt.month,
               a.scheduledAt.day),
           startTime: a.scheduledAt,
@@ -83,7 +83,7 @@ class _CalendarTabViewState extends State<CalendarTabView> {
     _controller.addAll(events);
   }
 
-  Iterable<CalendarEventData<_CalendarEvent>> _blockToEvents(
+  Iterable<CalendarEventData> _blockToEvents(
     AvailabilityBlockEntity block,
     DateTime windowStart,
     DateTime windowEnd,
@@ -96,7 +96,7 @@ class _CalendarTabViewState extends State<CalendarTabView> {
     for (final occ in occurrences) {
       final start = occ;
       final end = start.add(block.duration);
-      yield CalendarEventData<_CalendarEvent>(
+      yield CalendarEventData(
         date: DateTime(start.year, start.month, start.day),
         startTime: start,
         endTime: end,
@@ -166,23 +166,98 @@ class _CalendarTabViewState extends State<CalendarTabView> {
                 : const <AppointmentEntity>[];
             _syncEvents(loaded.blocks, appointments);
 
-            return CalendarControllerProvider<_CalendarEvent>(
+            return CalendarControllerProvider(
               controller: _controller,
-              child: Column(
-                children: [
-                  _ViewModeBar(mode: loaded.mode),
-                  Expanded(
-                    child: _ViewBody(
-                      mode: loaded.mode,
-                      cursor: loaded.cursor,
+              child: CalendarThemeProvider(
+                calendarTheme: _calendarThemeFor(context),
+                child: Column(
+                  children: [
+                    _ViewModeBar(mode: loaded.mode),
+                    Expanded(
+                      child: _ViewBody(
+                        mode: loaded.mode,
+                        cursor: loaded.cursor,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             );
           },
         );
       },
+    );
+  }
+
+  /// Maps the app's [Theme] to a `calendar_view` theme so the calendar
+  /// inherits the app's primary palette instead of the package's stock
+  /// pink/white look. Light + dark both supported via `Theme.of`.
+  CalendarThemeData _calendarThemeFor(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final hourLine = cs.outlineVariant;
+    final halfLine = cs.outlineVariant.withValues(alpha: 0.4);
+    final live = cs.error;
+    final bg = cs.surface;
+    final headerBg = cs.surfaceContainerHighest;
+    final headerText = cs.onSurface;
+    final timelineText = cs.onSurfaceVariant;
+
+    return CalendarThemeData(
+      monthViewTheme: MonthViewThemeData(
+        cellInMonthColor: bg,
+        cellNotInMonthColor: cs.surfaceContainerLowest,
+        cellTextColor: cs.onSurface,
+        cellBorderColor: cs.outlineVariant,
+        weekDayTileColor: headerBg,
+        weekDayTextColor: timelineText,
+        weekDayBorderColor: cs.outlineVariant,
+        headerIconColor: headerText,
+        headerTextColor: headerText,
+        headerBackgroundColor: headerBg,
+        cellHighlightColor: cs.primary.withValues(alpha: 0.18),
+      ),
+      dayViewTheme: DayViewThemeData(
+        hourLineColor: hourLine,
+        halfHourLineColor: halfLine,
+        quarterHourLineColor: halfLine,
+        pageBackgroundColor: bg,
+        liveIndicatorColor: live,
+        headerIconColor: headerText,
+        headerTextColor: headerText,
+        headerBackgroundColor: headerBg,
+        timelineTextColor: timelineText,
+      ),
+      weekViewTheme: WeekViewThemeData(
+        weekDayTileColor: headerBg,
+        weekDayTextColor: timelineText,
+        hourLineColor: hourLine,
+        halfHourLineColor: halfLine,
+        quarterHourLineColor: halfLine,
+        liveIndicatorColor: live,
+        pageBackgroundColor: bg,
+        headerIconColor: headerText,
+        headerTextColor: headerText,
+        headerBackgroundColor: headerBg,
+        timelineTextColor: timelineText,
+        borderColor: cs.outlineVariant,
+        verticalLinesColor: cs.outlineVariant.withValues(alpha: 0.4),
+      ),
+      multiDayViewTheme: MultiDayViewThemeData(
+        multiDayTileColor: headerBg,
+        multiDayTextColor: timelineText,
+        hourLineColor: hourLine,
+        halfHourLineColor: halfLine,
+        quarterHourLineColor: halfLine,
+        liveIndicatorColor: live,
+        pageBackgroundColor: bg,
+        headerIconColor: headerText,
+        headerTextColor: headerText,
+        headerBackgroundColor: headerBg,
+        timelineTextColor: timelineText,
+        borderColor: cs.outlineVariant,
+        verticalLinesColor: cs.outlineVariant.withValues(alpha: 0.4),
+      ),
     );
   }
 }
@@ -234,14 +309,44 @@ class _ViewBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // All views inherit the same color palette from the app theme. The
+    // calendar_view package doesn't pull these from CalendarThemeProvider
+    // automatically — settings classes + custom builders have to receive
+    // them explicitly so labels stay readable in dark mode.
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final hourSettings = HourIndicatorSettings(
+      color: cs.outlineVariant,
+      height: 0.6,
+    );
+    final halfHourSettings = HourIndicatorSettings(
+      color: cs.outlineVariant.withValues(alpha: 0.45),
+      height: 0.5,
+      lineStyle: LineStyle.dashed,
+    );
+    final liveSettings = LiveTimeIndicatorSettings(
+      color: cs.error,
+      showTime: true,
+      showBullet: true,
+    );
+
     switch (mode) {
       case CalendarViewMode.day:
-        return DayView<_CalendarEvent>(
+        // Drop generics across the calendar_view widget tree: in v2 the
+        // controller-provider lookup uses the (defaulted) Object? generic,
+        // so generic mismatches at the MonthView level crash at runtime.
+        return DayView(
           initialDay: cursor,
           startDuration: const Duration(hours: 6),
           showHalfHours: true,
           heightPerMinute: 1.4,
           showLiveTimeLineInAllDays: true,
+          backgroundColor: cs.surface,
+          hourIndicatorSettings: hourSettings,
+          halfHourIndicatorSettings: halfHourSettings,
+          liveTimeIndicatorSettings: liveSettings,
+          dayTitleBuilder: (date) => _dayTitleBuilder(context, date),
+          timeLineBuilder: (date) => _timelineBuilder(context, date),
           onPageChange: (date, _) => context
               .read<CalendarBloc>()
               .add(CalendarCursorChanged(date)),
@@ -253,13 +358,20 @@ class _ViewBody extends StatelessWidget {
           onTimestampTap: (date) => _openEditor(context, prefill: date),
         );
       case CalendarViewMode.week:
-        return WeekView<_CalendarEvent>(
+        return WeekView(
           initialDay: cursor,
           startDay: WeekDays.sunday,
           startHour: 6,
           endHour: 22,
           heightPerMinute: 1.2,
           showLiveTimeLineInAllDays: true,
+          backgroundColor: cs.surface,
+          weekTitleBackgroundColor: cs.surfaceContainerHighest,
+          hourIndicatorSettings: hourSettings,
+          halfHourIndicatorSettings: halfHourSettings,
+          liveTimeIndicatorSettings: liveSettings,
+          timeLineBuilder: (date) => _timelineBuilder(context, date),
+          weekDayBuilder: (date) => _weekDayBuilder(context, date),
           onPageChange: (date, _) => context
               .read<CalendarBloc>()
               .add(CalendarCursorChanged(date)),
@@ -269,12 +381,25 @@ class _ViewBody extends StatelessWidget {
           },
         );
       case CalendarViewMode.month:
-        return MonthView<_CalendarEvent>(
+        return MonthView(
           monthViewStyle: MonthViewStyle(
             initialMonth: cursor,
             startDay: WeekDays.sunday,
+            borderColor: cs.outlineVariant,
+            borderSize: 0.6,
           ),
-          monthViewBuilders: MonthViewBuilders<_CalendarEvent>(
+          monthViewBuilders: MonthViewBuilders(
+            cellBuilder: (date, events, isToday, isInMonth, hideDaysNotInMonth) =>
+                _monthCellBuilder(
+              context,
+              date: date,
+              events: events,
+              isToday: isToday,
+              isInMonth: isInMonth,
+              hideDaysNotInMonth: hideDaysNotInMonth,
+            ),
+            weekDayBuilder: (day) => _monthWeekDayBuilder(context, day),
+            headerBuilder: (date) => _monthHeaderBuilder(context, date),
             onPageChange: (date, _) => context
                 .read<CalendarBloc>()
                 .add(CalendarCursorChanged(date)),
@@ -289,8 +414,242 @@ class _ViewBody extends StatelessWidget {
     }
   }
 
-  void _handleTap(BuildContext context, _CalendarEvent? event) {
-    if (event == null) return;
+  // ── Theme-aware builders ───────────────────────────────────
+
+  Widget _timelineBuilder(BuildContext context, DateTime date) {
+    final theme = Theme.of(context);
+    // Skip the 00:00 row on the day grid edges; the package draws hours
+    // every full hour and shows the leading midnight even when off-screen.
+    final label = date.minute == 0
+        ? DateFormat.j().format(date)
+        : DateFormat.Hm().format(date);
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: Text(
+        label,
+        textAlign: TextAlign.right,
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+          fontFeatures: const [FontFeature.tabularFigures()],
+        ),
+      ),
+    );
+  }
+
+  Widget _dayTitleBuilder(BuildContext context, DateTime date) {
+    final theme = Theme.of(context);
+    return Container(
+      alignment: Alignment.center,
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(color: theme.colorScheme.outlineVariant),
+        ),
+      ),
+      child: Text(
+        DateFormat.yMMMMEEEEd().format(date),
+        style: theme.textTheme.titleSmall?.copyWith(
+          fontWeight: FontWeight.w600,
+          color: theme.colorScheme.onSurface,
+        ),
+      ),
+    );
+  }
+
+  Widget _weekDayBuilder(BuildContext context, DateTime date) {
+    final theme = Theme.of(context);
+    final isToday = _isSameDay(date, DateTime.now());
+    // The week-title slot is only ~38 px tall in the v2 package layout,
+    // so the column must size to its children + every pixel counts.
+    return Container(
+      alignment: Alignment.center,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            DateFormat.E().format(date).toUpperCase(),
+            style: theme.textTheme.labelSmall?.copyWith(
+              fontSize: 10,
+              height: 1.0,
+              color: theme.colorScheme.onSurfaceVariant,
+              letterSpacing: 0.8,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Container(
+            width: 22,
+            height: 22,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: isToday ? theme.colorScheme.primary : null,
+            ),
+            child: Text(
+              date.day.toString(),
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontSize: 12,
+                height: 1.0,
+                fontWeight: FontWeight.w700,
+                color: isToday
+                    ? theme.colorScheme.onPrimary
+                    : theme.colorScheme.onSurface,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _monthCellBuilder(
+    BuildContext context, {
+    required DateTime date,
+    required List<CalendarEventData> events,
+    required bool isToday,
+    required bool isInMonth,
+    required bool hideDaysNotInMonth,
+  }) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final visible = isInMonth || !hideDaysNotInMonth;
+    final textColor = !visible
+        ? Colors.transparent
+        : isInMonth
+            ? cs.onSurface
+            : cs.onSurfaceVariant.withValues(alpha: 0.45);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isInMonth ? cs.surface : cs.surfaceContainerLowest,
+        border: Border.all(
+          color: cs.outlineVariant.withValues(alpha: 0.6),
+          width: 0.5,
+        ),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Day number — circled when today.
+          Align(
+            alignment: Alignment.topLeft,
+            child: Container(
+              width: 24,
+              height: 24,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: isToday ? cs.primary : null,
+              ),
+              child: Text(
+                date.day.toString(),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: isToday ? cs.onPrimary : textColor,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 2),
+          // Up to 3 event chips per cell — the rest collapses into "+N".
+          if (visible && events.isNotEmpty)
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (final e in events.take(3))
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Container(
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: e.color,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                  if (events.length > 3)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        '+${events.length - 3}',
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: cs.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _monthWeekDayBuilder(BuildContext context, int day) {
+    // `day` here is 0..6 in the order chosen by `startDay` (Sunday).
+    const labels = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+    final theme = Theme.of(context);
+    return Container(
+      color: theme.colorScheme.surfaceContainerHighest,
+      alignment: Alignment.center,
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Text(
+        labels[day % labels.length],
+        style: theme.textTheme.labelSmall?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+          letterSpacing: 1.0,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+
+  Widget _monthHeaderBuilder(BuildContext context, DateTime date) {
+    final theme = Theme.of(context);
+    return Container(
+      color: theme.colorScheme.surfaceContainerHighest,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: Row(
+        children: [
+          IconButton(
+            icon: Icon(Icons.chevron_left, color: theme.colorScheme.onSurface),
+            onPressed: () {
+              final prev = DateTime(date.year, date.month - 1, 1);
+              context.read<CalendarBloc>().add(CalendarCursorChanged(prev));
+            },
+          ),
+          Expanded(
+            child: Text(
+              DateFormat.yMMMM().format(date),
+              textAlign: TextAlign.center,
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: theme.colorScheme.onSurface,
+              ),
+            ),
+          ),
+          IconButton(
+            icon: Icon(Icons.chevron_right, color: theme.colorScheme.onSurface),
+            onPressed: () {
+              final next = DateTime(date.year, date.month + 1, 1);
+              context.read<CalendarBloc>().add(CalendarCursorChanged(next));
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  bool _isSameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  // calendar_view's controller-lookup defaults to <Object?>, so events
+  // come back to us untyped. Cast back to our sealed payload.
+  void _handleTap(BuildContext context, Object? raw) {
+    if (raw is! _CalendarEvent) return;
+    final event = raw;
     if (event is _AppointmentCalendarEvent) {
       // Bubble up via the parent (CalendarPage handles opening the
       // appointment detail sheet). For now, surface a toast — the List

@@ -12,6 +12,13 @@ class SignatureGenerating extends SignatureState {
   const SignatureGenerating();
 }
 
+/// Emitted by the preview page once the unsigned PDF has been built
+/// so the UI can show a "ready to review" affordance + download link.
+class SignatureGenerated extends SignatureState {
+  final DocumentEntity unsignedDocument;
+  const SignatureGenerated(this.unsignedDocument);
+}
+
 class SignatureEmbedding extends SignatureState {
   const SignatureEmbedding();
 }

@@ -4,27 +4,62 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:signature/signature.dart' hide SignatureState;
 
+import '../../../../core/di/injection_container.dart';
 import '../../../documents/presentation/bloc/signature_bloc.dart';
 import '../../../documents/presentation/bloc/signature_event.dart';
 import '../../../documents/presentation/bloc/signature_state.dart';
 
 /// Full-screen pad. Generates the unsigned Authorization PDF on submit,
 /// embeds the signature, and pops with `true` when done.
-class SignatureCapturePage extends StatefulWidget {
+///
+/// Provides its own [SignatureBloc] — pushed routes get a fresh widget
+/// subtree that doesn't inherit ancestor providers, so depending on
+/// InspectionPage's bloc would crash with a "could not find provider"
+/// error the moment the user lands here.
+class SignatureCapturePage extends StatelessWidget {
   final String prospectId;
   final String prospectName;
+  /// Optional pre-generated unsigned document. When set, the bloc skips
+  /// the generate-pdf round-trip and goes straight to embedding (used
+  /// by the document-preview flow).
+  final String? documentId;
 
   const SignatureCapturePage({
     super.key,
     required this.prospectId,
     required this.prospectName,
+    this.documentId,
   });
 
   @override
-  State<SignatureCapturePage> createState() => _SignatureCapturePageState();
+  Widget build(BuildContext context) {
+    return BlocProvider<SignatureBloc>(
+      create: (_) => sl<SignatureBloc>(),
+      child: _SignatureCaptureView(
+        prospectId: prospectId,
+        prospectName: prospectName,
+        documentId: documentId,
+      ),
+    );
+  }
 }
 
-class _SignatureCapturePageState extends State<SignatureCapturePage> {
+class _SignatureCaptureView extends StatefulWidget {
+  final String prospectId;
+  final String prospectName;
+  final String? documentId;
+
+  const _SignatureCaptureView({
+    required this.prospectId,
+    required this.prospectName,
+    this.documentId,
+  });
+
+  @override
+  State<_SignatureCaptureView> createState() => _SignatureCaptureViewState();
+}
+
+class _SignatureCaptureViewState extends State<_SignatureCaptureView> {
   late final SignatureController _padController;
   late final TextEditingController _nameController;
   bool _hasDrawn = false;
@@ -71,6 +106,7 @@ class _SignatureCapturePageState extends State<SignatureCapturePage> {
             prospectId: widget.prospectId,
             signerName: name,
             signaturePngBase64: base64Png,
+            documentId: widget.documentId,
           ),
         );
   }

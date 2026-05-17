@@ -9,6 +9,7 @@ import '../bloc/sms_bloc.dart';
 import '../bloc/sms_event.dart';
 import '../widgets/dnc_banner.dart';
 import '../widgets/quick_actions_bar.dart';
+import '../widgets/tabs/inspection_tab.dart';
 import '../widgets/tabs/notes_tab.dart';
 import '../widgets/tabs/overview_tab.dart';
 import '../widgets/tabs/placeholder_tabs.dart';
@@ -72,7 +73,7 @@ class ProspectDetailPage extends StatelessWidget {
                     child: const SmsTab(),
                   ),
                   const DocumentsTab(),
-                  const InspectionTab(),
+                  InspectionTab(prospect: prospect),
                   BlocProvider<NotesBloc>(
                     create: (_) =>
                         sl<NotesBloc>()..add(NotesLoadRequested(prospect.id)),

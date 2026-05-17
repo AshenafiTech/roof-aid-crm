@@ -33,6 +33,25 @@ class InspectionRepositoryImpl implements InspectionRepository {
   }
 
   @override
+  Future<Either<Failure, AdHocInspectionStart>> startAdHocInspection({
+    required String prospectId,
+  }) async {
+    try {
+      final r = await remote.startAdHocInspection(prospectId: prospectId);
+      return Right(
+        AdHocInspectionStart(
+          appointmentId: r.appointmentId,
+          inspectionId: r.inspectionId,
+        ),
+      );
+    } on NetworkException catch (e) {
+      return Left(NetworkFailure(e.message));
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    }
+  }
+
+  @override
   Future<Either<Failure, InspectionEntity>> saveDamageForm({
     required String inspectionId,
     required DamageFormData form,
@@ -126,6 +145,32 @@ class InspectionRepositoryImpl implements InspectionRepository {
     try {
       final p = await remote.updatePhotoTags(photoId: photoId, tags: tags);
       return Right(p);
+    } on NetworkException catch (e) {
+      return Left(NetworkFailure(e.message));
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    }
+  }
+
+  @override
+  Future<Either<Failure, String>> getPhotoSignedUrl(String storagePath) async {
+    try {
+      final url = await remote.getPhotoSignedUrl(storagePath);
+      return Right(url);
+    } on NetworkException catch (e) {
+      return Left(NetworkFailure(e.message));
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    }
+  }
+
+  @override
+  Future<Either<Failure, List<InspectionEntity>>> getForProspect(
+    String prospectId,
+  ) async {
+    try {
+      final list = await remote.fetchForProspect(prospectId);
+      return Right(list);
     } on NetworkException catch (e) {
       return Left(NetworkFailure(e.message));
     } on ServerException catch (e) {

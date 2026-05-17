@@ -47,8 +47,11 @@ import '../../features/inspection/data/repositories/inspection_repository_impl.d
 import '../../features/inspection/domain/repositories/inspection_repository.dart';
 import '../../features/inspection/domain/usecases/delete_inspection_photo.dart';
 import '../../features/inspection/domain/usecases/get_or_create_inspection.dart';
+import '../../features/inspection/domain/usecases/get_prospect_inspections.dart';
 import '../../features/inspection/domain/usecases/mark_inspection_complete.dart';
 import '../../features/inspection/domain/usecases/save_inspection_report.dart';
+import '../../features/inspection/domain/usecases/start_ad_hoc_inspection.dart';
+import '../../features/inspection/domain/usecases/update_photo_tags.dart';
 import '../../features/inspection/domain/usecases/upload_inspection_photo.dart';
 import '../../features/inspection/domain/usecases/watch_inspection_photos.dart';
 import '../../features/inspection/presentation/bloc/inspection_bloc.dart';
@@ -272,10 +275,13 @@ Future<void> initDependencies() async {
     () => InspectionRepositoryImpl(sl()),
   );
   sl.registerLazySingleton(() => GetOrCreateInspection(sl()));
+  sl.registerLazySingleton(() => GetProspectInspections(sl()));
+  sl.registerLazySingleton(() => StartAdHocInspection(sl()));
   sl.registerLazySingleton(() => SaveInspectionReport(sl()));
   sl.registerLazySingleton(() => MarkInspectionComplete(sl()));
   sl.registerLazySingleton(() => UploadInspectionPhoto(sl()));
   sl.registerLazySingleton(() => DeleteInspectionPhoto(sl()));
+  sl.registerLazySingleton(() => UpdatePhotoTags(sl()));
   sl.registerLazySingleton(() => WatchInspectionPhotos(sl()));
   sl.registerFactory(
     () => InspectionBloc(
@@ -283,6 +289,7 @@ Future<void> initDependencies() async {
       saveReport: sl(),
       uploadPhoto: sl(),
       deletePhoto: sl(),
+      updateTags: sl(),
       watchPhotos: sl(),
     ),
   );

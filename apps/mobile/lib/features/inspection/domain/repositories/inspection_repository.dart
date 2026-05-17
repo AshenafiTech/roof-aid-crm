@@ -6,11 +6,30 @@ import '../../../../core/error/failures.dart';
 import '../entities/inspection_entity.dart';
 import '../entities/photo_entity.dart';
 
+/// Result of `startAdHocInspection` — the freshly-claimed appointment id
+/// and the inspection-reports id the mobile UI navigates straight into.
+class AdHocInspectionStart {
+  final String appointmentId;
+  final String inspectionId;
+  const AdHocInspectionStart({
+    required this.appointmentId,
+    required this.inspectionId,
+  });
+}
+
 abstract class InspectionRepository {
   /// Returns an existing draft for this appointment or creates a new one.
   /// Idempotent: safe to call on every screen open.
   Future<Either<Failure, InspectionEntity>> getOrCreateForAppointment({
     required String appointmentId,
+    required String prospectId,
+  });
+
+  /// Walk-in / ad-hoc inspection: no pre-scheduled appointment. Calls
+  /// `start_ad_hoc_inspection(prospect_id)` which creates a confirmed
+  /// appointment for *now*, claims the prospect if unassigned, and
+  /// returns both the appointment and inspection ids.
+  Future<Either<Failure, AdHocInspectionStart>> startAdHocInspection({
     required String prospectId,
   });
 
@@ -46,4 +65,15 @@ abstract class InspectionRepository {
     required String photoId,
     required List<String> tags,
   });
+
+  /// 1-hour signed URL for a photo's storage path. The bucket is
+  /// `inspection-photos`, locked to the caller's tenant by RLS.
+  Future<Either<Failure, String>> getPhotoSignedUrl(String storagePath);
+
+  /// All inspections for a prospect, newest first. Used by the
+  /// prospect-detail Inspection tab so a rufero can continue an
+  /// in-progress inspection or review a completed one.
+  Future<Either<Failure, List<InspectionEntity>>> getForProspect(
+    String prospectId,
+  );
 }

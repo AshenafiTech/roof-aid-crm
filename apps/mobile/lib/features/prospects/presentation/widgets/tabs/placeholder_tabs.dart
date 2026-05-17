@@ -48,17 +48,6 @@ class DocumentsTab extends StatelessWidget {
   }
 }
 
-class InspectionTab extends StatelessWidget {
-  const InspectionTab({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const EmptyState(
-      icon: Icons.home_repair_service_outlined,
-      title: 'No inspection recorded',
-      description:
-          'The inspection report and photo grid will appear here after the on-site visit (M5).',
-    );
-  }
-}
+// InspectionTab now lives in `inspection_tab.dart` — it's the entry
+// point for ad-hoc / walk-in inspections (M5 follow-up, Option B).
 

@@ -4,16 +4,17 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/di/injection_container.dart';
 import '../../../../core/constants/photo_tags.dart';
-import '../../../documents/presentation/bloc/signature_bloc.dart';
 import '../../domain/entities/photo_entity.dart';
+import '../../domain/repositories/inspection_repository.dart';
 import '../bloc/inspection_bloc.dart';
 import '../bloc/inspection_event.dart';
 import '../bloc/inspection_state.dart';
 import '../widgets/damage_form.dart';
 import '../widgets/photo_grid.dart';
 import '../widgets/photo_tag_selector.dart';
+import 'document_preview_page.dart';
 import 'photo_capture_page.dart';
-import 'signature_capture_page.dart';
+import 'photo_viewer_page.dart';
 
 class InspectionPage extends StatelessWidget {
   final String appointmentId;
@@ -31,19 +32,14 @@ class InspectionPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MultiBlocProvider(
-      providers: [
-        BlocProvider<InspectionBloc>(
-          create: (_) => sl<InspectionBloc>()
-            ..add(InspectionLoadRequested(
-              appointmentId: appointmentId,
-              prospectId: prospectId,
-            )),
-        ),
-        BlocProvider<SignatureBloc>(
-          create: (_) => sl<SignatureBloc>(),
-        ),
-      ],
+    // SignatureBloc lives on SignatureCapturePage now — it provides
+    // its own so the pushed-route subtree can find it.
+    return BlocProvider<InspectionBloc>(
+      create: (_) => sl<InspectionBloc>()
+        ..add(InspectionLoadRequested(
+          appointmentId: appointmentId,
+          prospectId: prospectId,
+        )),
       child: _InspectionView(
         prospectName: prospectName,
         prospectId: prospectId,
@@ -75,45 +71,47 @@ class _InspectionView extends StatelessWidget {
         }
       },
       builder: (context, state) {
-        return Scaffold(
-          appBar: AppBar(
-            title: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(prospectName),
-                Text(
-                  DateFormat('h:mm a · MMM d').format(scheduledAt),
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Theme.of(context)
-                        .colorScheme
-                        .onSurfaceVariant,
+        return SafeArea(
+          child: Scaffold(
+            appBar: AppBar(
+              title: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(prospectName),
+                  Text(
+                    DateFormat('h:mm a · MMM d').format(scheduledAt),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurfaceVariant,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
+            body: switch (state) {
+              InspectionInitial() ||
+              InspectionLoading() =>
+                const Center(child: CircularProgressIndicator()),
+              InspectionError(:final message, :final isOffline) =>
+                _ErrorView(
+                  message: message,
+                  isOffline: isOffline,
+                  onRetry: () {
+                    // We can't recreate the load event params from here —
+                    // simplest is to pop and reopen. Surface a hint instead.
+                  },
+                ),
+              InspectionReady() => _ReadyBody(
+                  state: state,
+                  prospectId: prospectId,
+                  prospectName: prospectName,
+                ),
+              InspectionSaved() =>
+                const Center(child: CircularProgressIndicator()),
+            },
           ),
-          body: switch (state) {
-            InspectionInitial() ||
-            InspectionLoading() =>
-              const Center(child: CircularProgressIndicator()),
-            InspectionError(:final message, :final isOffline) =>
-              _ErrorView(
-                message: message,
-                isOffline: isOffline,
-                onRetry: () {
-                  // We can't recreate the load event params from here —
-                  // simplest is to pop and reopen. Surface a hint instead.
-                },
-              ),
-            InspectionReady() => _ReadyBody(
-                state: state,
-                prospectId: prospectId,
-                prospectName: prospectName,
-              ),
-            InspectionSaved() =>
-              const Center(child: CircularProgressIndicator()),
-          },
         );
       },
     );
@@ -134,6 +132,14 @@ class _ReadyBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // Repository lookup is fine here — it's a lazy singleton; we don't
+    // need to thread a use case through DI just for a 1-line signed URL.
+    final repo = sl<InspectionRepository>();
+    Future<String?> signedUrlFor(String path) async {
+      final r = await repo.getPhotoSignedUrl(path);
+      return r.fold((_) => null, (u) => u);
+    }
+
     return SafeArea(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -145,9 +151,10 @@ class _ReadyBody extends StatelessWidget {
             PhotoGrid(
               photos: state.photos,
               onAddTap: () => _addPhoto(context),
-              onPhotoTap: (p) => _showPhotoSheet(context, p),
+              // Tap → full-screen viewer.  Long-press → action sheet.
+              onPhotoTap: (p) => _openViewer(context, p, signedUrlFor),
               onPhotoLongPress: (p) => _showPhotoSheet(context, p),
-              signedUrlFor: (path) async => null, // Online viewing not wired; thumbnails show placeholder
+              signedUrlFor: signedUrlFor,
             ),
             const SizedBox(height: 8),
             Text(
@@ -205,6 +212,21 @@ class _ReadyBody extends StatelessWidget {
     if (!hasDamage) tips.add('Add a Close-up damage photo');
     if (tips.isEmpty) return 'Photo set looks good.';
     return tips.join(' · ');
+  }
+
+  Future<void> _openViewer(
+    BuildContext context,
+    PhotoEntity photo,
+    Future<String?> Function(String) signedUrlFor,
+  ) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PhotoViewerPage(
+          photo: photo,
+          signedUrlFor: signedUrlFor,
+        ),
+      ),
+    );
   }
 
   Future<void> _addPhoto(BuildContext context) async {
@@ -299,9 +321,11 @@ class _ReadyBody extends StatelessWidget {
   Future<void> _saveAndSign(BuildContext context) async {
     final inspectionBloc = context.read<InspectionBloc>();
     inspectionBloc.add(const InspectionSaveRequested());
+    // Route through the preview page — the homeowner reviews the
+    // unsigned PDF before the signature pad opens.
     final result = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) => SignatureCapturePage(
+        builder: (_) => DocumentPreviewPage(
           prospectId: prospectId,
           prospectName: prospectName,
         ),

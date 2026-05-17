@@ -115,6 +115,7 @@ class _PhotoCapturePageState extends State<PhotoCapturePage> {
   @override
   Widget build(BuildContext context) {
     final processed = _processed;
+    final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
         title: const Text('Tag photo'),
@@ -125,10 +126,13 @@ class _PhotoCapturePageState extends State<PhotoCapturePage> {
           ),
         ],
       ),
+      // Move the Save button into a pinned bottomNavigationBar so it
+      // can't get covered by the system nav bar, and SafeArea-bottom
+      // ensures it sits above gesture insets too.
       body: _captured == null
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -157,24 +161,24 @@ class _PhotoCapturePageState extends State<PhotoCapturePage> {
                     const SizedBox(height: 8),
                     Text(
                       '${processed.width} × ${processed.height} · ${_formatSize(processed.sizeBytes)}',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          ),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ],
                   const SizedBox(height: 16),
                   Text(
                     'Tags',
-                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     'Pick at least one.',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
                   PhotoTagSelector(
                     selected: _tags,
@@ -184,23 +188,26 @@ class _PhotoCapturePageState extends State<PhotoCapturePage> {
                     const SizedBox(height: 12),
                     Text(
                       _error!,
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.error,
-                      ),
+                      style: TextStyle(color: theme.colorScheme.error),
                     ),
                   ],
-                  const SizedBox(height: 24),
-                  FilledButton.icon(
-                    onPressed: processed == null || _tags.isEmpty
-                        ? null
-                        : _onSave,
-                    icon: const Icon(Icons.check),
-                    label: const Text('Save photo'),
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size.fromHeight(48),
-                    ),
-                  ),
                 ],
+              ),
+            ),
+      bottomNavigationBar: _captured == null
+          ? null
+          : SafeArea(
+              minimum: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+              child: Material(
+                color: Colors.transparent,
+                child: FilledButton.icon(
+                  onPressed: processed == null || _tags.isEmpty ? null : _onSave,
+                  icon: const Icon(Icons.check),
+                  label: const Text('Save photo'),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(52),
+                  ),
+                ),
               ),
             ),
     );
