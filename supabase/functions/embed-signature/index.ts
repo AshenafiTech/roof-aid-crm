@@ -167,8 +167,27 @@ serve(async (req) => {
     return jsonError(500, 'signature_png_upload_failed', upSigErr.message)
   }
 
-  // 6. Mark the row as signed.
+  // 6. SHA-256 the raw signature PNG too (audit chain).
+  const sigSha256 = await sha256Hex(sigBytes)
+
+  // 7. Mark the row as signed.
   const signedAt = new Date().toISOString()
+
+  // IP from the proxy headers — never trust the client's claim.
+  const fwd = req.headers.get('x-forwarded-for') ?? ''
+  const realIp = fwd.split(',')[0]?.trim() || null
+
+  const signatureMetadata = {
+    signed_at: signedAt,
+    ip: realIp,
+    user_agent:
+      input.device_metadata?.user_agent ?? req.headers.get('user-agent') ?? null,
+    device_type: input.device_metadata?.device_type ?? 'web',
+    signer_name: input.signer_name.trim(),
+    sha256, // signed PDF hash
+    signature_image_sha256: sigSha256,
+  }
+
   await supabase
     .from('documents')
     .update({
@@ -177,6 +196,8 @@ serve(async (req) => {
       signed_at: signedAt,
       signed_by: user.id,
       signature_url: signaturePath,
+      signed_sha256: sha256,
+      signature_metadata: signatureMetadata,
     })
     .eq('id', original.id)
 
@@ -189,6 +210,7 @@ serve(async (req) => {
       signer_name: input.signer_name.trim(),
       signed_at: signedAt,
       device_metadata: input.device_metadata ?? null,
+      signature_metadata: signatureMetadata,
     },
   })
 })

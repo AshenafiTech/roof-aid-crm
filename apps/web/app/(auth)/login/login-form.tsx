@@ -46,10 +46,30 @@ export function LoginForm() {
 
   function onSubmit(values: LoginFormValues) {
     setServerError(null);
+    console.log("[login-form] submitting", {
+      email: values.email,
+      redirectTo,
+      origin: typeof window !== "undefined" ? window.location.origin : null,
+    });
     startTransition(async () => {
-      const result = await login(values.email, values.password, redirectTo);
-      if (result?.error) {
-        setServerError(result.error);
+      const startedAt = Date.now();
+      try {
+        const result = await login(values.email, values.password, redirectTo);
+        console.log("[login-form] server action returned", {
+          ms: Date.now() - startedAt,
+          result,
+        });
+        if (result?.error) {
+          setServerError(result.error);
+        }
+      } catch (err) {
+        console.error("[login-form] server action threw", {
+          ms: Date.now() - startedAt,
+          err,
+        });
+        setServerError(
+          err instanceof Error ? err.message : "Unexpected error during sign-in.",
+        );
       }
     });
   }
