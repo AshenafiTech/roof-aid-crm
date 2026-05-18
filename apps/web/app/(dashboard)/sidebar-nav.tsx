@@ -16,23 +16,35 @@ import {
 type Props = {
   role: UserRole;
   collapsed?: boolean;
+  emailUnreadCount?: number;
   onNavigate?: () => void;
 };
 
-export function SidebarNav({ role, collapsed = false, onNavigate }: Props) {
+export function SidebarNav({
+  role,
+  collapsed = false,
+  emailUnreadCount = 0,
+  onNavigate,
+}: Props) {
   const pathname = usePathname();
   const items = filterNavForRole(NAV_ITEMS, role);
   const main = items.filter((i) => i.section === "main");
   const tools = items.filter((i) => i.section === "tools");
   const admin = items.filter((i) => i.section === "admin");
 
+  const badgeFor = (href: string): number => {
+    if (href === "/email") return emailUnreadCount;
+    return 0;
+  };
+
   return (
-    <nav className="flex h-full flex-col gap-6 overflow-y-auto px-2 py-4 text-sm">
+    <nav className="nav">
       <Section
         label="Main"
         items={main}
         pathname={pathname}
         collapsed={collapsed}
+        badgeFor={badgeFor}
         onNavigate={onNavigate}
       />
       {tools.length > 0 && (
@@ -41,6 +53,7 @@ export function SidebarNav({ role, collapsed = false, onNavigate }: Props) {
           items={tools}
           pathname={pathname}
           collapsed={collapsed}
+          badgeFor={badgeFor}
           onNavigate={onNavigate}
         />
       )}
@@ -50,6 +63,7 @@ export function SidebarNav({ role, collapsed = false, onNavigate }: Props) {
           items={admin}
           pathname={pathname}
           collapsed={collapsed}
+          badgeFor={badgeFor}
           onNavigate={onNavigate}
         />
       )}
@@ -62,47 +76,52 @@ function Section({
   items,
   pathname,
   collapsed,
+  badgeFor,
   onNavigate,
 }: {
   label: string;
   items: NavItem[];
   pathname: string;
   collapsed: boolean;
+  badgeFor: (href: string) => number;
   onNavigate?: () => void;
 }) {
   return (
-    <div className="space-y-1">
-      {!collapsed && (
-        <p className="px-3 pb-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          {label}
-        </p>
-      )}
-      <ul className="space-y-0.5">
-        {items.map((item) => {
-          const Icon = item.icon;
-          const active = isRouteActive(pathname, item.href);
-          return (
-            <li key={item.href}>
-              <Link
-                href={item.href}
-                onClick={onNavigate}
-                aria-current={active ? "page" : undefined}
-                title={collapsed ? item.label : undefined}
+    <div>
+      <div className="nav-group-label">{label}</div>
+      {items.map((item) => {
+        const Icon = item.icon;
+        const active = isRouteActive(pathname, item.href);
+        const badge = badgeFor(item.href);
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            onClick={onNavigate}
+            aria-current={active ? "page" : undefined}
+            title={
+              collapsed
+                ? `${item.label}${badge > 0 ? ` (${badge} unread)` : ""}`
+                : undefined
+            }
+            className={cn("nav-item", active && "active")}
+          >
+            <Icon />
+            <span>{item.label}</span>
+            {badge > 0 && (
+              <span
                 className={cn(
-                  "flex items-center gap-3 rounded-md px-3 py-2 font-medium transition-colors",
-                  active
-                    ? "bg-accent text-accent-foreground"
-                    : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
-                  collapsed && "justify-center px-2",
+                  "ml-auto inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-destructive px-1.5 text-[10px] font-semibold text-destructive-foreground",
+                  collapsed &&
+                    "ml-0 absolute right-1 top-1 h-2.5 min-w-[0.625rem] px-0",
                 )}
               >
-                <Icon className="h-4 w-4 shrink-0" />
-                {!collapsed && <span className="truncate">{item.label}</span>}
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
+                {collapsed ? "" : badge > 99 ? "99+" : badge}
+              </span>
+            )}
+          </Link>
+        );
+      })}
     </div>
   );
 }

@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -48,14 +46,13 @@ class _ProspectsList extends StatefulWidget {
 
 class _ProspectsListState extends State<_ProspectsList> {
   final Map<String, GlobalKey> _tileKeys = {};
-  String? _recentlyViewedId;
-  Timer? _highlightClearTimer;
 
-  @override
-  void dispose() {
-    _highlightClearTimer?.cancel();
-    super.dispose();
-  }
+  /// The most recently viewed prospect id. Stays set until the user opens
+  /// another prospect — at which point the previous one fades out and the
+  /// new one fades in (handled by the TweenAnimationBuilder inside
+  /// ProspectListTile). Mirrors the "selected row" affordance familiar
+  /// from desktop master-detail UIs.
+  String? _recentlyViewedId;
 
   GlobalKey _keyFor(String id) =>
       _tileKeys.putIfAbsent(id, () => GlobalKey());
@@ -64,7 +61,6 @@ class _ProspectsListState extends State<_ProspectsList> {
     await context.push('/prospects/${p.id}', extra: p);
     if (!mounted) return;
 
-    _highlightClearTimer?.cancel();
     setState(() => _recentlyViewedId = p.id);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -77,11 +73,6 @@ class _ProspectsListState extends State<_ProspectsList> {
           alignment: 0.3,
         );
       }
-    });
-
-    _highlightClearTimer = Timer(const Duration(milliseconds: 500), () {
-      if (!mounted) return;
-      setState(() => _recentlyViewedId = null);
     });
   }
 

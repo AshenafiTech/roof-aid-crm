@@ -1,25 +1,20 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import {
+  APPOINTMENT_STATUS_CALENDAR_CHIP,
+  type AppointmentStatus,
+} from "@/lib/constants/appointment-status";
 import type { AppointmentListItem } from "@/lib/queries/appointments";
+import type { UserRole } from "@/lib/types/auth";
+import { AppointmentDrawer } from "@/components/shared/appointment-drawer";
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
-const STATUS_CHIP: Record<string, string> = {
-  pending: "border-l-amber-400 bg-amber-50 text-amber-900",
-  confirmed: "border-l-blue-500 bg-blue-50 text-blue-900",
-  scheduled: "border-l-blue-500 bg-blue-50 text-blue-900",
-  completed: "border-l-emerald-500 bg-emerald-50 text-emerald-900",
-  cancelled: "border-l-gray-300 bg-gray-50 text-gray-500 line-through",
-  "no-show": "border-l-red-500 bg-red-50 text-red-900",
-  rescheduled: "border-l-purple-500 bg-purple-50 text-purple-900",
-};
 
 function parseMonth(value: string | null): Date {
   if (value && /^\d{4}-\d{2}$/.test(value)) {
@@ -63,12 +58,16 @@ function buildGrid(monthStart: Date): Date[] {
 
 export function AppointmentCalendar({
   appointments,
+  currentUserRole,
 }: {
   appointments: AppointmentListItem[];
+  currentUserRole: UserRole;
 }) {
   const router = useRouter();
   const sp = useSearchParams();
   const [pending, start] = useTransition();
+  const [drawerAppt, setDrawerAppt] =
+    useState<AppointmentListItem | null>(null);
 
   const monthStart = parseMonth(sp.get("month"));
   const grid = useMemo(() => buildGrid(monthStart), [monthStart.getTime()]);
@@ -198,24 +197,23 @@ export function AppointmentCalendar({
                 <div className="space-y-1">
                   {visible.map((a) => {
                     const chipClass =
-                      STATUS_CHIP[a.status] ??
-                      "border-l-gray-300 bg-gray-50 text-gray-700";
+                      APPOINTMENT_STATUS_CALENDAR_CHIP[
+                        a.status as AppointmentStatus
+                      ] ?? "border-l-gray-300 bg-gray-50 text-gray-700";
                     const name = a.prospect?.name ?? "Unknown";
-                    const href = a.prospect
-                      ? `/prospects/${a.prospect.id}`
-                      : "#";
                     return (
-                      <Link
+                      <button
+                        type="button"
                         key={a.id}
-                        href={href}
-                        className={`block truncate rounded-sm border-l-2 px-1.5 py-0.5 text-[11px] hover:opacity-90 ${chipClass}`}
+                        onClick={() => setDrawerAppt(a)}
+                        className={`block w-full truncate rounded-sm border-l-2 px-1.5 py-0.5 text-left text-[11px] hover:opacity-90 ${chipClass}`}
                         title={`${formatTime(a.scheduled_at)} · ${name}`}
                       >
                         <span className="font-medium">
                           {formatTime(a.scheduled_at)}
                         </span>{" "}
                         {name}
-                      </Link>
+                      </button>
                     );
                   })}
                   {overflow > 0 && (
@@ -229,6 +227,15 @@ export function AppointmentCalendar({
           })}
         </div>
       </Card>
+
+      <AppointmentDrawer
+        appointment={drawerAppt}
+        open={drawerAppt !== null}
+        onOpenChange={(v) => {
+          if (!v) setDrawerAppt(null);
+        }}
+        currentUserRole={currentUserRole}
+      />
     </div>
   );
 }

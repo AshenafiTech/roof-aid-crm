@@ -148,7 +148,7 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Settings",
     href: "/admin/settings",
     icon: Settings,
-    roles: ["owner"],
+    roles: ["owner", "admin"],
     section: "admin",
   },
 ];

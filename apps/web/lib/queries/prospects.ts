@@ -16,13 +16,19 @@ export type ProspectFilters = {
   city?: string;
   state?: string;
   status?: ProspectStatus;
+  /**
+   * Statuses to exclude. Useful for the All Leads view where we want to
+   * hide prospects that have been disqualified (e.g. `not_viable`) without
+   * forcing a single positive status.
+   */
+  excludeStatuses?: ProspectStatus[];
   /** Free-text match against the prospect's NAME only. */
   search?: string;
   /** Free-text match against the prospect's ADDRESS only. */
   street?: string;
   lat?: number;
   lng?: number;
-  radiusKm?: number;
+  radiusMiles?: number;
   assignedTo?: string;
   priceMin?: number;
   priceMax?: number;
@@ -52,28 +58,92 @@ export async function listProspects(filters: ProspectFilters) {
 
   const sortColumn = filters.sort === "updated_desc" ? "updated_at" : "created_at";
 
+  // Proximity search runs against the entire (RLS-scoped) prospects table via
+  // an RPC, so the circle on the map matches every record in the tab — not
+  // just the rows that happened to land in the current pagination window.
+  // We collect the matching ids first and constrain the main query to them.
+  let proximityIds: string[] | null = null;
+  if (
+    filters.lat != null &&
+    filters.lng != null &&
+    filters.radiusMiles != null &&
+    Number.isFinite(filters.lat) &&
+    Number.isFinite(filters.lng) &&
+    filters.radiusMiles > 0
+  ) {
+    // The RPC isn't in the generated database.types yet; the migration
+    // (023_search_prospects_proximity_miles.sql) defines it server-side.
+    const { data: idRows, error: idErr } = await (
+      supabase.rpc as unknown as (
+        fn: string,
+        args: Record<string, unknown>,
+      ) => Promise<{ data: { id: string }[] | null; error: unknown }>
+    )("search_prospects_proximity_ids", {
+      p_lat: filters.lat,
+      p_lng: filters.lng,
+      p_radius_miles: filters.radiusMiles,
+    });
+    if (idErr) throw idErr;
+    proximityIds = (idRows ?? []).map((r) => r.id);
+    if (proximityIds.length === 0) {
+      return { rows: [], total: 0 };
+    }
+  }
+
   let query = supabase
     .from("prospects")
     .select(
       "*, assigned_user:users!assigned_to(id, first_name, last_name)",
       { count: "exact" },
     )
-    .order(sortColumn, { ascending: false })
-    .range(from, to);
+    .order(sortColumn, { ascending: false });
 
+  if (proximityIds) {
+    // Skip pagination for proximity searches — the user wants to see every
+    // match in the radius on the map and the list, not the first 60.
+    query = query.in("id", proximityIds);
+  } else {
+    query = query.range(from, to);
+  }
   if (filters.city) query = query.eq("city", filters.city);
   if (filters.state) query = query.eq("state", filters.state);
   if (filters.status) query = query.eq("status", filters.status);
+  if (filters.excludeStatuses && filters.excludeStatuses.length > 0) {
+    query = query.not(
+      "status",
+      "in",
+      `(${filters.excludeStatuses.join(",")})`,
+    );
+  }
 
-  // Separation of concerns:
-  //   `search` → NAME only.   `street` → ADDRESS only.
+  // `search` → NAME only.
+  // `street` → location search across address + city + state + zip, tokenized
+  //   so "colcord rd" requires both "colcord" and "rd" to appear somewhere
+  //   in the location columns. Tolerant of users typing the city or ZIP
+  //   into the address box.
   const nameTerm = filters.search?.trim();
   if (nameTerm) {
     query = query.ilike("name", `%${escapeIlike(nameTerm)}%`);
   }
   const streetTerm = filters.street?.trim();
   if (streetTerm) {
-    query = query.ilike("address", `%${escapeIlike(streetTerm)}%`);
+    const tokens = streetTerm
+      .split(/\s+/)
+      // PostgREST .or() parses commas/parens as filter delimiters — strip them
+      // from user input so a stray "Colcord, OK" doesn't break the query.
+      .map((t) => t.replace(/[,()]/g, "").trim())
+      .filter(Boolean);
+    for (const token of tokens) {
+      const escaped = escapeIlike(token);
+      query = query.or(
+        [
+          `address.ilike.%${escaped}%`,
+          `city.ilike.%${escaped}%`,
+          `state.ilike.%${escaped}%`,
+          `zip.ilike.%${escaped}%`,
+        ].join(","),
+      );
+    }
   }
 
   if (filters.assignedTo) query = query.eq("assigned_to", filters.assignedTo);

@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import {
   Calendar,
   Clock,
   MapPin,
+  MoreHorizontal,
   Phone,
   User,
   ChevronLeft,
@@ -24,20 +25,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  APPOINTMENT_STATUS_CHIP,
+  type AppointmentStatus,
+} from "@/lib/constants/appointment-status";
 import type { AppointmentListItem } from "@/lib/queries/appointments";
+import type { UserRole } from "@/lib/types/auth";
+
+import { AppointmentDrawer } from "@/components/shared/appointment-drawer";
 
 import { assignAppointmentRufero } from "./actions";
 import type { RuferoOption } from "./appointment-filters";
-
-const STATUS_STYLES: Record<string, string> = {
-  pending: "bg-amber-50 text-amber-700 border-amber-200",
-  confirmed: "bg-blue-50 text-blue-700 border-blue-200",
-  scheduled: "bg-blue-50 text-blue-700 border-blue-200",
-  completed: "bg-emerald-50 text-emerald-700 border-emerald-200",
-  cancelled: "bg-gray-50 text-gray-500 border-gray-200",
-  "no-show": "bg-red-50 text-red-700 border-red-200",
-  rescheduled: "bg-purple-50 text-purple-700 border-purple-200",
-};
 
 function formatDate(iso: string): string {
   const d = new Date(iso);
@@ -119,6 +117,7 @@ export function AppointmentTable({
   pageSize,
   ruferos,
   canAssign,
+  currentUserRole,
 }: {
   appointments: AppointmentListItem[];
   total: number;
@@ -126,10 +125,13 @@ export function AppointmentTable({
   pageSize: number;
   ruferos: RuferoOption[];
   canAssign: boolean;
+  currentUserRole: UserRole;
 }) {
   const router = useRouter();
   const sp = useSearchParams();
   const [pending, start] = useTransition();
+  const [drawerAppt, setDrawerAppt] =
+    useState<AppointmentListItem | null>(null);
 
   const totalPages = Math.ceil(total / pageSize);
 
@@ -233,13 +235,24 @@ export function AppointmentTable({
                 {appt.duration_minutes ? `${appt.duration_minutes} min` : "—"}
               </div>
 
-              {/* Status */}
-              <Badge
-                variant="outline"
-                className={`w-fit capitalize ${STATUS_STYLES[appt.status] ?? ""}`}
-              >
-                {appt.status}
-              </Badge>
+              {/* Status + Manage */}
+              <div className="flex items-center gap-2">
+                <Badge
+                  variant="outline"
+                  className={`w-fit capitalize ${APPOINTMENT_STATUS_CHIP[appt.status as AppointmentStatus] ?? ""}`}
+                >
+                  {appt.status}
+                </Badge>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="ml-auto h-7 w-7"
+                  onClick={() => setDrawerAppt(appt)}
+                  aria-label="Manage appointment"
+                >
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
 
             {appt.notes && (
@@ -250,6 +263,15 @@ export function AppointmentTable({
           </Card>
         ))}
       </div>
+
+      <AppointmentDrawer
+        appointment={drawerAppt}
+        open={drawerAppt !== null}
+        onOpenChange={(v) => {
+          if (!v) setDrawerAppt(null);
+        }}
+        currentUserRole={currentUserRole}
+      />
 
       {/* Pagination */}
       {totalPages > 1 && (

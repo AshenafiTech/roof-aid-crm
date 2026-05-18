@@ -50,17 +50,37 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith(route)
   );
 
+  // Any redirect we return MUST carry forward the cookies that getUser()
+  // may have refreshed via the setAll adapter — otherwise the browser
+  // keeps using the stale tokens, getUser() returns null on the next hop,
+  // and middleware redirects again → ERR_TOO_MANY_REDIRECTS.
+  // (Documented Supabase + Next.js middleware gotcha.)
+  function redirectWithCookies(url: URL): NextResponse {
+    const res = NextResponse.redirect(url);
+    supabaseResponse.cookies.getAll().forEach((c) => {
+      res.cookies.set(c.name, c.value, c);
+    });
+    return res;
+  }
+
   // --- Unauthenticated user trying to access a protected route ---
   if (!user && !isPublicRoute) {
+    // API routes return JSON 401 instead of redirecting to /login.
+    // A redirect to the HTML login page poisons callers that do
+    // `await res.json()` (e.g. the softphone's credentials fetch),
+    // since fetch follows the 302 and the login page returns 200 HTML.
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     const redirectUrl = new URL("/login", request.url);
     // Preserve the original destination so we can redirect back after login
     redirectUrl.searchParams.set("next", pathname);
-    return NextResponse.redirect(redirectUrl);
+    return redirectWithCookies(redirectUrl);
   }
 
   // --- Authenticated user on login page → send to dashboard ---
   if (user && isPublicRoute) {
-    return NextResponse.redirect(new URL("/", request.url));
+    return redirectWithCookies(new URL("/", request.url));
   }
 
   // --- Role-based access control ---
@@ -70,7 +90,7 @@ export async function middleware(request: NextRequest) {
     for (const { prefix, allowed } of ROLE_ROUTES) {
       if (pathname.startsWith(prefix) && (!role || !allowed.includes(role))) {
         // User doesn't have the required role — redirect to dashboard
-        return NextResponse.redirect(new URL("/", request.url));
+        return redirectWithCookies(new URL("/", request.url));
       }
     }
   }
@@ -87,6 +107,6 @@ export const config = {
      * - favicon.ico, sitemap.xml, robots.txt
      * - Public assets (images, fonts, etc.)
      */
-    "/((?!_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|woff|woff2)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|pdfjs/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|woff|woff2|mjs|js|map)$).*)",
   ],
 };

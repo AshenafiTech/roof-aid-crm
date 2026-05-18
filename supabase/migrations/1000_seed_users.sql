@@ -40,11 +40,11 @@ BEGIN
         is_active = true;
 
   -- ------------------------------------------------------------
-  -- User 2 — jethior1@gmail.com → Ozark Roofing Co (owner)
+  -- User 2 — ashenafigodanaj@gmail.com → Ozark Roofing Co (owner)
   -- ------------------------------------------------------------
-  SELECT id INTO v_auth_id FROM auth.users WHERE email = 'jethior1@gmail.com';
+  SELECT id INTO v_auth_id FROM auth.users WHERE email = 'ashenafigodanaj@gmail.com';
   IF v_auth_id IS NULL THEN
-    RAISE EXCEPTION 'auth.users row for jethior1@gmail.com not found. Create it via the Supabase dashboard (Authentication → Users → Add user) and re-run this migration.';
+    RAISE EXCEPTION 'auth.users row for ashenafigodanaj@gmail.com not found. Create it via the Supabase dashboard (Authentication → Users → Add user) and re-run this migration.';
   END IF;
 
   UPDATE auth.users
@@ -56,7 +56,7 @@ BEGIN
   WHERE id = v_auth_id;
 
   INSERT INTO public.users (id, tenant_id, email, first_name, last_name, role, is_active)
-  VALUES (v_auth_id, v_tenant_ozark, 'jethior1@gmail.com', 'Jethior', 'Demo', 'owner', true)
+  VALUES (v_auth_id, v_tenant_ozark, 'ashenafigodanaj@gmail.com', 'Jethior', 'Demo', 'owner', true)
   ON CONFLICT (id) DO UPDATE
     SET tenant_id = EXCLUDED.tenant_id,
         role      = EXCLUDED.role,

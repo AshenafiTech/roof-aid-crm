@@ -223,7 +223,7 @@ Roof-Aid CRM is a **vertical SaaS platform built exclusively for the roofing ind
 | # | Task | Details |
 |---|------|---------|
 | M4-1 | **WebRTC softphone component** | Telnyx WebRTC integration. UI: microphone selector, voice level meter, number input, CALL/MUTE/HOLD/TRANSFER/HANGUP buttons. Incoming call banner (Caller ID + Accept/Reject). Connection status indicator in nav bar. Debug log panel |
-| M4-2 | **Click-to-call** | From any prospect card or profile, click Call → number pre-populated, softphone dials. Outbound Caller ID = agent's Telnyx extension |
+| M4-2 | **Click-to-call** | From any prospect card or profile, click Call → number pre-populated, softphone dials. Outbound Caller ID = the tenant's selected phone number (defaults to the tenant's primary in `tenant_phone_numbers`; rep can override via "Send from" dropdown when the tenant owns >1 number). See `docs/milestone4/stage-1.5-tenant-phone-numbers.md`. |
 | M4-3 | **Call disposition** | After hangup: disposition prompt (Answered/No Answer/Voicemail/Wrong Number/DNC Request/Callback Requested). Record saved to `call_logs`. Activity logged |
 | M4-4 | **Call recording** | All calls recorded to Supabase Storage `call-recordings/{tenant_id}/{call_id}.mp3`. Recording disclosure played at call start (configurable per tenant) |
 | M4-5 | **Telnyx webhook Edge Function** | `supabase/functions/telnyx-webhook/index.ts`. Handles: inbound call routing (identify tenant → match extension → route to agent WebRTC session), inbound SMS routing, call events (answered, hangup). Always return 200 to Telnyx |

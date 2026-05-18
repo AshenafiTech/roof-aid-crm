@@ -8,21 +8,36 @@ import '../../features/auth/domain/usecases/get_current_user.dart';
 import '../../features/auth/domain/usecases/sign_in.dart';
 import '../../features/auth/domain/usecases/sign_out.dart';
 import '../../features/auth/presentation/bloc/auth_bloc.dart';
+import '../../features/messages/data/datasources/conversations_remote_datasource.dart';
+import '../../features/messages/data/repositories/conversations_repository_impl.dart';
+import '../../features/messages/domain/repositories/conversations_repository.dart';
+import '../../features/messages/domain/usecases/get_conversations.dart';
+import '../../features/messages/domain/usecases/watch_conversations.dart';
+import '../../features/messages/presentation/bloc/conversations_bloc.dart';
 import '../../features/prospects/data/datasources/note_remote_datasource.dart';
 import '../../features/prospects/data/datasources/prospect_remote_datasource.dart';
+import '../../features/prospects/data/datasources/sms_remote_datasource.dart';
 import '../../features/prospects/data/repositories/note_repository_impl.dart';
 import '../../features/prospects/data/repositories/prospect_repository_impl.dart';
+import '../../features/prospects/data/repositories/sms_repository_impl.dart';
 import '../../features/prospects/domain/repositories/note_repository.dart';
 import '../../features/prospects/domain/repositories/prospect_repository.dart';
+import '../../features/prospects/domain/repositories/sms_repository.dart';
 import '../../features/prospects/domain/usecases/add_prospect_note.dart';
+import '../../features/prospects/domain/usecases/check_can_message.dart';
 import '../../features/prospects/domain/usecases/delete_prospect_note.dart';
 import '../../features/prospects/domain/usecases/get_assigned_prospects.dart';
 import '../../features/prospects/domain/usecases/get_prospect_notes.dart';
+import '../../features/prospects/domain/usecases/get_prospect_sms.dart';
+import '../../features/prospects/domain/usecases/mark_prospect_sms_read.dart';
+import '../../features/prospects/domain/usecases/send_prospect_sms.dart';
 import '../../features/prospects/domain/usecases/update_prospect_note.dart';
 import '../../features/prospects/domain/usecases/watch_assigned_prospects.dart';
 import '../../features/prospects/domain/usecases/watch_prospect_notes.dart';
+import '../../features/prospects/domain/usecases/watch_prospect_sms.dart';
 import '../../features/prospects/presentation/bloc/notes_bloc.dart';
 import '../../features/prospects/presentation/bloc/prospects_bloc.dart';
+import '../../features/prospects/presentation/bloc/sms_bloc.dart';
 
 final sl = GetIt.instance;
 
@@ -96,6 +111,58 @@ Future<void> initDependencies() async {
       addNote: sl(),
       updateNote: sl(),
       deleteNote: sl(),
+    ),
+  );
+
+  // ── SMS Feature ───────────────────────────────────────────
+
+  // Datasources
+  sl.registerLazySingleton<SmsRemoteDatasource>(
+    () => SmsRemoteDatasourceImpl(sl()),
+  );
+
+  // Repositories
+  sl.registerLazySingleton<SmsRepository>(() => SmsRepositoryImpl(sl()));
+
+  // Use cases
+  sl.registerLazySingleton(() => GetProspectSms(sl()));
+  sl.registerLazySingleton(() => WatchProspectSms(sl()));
+  sl.registerLazySingleton(() => SendProspectSms(sl()));
+  sl.registerLazySingleton(() => CheckCanMessage(sl()));
+  sl.registerLazySingleton(() => MarkProspectSmsRead(sl()));
+
+  // BLoC
+  sl.registerFactory(
+    () => SmsBloc(
+      getMessages: sl(),
+      watchMessages: sl(),
+      sendMessage: sl(),
+      checkCanMessage: sl(),
+      markRead: sl(),
+    ),
+  );
+
+  // ── Messages (SMS inbox) Feature ──────────────────────────
+
+  // Datasources
+  sl.registerLazySingleton<ConversationsRemoteDatasource>(
+    () => ConversationsRemoteDatasourceImpl(sl()),
+  );
+
+  // Repositories
+  sl.registerLazySingleton<ConversationsRepository>(
+    () => ConversationsRepositoryImpl(sl()),
+  );
+
+  // Use cases
+  sl.registerLazySingleton(() => GetConversations(sl()));
+  sl.registerLazySingleton(() => WatchConversations(sl()));
+
+  // BLoC
+  sl.registerFactory(
+    () => ConversationsBloc(
+      getConversations: sl(),
+      watchConversations: sl(),
     ),
   );
 }

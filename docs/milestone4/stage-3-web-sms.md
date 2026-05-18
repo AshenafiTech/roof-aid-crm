@@ -33,10 +33,11 @@ WHERE table_name = 'sms_logs';
 
 -- Expected:
 -- id, tenant_id, prospect_id, direction, body, sent_at, segments,
--- delivery_status, provider_message_id, from_number, to_number, agent_id
+-- delivery_status, provider_message_id, from_number, to_number, agent_id,
+-- tenant_phone_number_id  -- added by migration 013 (stage 1.5)
 ```
 
-If any are missing add a migration `013_sms_log_columns.sql` and backfill from existing rows.
+If any are missing add a migration `014_sms_log_columns.sql` and backfill from existing rows. (Migration `013` is reserved for `tenant_phone_numbers` per stage 1.5.)
 
 ---
 
@@ -75,11 +76,13 @@ BEGIN
   INSERT INTO sms_logs (
     tenant_id, prospect_id, direction, body,
     delivery_status, agent_id, to_number,
+    from_number, tenant_phone_number_id,
     provider_message_id  -- temporary: replaced by Telnyx id when send completes
   )
   VALUES (
     current_setting('app.tenant_id')::uuid, p_prospect_id, 'outbound', p_body,
     'queued', auth.uid(), v_phone,
+    p_from_e164, p_tenant_phone_number_id,    -- both supplied by request handler (see §3.1)
     p_idempotency_key::text
   )
   RETURNING id INTO v_log_id;
@@ -96,6 +99,68 @@ GRANT EXECUTE ON FUNCTION send_sms TO authenticated;
 ```
 
 The reason we don't call Telnyx synchronously inside the RPC: if the Telnyx API is slow, the user-facing send button hangs. The pattern is **insert-then-enqueue** — the row appears immediately as `queued`, the task worker fires the actual Telnyx call, the webhook updates the row to `sent`/`delivered`. The UI subscribes to `sms_logs` Realtime channel, so the user sees state changes happen.
+
+### 3.1 Picking the `from` number (server action wrapping the RPC)
+
+Per `stage-1.5-tenant-phone-numbers.md`, every tenant owns one or more
+numbers in `tenant_phone_numbers`. The request handler picks one *before*
+calling `send_sms()`, then passes both `from_number` (E.164) and
+`tenant_phone_number_id` (FK) into the RPC so the row is fully attributed:
+
+```ts
+// apps/web/lib/telnyx/pick-outbound-number.ts
+export async function pickOutboundNumber(opts: {
+  tenantId: string;
+  preferredNumberId?: string;          // from "Send from" dropdown if rep picked one
+  capability: 'voice' | 'sms';
+}): Promise<{ id: string; e164: string }> {
+  const supa = await createServerClient();
+
+  if (opts.preferredNumberId) {
+    const { data } = await supa.from('tenant_phone_numbers')
+      .select('id, e164, capabilities')
+      .eq('id', opts.preferredNumberId)
+      .eq('tenant_id', opts.tenantId)
+      .eq('status', 'active')
+      .maybeSingle();
+    if (data && data.capabilities.includes(opts.capability)) {
+      return { id: data.id, e164: data.e164 };
+    }
+    // fall through to primary if the picked one is gone or lacks capability
+  }
+
+  const { data: primary } = await supa.from('tenant_phone_numbers')
+    .select('id, e164')
+    .eq('tenant_id', opts.tenantId)
+    .eq('is_primary', true)
+    .eq('status', 'active')
+    .contains('capabilities', [opts.capability])
+    .single();
+  if (!primary) throw new Error('no_active_number');
+  return primary;
+}
+```
+
+The Send-SMS server action:
+
+```ts
+const { id: numberId, e164: fromE164 } = await pickOutboundNumber({
+  tenantId,
+  preferredNumberId: req.body.fromNumberId,    // set by "Send from" dropdown
+  capability: 'sms',
+});
+await supa.rpc('send_sms', {
+  p_prospect_id: req.body.prospectId,
+  p_body: req.body.body,
+  p_from_e164: fromE164,
+  p_tenant_phone_number_id: numberId,
+  p_idempotency_key: crypto.randomUUID(),
+});
+```
+
+`TELNYX_DEFAULT_NUMBER` is **not** consulted here. The env var only
+exists as a dev-only fallback for system-test traffic that has no
+tenant context — production paths always go through `pickOutboundNumber()`.
 
 ---
 
@@ -122,8 +187,10 @@ for (const t of tasks ?? []) {
     method: 'POST',
     headers: { Authorization: `Bearer ${await getVaultSecret('TELNYX_API_KEY')}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      from: process.env.TELNYX_DEFAULT_NUMBER,
-      to: sms.to_number,
+      // `from_number` was set by the request handler via pickOutboundNumber()
+      // (see §3.1). The worker never picks the number itself.
+      from: sms.from_number,
+      to:   sms.to_number,
       text: sms.body,
     }),
   });
@@ -155,7 +222,13 @@ case 'message.failed':   await markSmsStatus(event, 'failed'); break;
 async function handleInboundSms(event: TelnyxEvent) {
   const from = event.payload.from.phone_number;
   const body = event.payload.text;
-  const tenantId = await tenantFromInboundNumber(event.payload.to[0].phone_number);
+
+  // tenantFromTo() lives in the shared webhook helpers (see
+  // stage-1.5-tenant-phone-numbers.md §4). Returns null for unknown numbers
+  // — those get logged to webhook_events.process_error and 200'd.
+  const tpn = await tenantFromTo(event.payload.to[0].phone_number);
+  if (!tpn) return ack();
+  const { tenant_id: tenantId, tenant_phone_number_id } = tpn;
   const prospect = await findProspectByPhone(tenantId, from);
 
   // STOP keyword test happens FIRST, in same transaction as DNC flag and reply.
@@ -173,6 +246,7 @@ async function handleInboundSms(event: TelnyxEvent) {
   await admin.from('sms_logs').upsert({
     provider_message_id: event.payload.id,
     tenant_id: tenantId,
+    tenant_phone_number_id,                     // stage 1.5: per-number attribution
     prospect_id: prospect?.id,
     direction: 'inbound',
     body,
@@ -261,7 +335,7 @@ If this is already on for `prospects` from M2, mirror the call. Run via Supabase
 
 ## 9. Notes & gotchas
 
-- **Outbound number consistency**: the same Telnyx number must be used for inbound and outbound for a given prospect, or the homeowner sees replies coming from a different number than the one that texted them. v1: one tenant = one Telnyx number. M7 adds per-agent numbers.
+- **Outbound number consistency**: the same number must be used for inbound and outbound for a given prospect, or the homeowner sees replies coming from a different number than the one that texted them. With multi-number tenants (`stage-1.5-tenant-phone-numbers.md`), the rule becomes: **the rep's outbound `from` number for a given prospect should match the number the last inbound SMS landed on.** The Send-SMS server action defaults the "Send from" picker to the most recent inbound `to_number` for that prospect, falling back to the tenant's primary if there's no thread yet. Per-rep dedicated numbers stay deferred to M7.
 - **Multi-segment UTF-16 truncation**: emojis split badly. The segment counter MUST count UTF-16 code units, not `string.length` of grapheme clusters. Use `[...text].length` carefully.
 - **STOP regex permissiveness**: include common spelling variants. Telnyx and the carriers will eventually intercept these themselves, but our app-level handling is the belt and suspenders.
 - **Inbound number not in DB**: an SMS from an unknown number still gets logged, just with `prospect_id = null`. M7's "unmatched messages" queue lets admins triage these.

@@ -56,15 +56,17 @@ function pinIcon(prospect: ProspectListItem, isSelected: boolean): google.maps.I
   };
 }
 
+const METERS_PER_MILE = 1609.344;
+
 function fitToCircle(
   map: google.maps.Map,
   center: { lat: number; lng: number },
-  radiusKm: number,
+  radiusMiles: number,
   padding: number,
 ) {
   const tmp = new google.maps.Circle({
     center,
-    radius: radiusKm * 1000,
+    radius: radiusMiles * METERS_PER_MILE,
   });
   const b = tmp.getBounds();
   if (b) map.fitBounds(b, padding);
@@ -79,8 +81,8 @@ function CameraController({
 }: {
   focused: ProspectListItem | null;
   points: { id: string; lat: number; lng: number }[];
-  pendingPoint: { lat: number; lng: number; radiusKm: number } | null;
-  proximity: { lat: number; lng: number; radiusKm: number } | null;
+  pendingPoint: { lat: number; lng: number; radiusMiles: number } | null;
+  proximity: { lat: number; lng: number; radiusMiles: number } | null;
   bottomInset: number;
 }) {
   const map = useMap();
@@ -125,14 +127,14 @@ function CameraController({
 
   useEffect(() => {
     if (!map || !pendingPoint || focused) return;
-    fitToCircle(map, { lat: pendingPoint.lat, lng: pendingPoint.lng }, pendingPoint.radiusKm, 60);
-  }, [map, focused, pendingPoint?.lat, pendingPoint?.lng, pendingPoint?.radiusKm]);
+    fitToCircle(map, { lat: pendingPoint.lat, lng: pendingPoint.lng }, pendingPoint.radiusMiles, 60);
+  }, [map, focused, pendingPoint?.lat, pendingPoint?.lng, pendingPoint?.radiusMiles]);
 
   useEffect(() => {
     if (!map || !proximity || focused) return;
     didInitialFit.current = true;
-    fitToCircle(map, { lat: proximity.lat, lng: proximity.lng }, proximity.radiusKm, 80);
-  }, [map, focused, proximity?.lat, proximity?.lng, proximity?.radiusKm]);
+    fitToCircle(map, { lat: proximity.lat, lng: proximity.lng }, proximity.radiusMiles, 80);
+  }, [map, focused, proximity?.lat, proximity?.lng, proximity?.radiusMiles]);
 
   return null;
 }
@@ -149,13 +151,13 @@ function GoogleMapInner({
   prospects: ProspectListItem[];
   focused: ProspectListItem | null;
   onSelect?: (id: string | null) => void;
-  proximity: { lat: number; lng: number; radiusKm: number } | null;
-  onProximityChange: (p: { lat: number; lng: number; radiusKm: number } | null) => void;
+  proximity: { lat: number; lng: number; radiusMiles: number } | null;
+  onProximityChange: (p: { lat: number; lng: number; radiusMiles: number } | null) => void;
   tabLabel: string;
   bottomInset: number;
 }) {
   const [pendingPoint, setPendingPoint] = useState<
-    { lat: number; lng: number; radiusKm: number } | null
+    { lat: number; lng: number; radiusMiles: number } | null
   >(null);
   const [popupId, setPopupId] = useState<string | null>(null);
 
@@ -217,7 +219,7 @@ function GoogleMapInner({
         setPendingPoint({
           lat: ll.lat,
           lng: ll.lng,
-          radiusKm: proximity?.radiusKm ?? 5,
+          radiusMiles: proximity?.radiusMiles ?? 3,
         });
       }}
       style={{ width: "100%", height: "100%" }}
@@ -239,7 +241,7 @@ function GoogleMapInner({
         <Circle
           key="proximity-pending"
           center={{ lat: pendingPoint.lat, lng: pendingPoint.lng }}
-          radius={pendingPoint.radiusKm * 1000}
+          radius={pendingPoint.radiusMiles * METERS_PER_MILE}
           strokeColor="#2563EB"
           strokeOpacity={1}
           strokeWeight={2}
@@ -251,7 +253,7 @@ function GoogleMapInner({
         <Circle
           key="proximity-committed"
           center={{ lat: proximity.lat, lng: proximity.lng }}
-          radius={proximity.radiusKm * 1000}
+          radius={proximity.radiusMiles * METERS_PER_MILE}
           strokeColor="#2563EB"
           strokeOpacity={1}
           strokeWeight={2.5}
@@ -271,19 +273,19 @@ function GoogleMapInner({
             <div className="text-gray-600 mb-2">
               Within{" "}
               <span className="font-semibold text-gray-900">
-                {pendingPoint.radiusKm.toFixed(1)} km
+                {pendingPoint.radiusMiles.toFixed(1)} mi
               </span>{" "}
               of this point
             </div>
             <input
               type="range"
-              min={0.5}
-              max={50}
-              step={0.5}
-              value={pendingPoint.radiusKm}
+              min={0.25}
+              max={30}
+              step={0.25}
+              value={pendingPoint.radiusMiles}
               onChange={(e) =>
                 setPendingPoint((prev) =>
-                  prev ? { ...prev, radiusKm: Number(e.target.value) } : prev,
+                  prev ? { ...prev, radiusMiles: Number(e.target.value) } : prev,
                 )
               }
               className="w-full"
@@ -308,7 +310,7 @@ function GoogleMapInner({
                   onProximityChange({
                     lat: pendingPoint.lat,
                     lng: pendingPoint.lng,
-                    radiusKm: pendingPoint.radiusKm,
+                    radiusMiles: pendingPoint.radiusMiles,
                   });
                   setPendingPoint(null);
                 }}
@@ -365,8 +367,8 @@ export default function ProspectMapGoogle(props: {
   prospects: ProspectListItem[];
   focused: ProspectListItem | null;
   onSelect?: (id: string | null) => void;
-  proximity: { lat: number; lng: number; radiusKm: number } | null;
-  onProximityChange: (p: { lat: number; lng: number; radiusKm: number } | null) => void;
+  proximity: { lat: number; lng: number; radiusMiles: number } | null;
+  onProximityChange: (p: { lat: number; lng: number; radiusMiles: number } | null) => void;
   tabLabel: string;
   bottomInset: number;
 }) {

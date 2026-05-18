@@ -28,6 +28,8 @@ export default async function AllLeadsPage({
 
   const filters = parseProspectListFilters(params, {
     assignedTo: user.role === "rufero" ? user.id : undefined,
+    // All Leads hides disqualified records — they only show up under /not-viable.
+    excludeStatuses: ["not_viable"],
   });
 
   const statusForView =

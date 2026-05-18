@@ -35,7 +35,7 @@ const GoogleMap = dynamic(() => import("./prospect-map-google"), {
   ),
 });
 
-export type ProximitySearch = { lat: number; lng: number; radiusKm: number };
+export type ProximitySearch = { lat: number; lng: number; radiusMiles: number };
 
 export function ProspectMap({
   prospects,

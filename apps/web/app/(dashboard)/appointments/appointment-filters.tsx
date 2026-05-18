@@ -12,6 +12,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  APPOINTMENT_STATUSES,
+  APPOINTMENT_STATUS_LABELS,
+} from "@/lib/constants/appointment-status";
 
 const ALL = "__all__";
 
@@ -22,14 +26,10 @@ const TIME_OPTIONS = [
   { value: "all", label: "All time" },
 ];
 
-const STATUS_OPTIONS = [
-  { value: "pending", label: "Pending" },
-  { value: "confirmed", label: "Confirmed" },
-  { value: "completed", label: "Completed" },
-  { value: "cancelled", label: "Cancelled" },
-  { value: "no-show", label: "No show" },
-  { value: "rescheduled", label: "Rescheduled" },
-];
+const STATUS_OPTIONS = APPOINTMENT_STATUSES.map((value) => ({
+  value,
+  label: APPOINTMENT_STATUS_LABELS[value],
+}));
 
 const SORT_OPTIONS = [
   { value: "date_asc", label: "Date ↑ (soonest)" },
