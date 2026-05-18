@@ -25,22 +25,27 @@ const PdfPreview = dynamic(() => import("./pdf-preview").then((m) => m.PdfPrevie
   ),
 });
 
+/**
+ * Web signing surface — used ONLY for the company representative sign.
+ * The homeowner signs from the mobile app once the doc is at
+ * status='awaiting_homeowner_signature'.
+ */
 export function SigningView({
   documentId,
   pdfUrl,
   prospectName,
-  prospectEmail,
   backHref,
+  defaultSignerName,
 }: {
   documentId: string;
   pdfUrl: string | null;
   prospectName: string;
-  prospectEmail: string | null;
   backHref: string;
+  defaultSignerName: string;
 }) {
   const router = useRouter();
   const padRef = useRef<SignatureCanvas | null>(null);
-  const [signerName, setSignerName] = useState(prospectName);
+  const [signerName, setSignerName] = useState(defaultSignerName);
   const [hasDrawn, setHasDrawn] = useState(false);
   const [pending, start] = useTransition();
 
@@ -55,7 +60,7 @@ export function SigningView({
       return;
     }
     if (!signerName.trim()) {
-      toast.error("Type the signer's name");
+      toast.error("Type your printed name");
       return;
     }
     const trimmed = padRef.current.getTrimmedCanvas();
@@ -68,8 +73,9 @@ export function SigningView({
           documentId,
           signaturePngBase64: base64,
           signerName: signerName.trim(),
+          signerRole: "company",
         });
-        toast.success("Document signed");
+        toast.success("Signed as company representative");
         router.push(`/documents/${documentId}?just_signed=1`);
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Signing failed");
@@ -94,6 +100,9 @@ export function SigningView({
         <div className="flex-1 truncate text-sm font-medium">
           Signing for {prospectName}
         </div>
+        <span className="rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-900 dark:bg-orange-900/40 dark:text-orange-100">
+          Company line
+        </span>
       </div>
 
       <div className="flex-1 overflow-y-auto bg-muted/30 p-4">
@@ -108,7 +117,7 @@ export function SigningView({
 
       <div className="border-t bg-background p-4">
         <div className="space-y-2">
-          <Label htmlFor="signer-name">Signer name</Label>
+          <Label htmlFor="signer-name">Printed name</Label>
           <Input
             id="signer-name"
             value={signerName}
@@ -117,7 +126,7 @@ export function SigningView({
           />
         </div>
         <div className="mt-3">
-          <Label className="mb-1.5 block">Homeowner signature</Label>
+          <Label className="mb-1.5 block">Company representative signature</Label>
           <div className="relative rounded-md border bg-white">
             <SignatureCanvas
               ref={(r) => {
@@ -133,9 +142,8 @@ export function SigningView({
             />
           </div>
           <p className="mt-1.5 text-xs text-muted-foreground">
-            {prospectEmail
-              ? `We'll email a copy to ${prospectEmail} once signed.`
-              : "No email on file — you can download the signed PDF to share manually."}
+            After you sign, the document waits for the homeowner to sign
+            from the mobile app.
           </p>
         </div>
         <div className="mt-3 flex justify-end gap-2">

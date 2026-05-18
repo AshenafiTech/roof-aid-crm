@@ -3,10 +3,11 @@
 import { useEffect, useState } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 
-// pdf.worker.min.mjs lives in pdfjs-dist's dist folder; we copy it to /public
-// during postbuild OR fall back to the version-pinned ESM module URL. The
-// `react-pdf` README recommends self-hosting, which we do via /public/pdfjs.
-pdfjs.GlobalWorkerOptions.workerSrc = "/pdfjs/pdf.worker.min.mjs";
+// pdf.worker.min.mjs is copied from react-pdf's resolved pdfjs-dist into
+// /public/pdfjs by the web app's postinstall script. The `?v=` cache-bust
+// ties the served worker to the api version — if they drift, the browser
+// fetches fresh instead of running a stale mismatched worker.
+pdfjs.GlobalWorkerOptions.workerSrc = `/pdfjs/pdf.worker.min.mjs?v=${pdfjs.version}`;
 
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
