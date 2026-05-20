@@ -1,22 +1,28 @@
 // Edge Function — embed-signature
 //
-// Contract (blocker doc §3.4, stage-4 §5.1):
-//   POST { document_id, signature_png_base64, signer_name, device_metadata }
-//   -> { signed_document: { id, storage_path, sha256, status: 'signed' } }
+// Contract:
+//   POST { document_id, signature_png_base64, signer_name, signer_role?, device_metadata? }
+//   -> { signed_document: { id, storage_path, sha256, status, signer_role, signed_at } }
 //
 // Storage paths:
 //   documents/{tenant_id}/documents/{prospect_id}/{doc_id}-signed.pdf
-//   signatures/{tenant_id}/{document_id}.png
+//   signatures/{tenant_id}/{document_id}.png            (homeowner / final sign)
+//   signatures/{tenant_id}/{document_id}-company.png    (company sign)
 //
-// Schema note: M1's `documents` table tracks the signed copy on the same
-// row via `signed_storage_path` / `signed_at` / `signed_by`, rather than
-// stage-4's "new child row with parent_document_id". This function
-// follows the existing schema; the returned `signed_document.id` is the
-// same row as the input `document_id`. Add `parent_document_id` later if
-// the M1 model changes.
+// Two-party flow:
+//   1st call: signer_role='company' → status='awaiting_homeowner_signature'
+//             signature lands on the {Tenant} Representative line.
+//   2nd call: signer_role='homeowner' (or omitted) → status='signed'
+//             signature lands on the Homeowner line.
+//
+// Signature placement uses anchors written by generate-pdf into
+// documents.template_data:
+//   { homeowner_sig_anchor: { x, y, width }, rep_sig_anchor: { x, y, width } }
+// Falls back to legacy hardcoded coords for documents generated
+// before those anchors were persisted.
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
-import { PDFDocument, StandardFonts, rgb } from 'https://esm.sh/pdf-lib@1.17.1'
+import { PDFDocument, StandardFonts } from 'https://esm.sh/pdf-lib@1.17.1'
 
 import {
   corsHeaders,
@@ -41,6 +47,25 @@ function base64ToBytes(b64: string): Uint8Array {
   return out
 }
 
+interface Anchor {
+  x: number
+  y: number
+  width: number
+}
+
+function readAnchor(
+  templateData: Record<string, unknown>,
+  key: 'homeowner_sig_anchor' | 'rep_sig_anchor',
+  fallback: Anchor,
+): Anchor {
+  const a = templateData[key] as { x?: number; y?: number; width?: number } | undefined
+  return {
+    x: typeof a?.x === 'number' ? a.x : fallback.x,
+    y: typeof a?.y === 'number' ? a.y : fallback.y,
+    width: typeof a?.width === 'number' ? a.width : fallback.width,
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return preflight()
   if (req.method !== 'POST') return jsonError(405, 'method_not_allowed')
@@ -53,6 +78,11 @@ serve(async (req) => {
     document_id?: string
     signature_png_base64?: string
     signer_name?: string
+    /// 'company' = first sign of a two-party flow (web). Leaves the
+    /// doc at status='awaiting_homeowner_signature' so mobile can
+    /// stamp the homeowner sig later. Omit (or pass 'homeowner') for
+    /// the second/final sign — current mobile behaviour.
+    signer_role?: 'company' | 'homeowner'
     device_metadata?: {
       ip?: string
       user_agent?: string
@@ -69,11 +99,17 @@ serve(async (req) => {
   if (!input.signature_png_base64) return jsonError(400, 'missing_signature_png_base64')
   if (!input.signer_name?.trim()) return jsonError(400, 'missing_signer_name')
 
-  // 1. Load original document.
+  const signerRole: 'company' | 'homeowner' =
+    input.signer_role === 'company' ? 'company' : 'homeowner'
+  const finalStatus =
+    signerRole === 'company' ? 'awaiting_homeowner_signature' : 'signed'
+
+  // 1. Load original document (incl. template_data so we can look up
+  //    the signature anchor coords stamped by generate-pdf).
   const { data: original, error: oErr } = await supabase
     .from('documents')
     .select(
-      'id, tenant_id, prospect_id, status, storage_path, signed_storage_path',
+      'id, tenant_id, prospect_id, status, storage_path, signed_storage_path, template_data',
     )
     .eq('id', input.document_id)
     .single()
@@ -88,10 +124,17 @@ serve(async (req) => {
     return jsonError(400, 'unsigned_pdf_missing')
   }
 
-  // 2. Download unsigned PDF.
+  // 2. Download the PDF we're stamping on top of.
+  //
+  // Two-party signing: if there's already a signed copy (company
+  // signed earlier), start from THAT so the existing signature is
+  // preserved and the new one stacks on top. For single-party docs,
+  // or the first sign of a two-party doc, fall back to the unsigned
+  // original.
+  const sourcePath = original.signed_storage_path ?? original.storage_path
   const { data: blob, error: dlErr } = await supabase.storage
     .from('documents')
-    .download(original.storage_path)
+    .download(sourcePath)
   if (dlErr || !blob) return jsonError(500, 'pdf_download_failed', dlErr?.message)
   const pdfBytes = new Uint8Array(await blob.arrayBuffer())
 
@@ -103,9 +146,7 @@ serve(async (req) => {
     return jsonError(400, 'invalid_signature_png', String(e))
   }
 
-  // 4. Load PDF and embed signature. We look for the marker that
-  //    generate-pdf left at <<sig:home:x,y>>; fall back to a fixed
-  //    bottom-of-last-page coordinate if it's missing.
+  // 4. Load PDF and embed signature at the right anchor for this role.
   let pdf
   try {
     pdf = await PDFDocument.load(pdfBytes)
@@ -116,42 +157,66 @@ serve(async (req) => {
   const lastPage = pdf.getPages()[pdf.getPageCount() - 1]
   const helv = await pdf.embedFont(StandardFonts.Helvetica)
 
-  const sigX = 60
-  const sigY = 120
-  const sigWidth = 240
+  // Pick the anchor by role. generate-pdf stamps both anchors onto
+  // documents.template_data; legacy docs fall back to the old
+  // hardcoded coords so they still sign cleanly.
+  const tplData = (original.template_data ?? {}) as Record<string, unknown>
+  const HOME_FALLBACK: Anchor = { x: 175, y: 310, width: 220 }
+  const REP_FALLBACK: Anchor = { x: 245, y: 130, width: 220 }
+  const anchor =
+    signerRole === 'company'
+      ? readAnchor(tplData, 'rep_sig_anchor', REP_FALLBACK)
+      : readAnchor(tplData, 'homeowner_sig_anchor', HOME_FALLBACK)
+
+  const sigWidth = anchor.width
   const ratio = sigImage.width === 0 ? 1 : sigWidth / sigImage.width
-  const sigHeight = Math.min(sigImage.height * ratio, 56)
+  const sigHeight = Math.min(sigImage.height * ratio, 32)
+  // Signature image sits on top of the underline.
   lastPage.drawImage(sigImage, {
-    x: sigX,
-    y: sigY + 2,
+    x: anchor.x,
+    y: anchor.y + 2,
     width: sigWidth,
     height: sigHeight,
   })
+  // Typed name lands on the "Printed Name: ___" line one row below.
   lastPage.drawText(input.signer_name.trim(), {
-    x: sigX,
-    y: sigY - 26,
-    size: 9,
+    x: anchor.x,
+    y: anchor.y - 30,
+    size: 10,
     font: helv,
   })
-  lastPage.drawText(new Date().toISOString().slice(0, 10), {
-    x: sigX + 300,
-    y: sigY + 4,
-    size: 11,
-    font: helv,
-  })
+  // Date goes on the inline "Date: ___" slot to the right of the
+  // signature (only the Homeowner and Contractor Acceptance rows have
+  // a Date slot; the Rep Signature row doesn't, so we skip it for
+  // company signs).
+  if (signerRole !== 'company') {
+    lastPage.drawText(new Date().toISOString().slice(0, 10), {
+      x: anchor.x + sigWidth + 60,
+      y: anchor.y,
+      size: 10,
+      font: helv,
+    })
+  }
 
   const signedBytes = await pdf.save()
   const sha256 = await sha256Hex(signedBytes)
 
   // 5. Upload signed bytes + raw signature PNG.
+  //
+  // Both paths use `upsert: true` because a two-party flow writes
+  // here twice: once on the company sign, again on the homeowner
+  // sign. The signature PNG path includes the signer role so we keep
+  // both originals when a doc gets signed by two parties.
   const signedStoragePath = `${original.tenant_id}/documents/${original.prospect_id}/${original.id}-signed.pdf`
-  const signaturePath = `${original.tenant_id}/${original.id}.png`
+  const signaturePath = signerRole === 'company'
+    ? `${original.tenant_id}/${original.id}-company.png`
+    : `${original.tenant_id}/${original.id}.png`
 
   const { error: upSignedErr } = await supabase.storage
     .from('documents')
     .upload(signedStoragePath, signedBytes, {
       contentType: 'application/pdf',
-      upsert: false,
+      upsert: true,
     })
   if (upSignedErr) {
     return jsonError(500, 'signed_upload_failed', upSignedErr.message)
@@ -161,56 +226,40 @@ serve(async (req) => {
     .from('signatures')
     .upload(signaturePath, sigBytes, {
       contentType: 'image/png',
-      upsert: false,
+      upsert: true,
     })
   if (upSigErr) {
     return jsonError(500, 'signature_png_upload_failed', upSigErr.message)
   }
 
-  // 6. SHA-256 the raw signature PNG too (audit chain).
-  const sigSha256 = await sha256Hex(sigBytes)
-
-  // 7. Mark the row as signed.
-  const signedAt = new Date().toISOString()
-
-  // IP from the proxy headers — never trust the client's claim.
-  const fwd = req.headers.get('x-forwarded-for') ?? ''
-  const realIp = fwd.split(',')[0]?.trim() || null
-
-  const signatureMetadata = {
-    signed_at: signedAt,
-    ip: realIp,
-    user_agent:
-      input.device_metadata?.user_agent ?? req.headers.get('user-agent') ?? null,
-    device_type: input.device_metadata?.device_type ?? 'web',
-    signer_name: input.signer_name.trim(),
-    sha256, // signed PDF hash
-    signature_image_sha256: sigSha256,
+  // 6. Update the row.
+  //
+  // `signed_at` / `signed_by` reflect the FINAL sign only (homeowner),
+  // so the company-sign step doesn't masquerade as the final
+  // approval. The company audit trail lives in `activities` plus the
+  // separate signature PNG path.
+  const updateAt = new Date().toISOString()
+  const updates: Record<string, unknown> = {
+    status: finalStatus,
+    signed_storage_path: signedStoragePath,
+    signature_url: signaturePath,
   }
-
-  await supabase
-    .from('documents')
-    .update({
-      status: 'signed',
-      signed_storage_path: signedStoragePath,
-      signed_at: signedAt,
-      signed_by: user.id,
-      signature_url: signaturePath,
-      signed_sha256: sha256,
-      signature_metadata: signatureMetadata,
-    })
-    .eq('id', original.id)
+  if (finalStatus === 'signed') {
+    updates.signed_at = updateAt
+    updates.signed_by = user.id
+  }
+  await supabase.from('documents').update(updates).eq('id', original.id)
 
   return jsonOk({
     signed_document: {
       id: original.id,
       storage_path: signedStoragePath,
       sha256,
-      status: 'signed',
+      status: finalStatus,
       signer_name: input.signer_name.trim(),
-      signed_at: signedAt,
+      signer_role: signerRole,
+      signed_at: finalStatus === 'signed' ? updateAt : null,
       device_metadata: input.device_metadata ?? null,
-      signature_metadata: signatureMetadata,
     },
   })
 })

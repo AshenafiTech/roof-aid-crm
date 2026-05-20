@@ -9,6 +9,7 @@ import { getCurrentUser } from "@/lib/auth/current-user";
 import { createClient } from "@/lib/supabase/server";
 
 import { DocumentRowActions } from "@/components/shared/document-actions";
+import { DocumentAuditSection } from "@/components/documents/document-audit-section";
 import { ResendEmailButton } from "./resend-email";
 import { PdfFrame } from "./pdf-frame";
 
@@ -116,7 +117,9 @@ export default async function DocumentDetailPage({
             </h1>
           </div>
           <Badge variant="outline" className="capitalize">
-            {doc.status ?? "—"}
+            {doc.status === "awaiting_homeowner_signature"
+              ? "Awaiting homeowner"
+              : (doc.status ?? "—")}
           </Badge>
         </div>
 
@@ -153,13 +156,19 @@ export default async function DocumentDetailPage({
         </div>
 
         <div className="flex flex-wrap gap-2 pt-2">
-          {doc.status === "generated" && (
-            <Button asChild size="sm">
-              <Link href={`/documents/${doc.id}/sign`}>
-                <Pen className="mr-1.5 h-4 w-4" />
-                Sign now
-              </Link>
-            </Button>
+          {doc.status === "generated" &&
+            ["owner", "admin", "super_admin"].includes(user.role) && (
+              <Button asChild size="sm">
+                <Link href={`/documents/${doc.id}/sign`}>
+                  <Pen className="mr-1.5 h-4 w-4" />
+                  Sign as company
+                </Link>
+              </Button>
+            )}
+          {doc.status === "awaiting_homeowner_signature" && (
+            <span className="inline-flex items-center rounded-md bg-amber-100 px-2 py-1 text-xs font-medium text-amber-900 dark:bg-amber-900/40 dark:text-amber-100">
+              Waiting on homeowner — signs from the mobile app
+            </span>
           )}
           {doc.status === "signed" && prospect?.email && (
             <ResendEmailButton signedDocId={doc.id} email={prospect.email} />
@@ -181,6 +190,8 @@ export default async function DocumentDetailPage({
         signedUrl={signedUrl}
         defaultView={signedUrl ? "signed" : "unsigned"}
       />
+
+      <DocumentAuditSection documentId={doc.id} />
 
       {doc.signature_metadata && (
         <Card className="space-y-2 px-5 py-4">

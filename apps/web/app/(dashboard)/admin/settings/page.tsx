@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Bell, Clock, Mail, Phone, Users } from "lucide-react";
+import { ArrowRight, Bell, Clock, FileText, Mail, Phone, PenLine, Users } from "lucide-react";
 
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -54,6 +54,20 @@ export default async function AdminSettingsPage() {
       href: null,
       icon: Clock,
       status: { label: "Coming in M7", tone: "soon" },
+    },
+    {
+      title: "Document templates",
+      description:
+        "Customize the 3rd Party Auth, ACV, RCV, and Supplement document copy. Telefonista edits on a single document never overwrite these templates.",
+      href: "/admin/settings/document-templates",
+      icon: FileText,
+    },
+    {
+      title: "Company signature",
+      description:
+        "Save a signature that is automatically applied to every new document on the Representative line — the homeowner only needs to add theirs.",
+      href: "/admin/settings/company-signature",
+      icon: PenLine,
     },
     {
       title: "Notifications",

@@ -7,6 +7,17 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { canEditProspect } from "@/lib/auth/permissions";
 import type { UserRole } from "@/lib/types/auth";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { substituteTokens } from "@/lib/templates/blocks";
+import {
+  normalizeTemplateDoc,
+  type Section,
+  type TemplateDoc,
+} from "@/lib/templates/sections";
+import { getDefaultDoc } from "@/lib/templates/defaults";
+import type { Json } from "@/lib/supabase/database.types";
+import { diffSections, diffFields } from "@/lib/templates/diff";
+import { TEMPLATE_KINDS as SHARED_KINDS, type TemplateKind as SharedTemplateKind } from "@/lib/templates/template-kinds";
 
 async function requireUserWithProfile() {
   const supabase = await createClient();
@@ -25,18 +36,34 @@ async function requireUserWithProfile() {
   return { supabase, profile };
 }
 
-const TEMPLATE_KINDS = [
-  "3rd_party_auth",
-  "acv_contract",
-  "rcv_contract",
-  "supplement",
-] as const;
-export type TemplateKind = (typeof TEMPLATE_KINDS)[number];
+const TEMPLATE_KINDS = SHARED_KINDS;
+export type TemplateKind = SharedTemplateKind;
+
+// Permissive — the canonical shape lives in lib/templates/sections.ts.
+// Validating in detail here would couple this server action to every
+// schema bump; we trust the editor to produce well-formed data.
+const templateDocSchema = z
+  .object({
+    sections: z.array(z.any()).optional(),
+    blocks: z.array(z.any()).optional(),
+  })
+  .passthrough();
 
 const createSchema = z.object({
   prospectId: z.string().uuid(),
   templateKind: z.enum(TEMPLATE_KINDS),
   fields: z.record(z.string(), z.unknown()).optional(),
+  // Telefonista edit payload (all optional — when missing we run the
+  // legacy path and the Edge Function decides whether a custom template
+  // applies).
+  templateVersionId: z.string().uuid().optional(),
+  finalContent: templateDocSchema.optional(),
+  baselineContent: templateDocSchema.optional(),
+  fieldOverrides: z.record(z.string(), z.string()).optional(),
+  fieldBaseline: z.record(z.string(), z.string()).optional(),
+  /** When false, skip the auto-company-sign step even if the tenant
+   *  has a saved signature. Defaults true. */
+  autoCompanySign: z.boolean().optional(),
 });
 
 export async function createDocument(input: z.infer<typeof createSchema>) {
@@ -54,14 +81,54 @@ export async function createDocument(input: z.infer<typeof createSchema>) {
       prospect_id: parsed.prospectId,
       template_kind: parsed.templateKind,
       fields: parsed.fields ?? {},
+      final_content: parsed.finalContent,
+      field_overrides: parsed.fieldOverrides,
+      template_version_id: parsed.templateVersionId,
     },
   });
   if (error) {
     throw new Error(error.message || "generate-pdf failed");
   }
-  const document = (data as { document?: { id: string } } | null)?.document;
+  const document = (data as {
+    document?: { id: string; template_version_id?: string | null };
+  } | null)?.document;
   if (!document?.id) {
     throw new Error("generate-pdf returned no document");
+  }
+
+  // Record telefonista edits — never mutates the template. Both diffs
+  // can be empty (e.g. telefonista did not touch anything); we still
+  // persist the row so the audit log shows what version (or defaults)
+  // the document was generated against.
+  if (parsed.finalContent) {
+    const fieldChanges = diffFields(
+      parsed.fieldBaseline ?? {},
+      parsed.fieldOverrides ?? {},
+    );
+    const sectionChanges = parsed.baselineContent
+      ? diffSections(
+          normalizeTemplateDoc(parsed.baselineContent),
+          normalizeTemplateDoc(parsed.finalContent),
+        )
+      : [];
+
+    await supabase.from("document_edits").insert({
+      tenant_id: profile.tenant_id,
+      document_id: document.id,
+      template_version_id: parsed.templateVersionId ?? null,
+      field_changes: fieldChanges as unknown as Json,
+      body_changes: sectionChanges as unknown as Json,
+      final_content: parsed.finalContent as unknown as Json,
+      edited_by: profile.id,
+    });
+  }
+
+  // Auto-company-sign: if the tenant has a saved company signature
+  // AND the caller didn't opt out, immediately apply it to the rep
+  // line. The doc moves to 'awaiting_homeowner_signature' (NOT
+  // 'signed' — rufero stays unblocked).
+  if (parsed.autoCompanySign !== false) {
+    await maybeAutoCompanySign(supabase, profile.tenant_id, document.id);
   }
 
   revalidatePath(`/prospects/${parsed.prospectId}`);
@@ -69,6 +136,197 @@ export async function createDocument(input: z.infer<typeof createSchema>) {
 
   return { id: document.id };
 }
+
+async function maybeAutoCompanySign(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  tenantId: string,
+  documentId: string,
+) {
+  const { data: tenant } = await supabase
+    .from("tenants")
+    .select("company_signature_path, company_signature_signer")
+    .eq("id", tenantId)
+    .single();
+  if (!tenant?.company_signature_path || !tenant.company_signature_signer) {
+    return; // No stored sig — nothing to do.
+  }
+
+  // The signatures bucket RLS is configured for SELECT scoped by
+  // JWT tenant_id. Telefonista can have a different / missing claim,
+  // so use the service role to fetch — tenant scoping is preserved
+  // by the path the owner stamped onto the tenants row.
+  const admin = createAdminClient();
+  const { data: blob, error: dlErr } = await admin.storage
+    .from("signatures")
+    .download(tenant.company_signature_path);
+  if (dlErr || !blob) return; // Best-effort — don't fail the whole doc.
+
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  // Tiny base64 encoder — no Buffer in some runtimes.
+  let bin = "";
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  const pngBase64 = btoa(bin);
+
+  await supabase.functions.invoke("embed-signature", {
+    body: {
+      document_id: documentId,
+      signature_png_base64: pngBase64,
+      signer_name: tenant.company_signature_signer,
+      signer_role: "company",
+      device_metadata: { device_type: "web" },
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// loadTemplateForPreview — used by NewDocumentDialog's preview-edit step.
+// Returns the substituted markdown (used as a textarea baseline) AND the
+// full block doc + resolved values so we can diff later.
+// ---------------------------------------------------------------------------
+const previewSchema = z.object({
+  prospectId: z.string().uuid(),
+  templateKind: z.enum(TEMPLATE_KINDS),
+  fields: z.record(z.string(), z.unknown()).optional(),
+});
+
+export type TemplatePreview = {
+  /** Null when no custom version is published — defaults are in use. */
+  templateVersionId: string | null;
+  baselineContent: TemplateDoc;
+  resolvedValues: Record<string, string>;
+  /** Whether the tenant has a saved company signature ready for
+   *  auto-apply. Drives the "Apply company signature" checkbox in
+   *  the New Document dialog. */
+  hasCompanySignature: boolean;
+};
+
+export async function loadTemplateForPreview(
+  input: z.infer<typeof previewSchema>,
+): Promise<TemplatePreview> {
+  const parsed = previewSchema.parse(input);
+  const { supabase, profile } = await requireUserWithProfile();
+
+  if (!canEditProspect(profile.role as UserRole)) {
+    throw new Error("You don't have permission to generate documents");
+  }
+
+  const { data: tpl } = await supabase
+    .from("document_templates")
+    .select("id, active_version_id")
+    .eq("tenant_id", profile.tenant_id)
+    .eq("kind", parsed.templateKind)
+    .maybeSingle();
+
+  // Resolve source content: published custom version if available,
+  // otherwise the built-in defaults. The dialog ALWAYS shows the
+  // section list now (so the telefonista can edit per-prospect).
+  let sourceContent: TemplateDoc = getDefaultDoc(parsed.templateKind);
+  let templateVersionId: string | null = null;
+  if (tpl?.active_version_id) {
+    const { data: ver } = await supabase
+      .from("document_template_versions")
+      .select("id, content")
+      .eq("id", tpl.active_version_id)
+      .single();
+    if (ver?.content) {
+      sourceContent = normalizeTemplateDoc(ver.content as unknown);
+      templateVersionId = ver.id;
+    }
+  }
+
+  const { data: prospect } = await supabase
+    .from("prospects")
+    .select("name, address, city, state, zip")
+    .eq("id", parsed.prospectId)
+    .single();
+
+  const fields = (parsed.fields ?? {}) as Record<string, unknown>;
+  const insurance = (fields.insurance_company as string | undefined) ?? "";
+  const claim = (fields.claim_number as string | undefined) ?? "";
+  const lossDate = (fields.loss_date as string | undefined) ?? "";
+  const deductibleNum = fields.deductible as number | undefined;
+  const deductible =
+    typeof deductibleNum === "number" ? `$${deductibleNum.toFixed(2)}` : "";
+  const totalJobCostNum = fields.total_job_cost as number | undefined;
+  const totalJobCost =
+    typeof totalJobCostNum === "number" ? `$${totalJobCostNum.toFixed(2)}` : "";
+  const scope = (fields.scope_of_work as string | undefined) ?? "";
+
+  const resolvedValues: Record<string, string> = {
+    homeowner_name: prospect?.name ?? "",
+    property_address: [
+      prospect?.address,
+      prospect?.city,
+      prospect?.state,
+      prospect?.zip,
+    ]
+      .filter(Boolean)
+      .join(", "),
+    contractor_name: "Roof AID",
+    today: new Date().toISOString().slice(0, 10),
+    insurance_company: insurance,
+    claim_number: claim,
+    loss_date: lossDate,
+    deductible,
+    total_job_cost: totalJobCost,
+    scope_of_work: scope,
+  };
+
+  const content = sourceContent;
+
+  // Substitute tokens in each section's content + title.
+  const substitutedSections: Section[] = content.sections.map((sec) => ({
+    ...sec,
+    title: sec.title.replace(/\{\{\s*([a-z0-9_]+)\s*\}\}/gi, (_, k: string) =>
+      resolvedValues[k] != null && resolvedValues[k] !== "" ? resolvedValues[k] : `[${k}]`,
+    ),
+    content: substituteTokens({ blocks: sec.content }, resolvedValues).blocks,
+  }));
+  const substituted: TemplateDoc = { sections: substitutedSections };
+
+  // Refresh signed URLs on image blocks inside section content.
+  for (const sec of substituted.sections) {
+    for (const b of sec.content) {
+      if (b.type === "image" && b.storagePath) {
+        const { data } = await supabase.storage
+          .from("documents")
+          .createSignedUrl(b.storagePath, 60 * 60 * 6);
+        if (data?.signedUrl) b.src = data.signedUrl;
+      }
+    }
+  }
+
+  // Check whether a tenant-level company signature is saved, so the
+  // dialog can offer the "Apply company signature" checkbox.
+  const { data: tenantSig } = await supabase
+    .from("tenants")
+    .select("company_signature_path")
+    .eq("id", profile.tenant_id)
+    .single();
+  const hasCompanySignature = !!tenantSig?.company_signature_path;
+
+  return {
+    templateVersionId,
+    baselineContent: substituted,
+    resolvedValues,
+    hasCompanySignature,
+  };
+}
+
+// Used by the document detail page to surface the audit row for owners.
+export async function listDocumentEdits(documentId: string) {
+  const { supabase } = await requireUserWithProfile();
+  const { data, error } = await supabase
+    .from("document_edits")
+    .select(
+      "id, created_at, template_version_id, field_changes, body_changes, editor:users!edited_by(first_name, last_name, email), version:document_template_versions!template_version_id(version_no)",
+    )
+    .eq("document_id", documentId)
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
 
 const signedUrlSchema = z.object({
   documentId: z.string().uuid(),
@@ -195,13 +453,22 @@ const signSchema = z.object({
   documentId: z.string().uuid(),
   signaturePngBase64: z.string().min(100),
   signerName: z.string().trim().min(1).max(120),
+  /**
+   * Web sign is always the company representative. Homeowner signs
+   * from the mobile app once status is 'awaiting_homeowner_signature'.
+   * Accepted as a literal here for clarity at the call site.
+   */
+  signerRole: z.literal("company").optional(),
 });
 
 export async function signDocument(input: z.infer<typeof signSchema>) {
   const parsed = signSchema.parse(input);
   const { supabase, profile } = await requireUserWithProfile();
-  if (!canEditProspect(profile.role as UserRole)) {
-    throw new Error("You don't have permission to sign documents");
+  // Web signing is restricted to the company representative path —
+  // only owner / admin / super_admin can sign from the web.
+  const allowed: UserRole[] = ["owner", "admin", "super_admin"];
+  if (!allowed.includes(profile.role as UserRole)) {
+    throw new Error("Only an owner or admin can sign as the company representative");
   }
   const h = await headers();
 
@@ -210,6 +477,7 @@ export async function signDocument(input: z.infer<typeof signSchema>) {
       document_id: parsed.documentId,
       signature_png_base64: parsed.signaturePngBase64,
       signer_name: parsed.signerName,
+      signer_role: "company",
       device_metadata: {
         user_agent: h.get("user-agent") ?? undefined,
         device_type: "web",
@@ -220,21 +488,19 @@ export async function signDocument(input: z.infer<typeof signSchema>) {
   if (error) {
     throw new Error(error.message || "Signing failed");
   }
-  const signed = (data as { signed_document?: { id: string } } | null)
-    ?.signed_document;
+  const signed = (data as {
+    signed_document?: { id: string; status?: string };
+  } | null)?.signed_document;
   if (!signed?.id) throw new Error("embed-signature returned no document");
 
-  // Best-effort email.
-  try {
-    await emailSignedDocument(signed.id);
-  } catch {
-    // non-fatal — UI shows a "Resend" affordance.
-  }
+  // The web only does the company sign (status moves to
+  // 'awaiting_homeowner_signature'). The homeowner signs from the
+  // mobile app — that flow handles the final-state email itself.
 
   revalidatePath(`/documents/${parsed.documentId}`);
   revalidatePath("/documents");
 
-  return { signedDocumentId: signed.id };
+  return { signedDocumentId: signed.id, status: signed.status };
 }
 
 // ---------------------------------------------------------------------------
