@@ -53,6 +53,11 @@ serve(async (req) => {
     document_id?: string
     signature_png_base64?: string
     signer_name?: string
+    /// 'company' = first sign of a two-party flow (web). Leaves the
+    /// doc at status='awaiting_homeowner_signature' so mobile can
+    /// stamp the homeowner sig later. Omit (or pass 'homeowner') for
+    /// the second/final sign — current mobile behaviour.
+    signer_role?: 'company' | 'homeowner'
     device_metadata?: {
       ip?: string
       user_agent?: string
@@ -68,6 +73,11 @@ serve(async (req) => {
   if (!input.document_id) return jsonError(400, 'missing_document_id')
   if (!input.signature_png_base64) return jsonError(400, 'missing_signature_png_base64')
   if (!input.signer_name?.trim()) return jsonError(400, 'missing_signer_name')
+
+  const signerRole: 'company' | 'homeowner' =
+    input.signer_role === 'company' ? 'company' : 'homeowner'
+  const finalStatus =
+    signerRole === 'company' ? 'awaiting_homeowner_signature' : 'signed'
 
   // 1. Load original document.
   const { data: original, error: oErr } = await supabase
@@ -88,10 +98,17 @@ serve(async (req) => {
     return jsonError(400, 'unsigned_pdf_missing')
   }
 
-  // 2. Download unsigned PDF.
+  // 2. Download the PDF we're stamping on top of.
+  //
+  // Two-party signing: if there's already a signed copy (company
+  // signed earlier), start from THAT so the existing signature is
+  // preserved and the new one stacks on top. For single-party docs,
+  // or the first sign of a two-party doc, fall back to the unsigned
+  // original.
+  const sourcePath = original.signed_storage_path ?? original.storage_path
   const { data: blob, error: dlErr } = await supabase.storage
     .from('documents')
-    .download(original.storage_path)
+    .download(sourcePath)
   if (dlErr || !blob) return jsonError(500, 'pdf_download_failed', dlErr?.message)
   const pdfBytes = new Uint8Array(await blob.arrayBuffer())
 
@@ -144,14 +161,28 @@ serve(async (req) => {
   const sha256 = await sha256Hex(signedBytes)
 
   // 5. Upload signed bytes + raw signature PNG.
+  //
+  // Both paths use `upsert: true` because a two-party flow writes
+  // here twice: once on the company sign, again on the homeowner
+  // sign. The second write must overwrite cleanly — otherwise
+  // Storage rejects with "the resource already exists" (the bug
+  // that triggered this revision). For single-party flows nothing
+  // changes — there's no pre-existing file to overwrite.
+  //
+  // The signature PNG path includes the signer role so we keep
+  // both originals when a doc gets signed by two parties. Legacy
+  // callers that omit signer_role land on the homeowner path,
+  // which matches the pre-existing single-party signature filename.
   const signedStoragePath = `${original.tenant_id}/documents/${original.prospect_id}/${original.id}-signed.pdf`
-  const signaturePath = `${original.tenant_id}/${original.id}.png`
+  const signaturePath = signerRole === 'company'
+    ? `${original.tenant_id}/${original.id}-company.png`
+    : `${original.tenant_id}/${original.id}.png`
 
   const { error: upSignedErr } = await supabase.storage
     .from('documents')
     .upload(signedStoragePath, signedBytes, {
       contentType: 'application/pdf',
-      upsert: false,
+      upsert: true,
     })
   if (upSignedErr) {
     return jsonError(500, 'signed_upload_failed', upSignedErr.message)
@@ -161,33 +192,41 @@ serve(async (req) => {
     .from('signatures')
     .upload(signaturePath, sigBytes, {
       contentType: 'image/png',
-      upsert: false,
+      upsert: true,
     })
   if (upSigErr) {
     return jsonError(500, 'signature_png_upload_failed', upSigErr.message)
   }
 
-  // 6. Mark the row as signed.
-  const signedAt = new Date().toISOString()
-  await supabase
-    .from('documents')
-    .update({
-      status: 'signed',
-      signed_storage_path: signedStoragePath,
-      signed_at: signedAt,
-      signed_by: user.id,
-      signature_url: signaturePath,
-    })
-    .eq('id', original.id)
+  // 6. Update the row.
+  //
+  // Final status is 'awaiting_homeowner_signature' after a company
+  // sign and 'signed' after the homeowner (or any legacy single-
+  // party) sign. `signed_at` / `signed_by` only reflect the FINAL
+  // sign so they aren't overwritten by the company-sign step — the
+  // company audit trail lives in `documents_with_invalid_status`'s
+  // sibling `activities` rows + the raw signature PNG path.
+  const updateAt = new Date().toISOString()
+  const updates: Record<string, unknown> = {
+    status: finalStatus,
+    signed_storage_path: signedStoragePath,
+    signature_url: signaturePath,
+  }
+  if (finalStatus === 'signed') {
+    updates.signed_at = updateAt
+    updates.signed_by = user.id
+  }
+  await supabase.from('documents').update(updates).eq('id', original.id)
 
   return jsonOk({
     signed_document: {
       id: original.id,
       storage_path: signedStoragePath,
       sha256,
-      status: 'signed',
+      status: finalStatus,
       signer_name: input.signer_name.trim(),
-      signed_at: signedAt,
+      signer_role: signerRole,
+      signed_at: finalStatus === 'signed' ? updateAt : null,
       device_metadata: input.device_metadata ?? null,
     },
   })

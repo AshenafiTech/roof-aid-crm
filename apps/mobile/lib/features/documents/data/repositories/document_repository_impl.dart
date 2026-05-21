@@ -12,6 +12,25 @@ class DocumentRepositoryImpl implements DocumentRepository {
   const DocumentRepositoryImpl(this.remote);
 
   @override
+  Future<Either<Failure, List<DocumentWithProspect>>> getMyDocuments() async {
+    try {
+      final list = await remote.fetchMyDocuments();
+      return Right(
+        list
+            .map((r) => DocumentWithProspect(
+                  document: r.document,
+                  prospectName: r.prospectName,
+                ))
+            .toList(growable: false),
+      );
+    } on NetworkException catch (e) {
+      return Left(NetworkFailure(e.message));
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    }
+  }
+
+  @override
   Future<Either<Failure, List<DocumentEntity>>> getForProspect(
     String prospectId,
   ) async {

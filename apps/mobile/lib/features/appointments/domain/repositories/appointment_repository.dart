@@ -21,4 +21,12 @@ abstract class AppointmentRepository {
     required String to,
     String? reason,
   });
+
+  /// All appointments for a prospect, newest scheduled first. Used by
+  /// the prospect-detail Appointments tab. RLS restricts what each
+  /// role sees (rufero → own appointments only; admin / telefonista /
+  /// owner → all tenant appointments for the prospect).
+  Future<Either<Failure, List<AppointmentEntity>>> getForProspect(
+    String prospectId,
+  );
 }

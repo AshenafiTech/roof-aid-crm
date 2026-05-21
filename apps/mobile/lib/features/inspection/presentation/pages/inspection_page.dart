@@ -118,7 +118,7 @@ class _InspectionView extends StatelessWidget {
   }
 }
 
-class _ReadyBody extends StatelessWidget {
+class _ReadyBody extends StatefulWidget {
   final InspectionReady state;
   final String prospectId;
   final String prospectName;
@@ -130,7 +130,18 @@ class _ReadyBody extends StatelessWidget {
   });
 
   @override
+  State<_ReadyBody> createState() => _ReadyBodyState();
+}
+
+class _ReadyBodyState extends State<_ReadyBody> {
+  // Flips true the first time the user taps Save & Continue with an
+  // invalid form. Drives inline errors on the damage form + a tinted
+  // photo hint. Stays true until the page is popped on success.
+  bool _attemptedSave = false;
+
+  @override
   Widget build(BuildContext context) {
+    final state = widget.state;
     final theme = Theme.of(context);
     // Repository lookup is fine here — it's a lazy singleton; we don't
     // need to thread a use case through DI just for a 1-line signed URL.
@@ -139,6 +150,9 @@ class _ReadyBody extends StatelessWidget {
       final r = await repo.getPhotoSignedUrl(path);
       return r.fold((_) => null, (u) => u);
     }
+
+    final photoIssues = _photoIssues(state.photos);
+    final showPhotoErrors = _attemptedSave && photoIssues.isNotEmpty;
 
     return SafeArea(
       child: SingleChildScrollView(
@@ -158,9 +172,12 @@ class _ReadyBody extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              _photoHint(state.photos),
+              _photoHint(state.photos, photoIssues),
               style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+                color: showPhotoErrors
+                    ? theme.colorScheme.error
+                    : theme.colorScheme.onSurfaceVariant,
+                fontWeight: showPhotoErrors ? FontWeight.w600 : null,
               ),
             ),
 
@@ -169,15 +186,15 @@ class _ReadyBody extends StatelessWidget {
             const SizedBox(height: 8),
             DamageForm(
               initial: state.form,
+              showErrors: _attemptedSave,
               onChanged: (next) =>
                   context.read<InspectionBloc>().add(InspectionFormChanged(next)),
             ),
 
             const SizedBox(height: 24),
             FilledButton.icon(
-              onPressed: state.canSave && !state.isSaving
-                  ? () => _saveAndSign(context)
-                  : null,
+              onPressed:
+                  state.isSaving ? null : () => _onSavePressed(context),
               icon: state.isSaving
                   ? const SizedBox(
                       width: 18,
@@ -199,19 +216,51 @@ class _ReadyBody extends StatelessWidget {
     );
   }
 
-  String _photoHint(List<PhotoEntity> photos) {
+  /// Validates on tap. If anything's missing, surfaces inline errors
+  /// on the damage form + a snackbar listing the missing pieces.
+  /// The button is always tappable (other than while saving) so the
+  /// user gets clear feedback instead of a silently-disabled control.
+  void _onSavePressed(BuildContext context) {
+    final state = widget.state;
+    final missing = <String>[];
+
+    if (state.form.roofMaterial == null) missing.add('Roof material');
+    if (state.form.affectedAreas.isEmpty) missing.add('Affected areas');
+    if (state.form.severity == null) missing.add('Severity');
+    missing.addAll(_photoIssues(state.photos));
+
+    if (missing.isEmpty) {
+      _saveAndSign(context);
+      return;
+    }
+
+    setState(() => _attemptedSave = true);
+
+    final summary = missing.length == 1
+        ? '${missing.first} is required.'
+        : 'Please complete: ${missing.join(', ')}.';
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(summary)));
+  }
+
+  List<String> _photoIssues(List<PhotoEntity> photos) {
     final hasOverview =
         photos.any((p) => p.tags.contains(PhotoTags.overview));
     final hasDamage =
         photos.any((p) => p.tags.contains(PhotoTags.closeUpDamage));
-    final tips = <String>[];
+    final issues = <String>[];
     if (photos.length < 3) {
-      tips.add('Need at least 3 photos (have ${photos.length})');
+      issues.add('At least 3 photos (have ${photos.length})');
     }
-    if (!hasOverview) tips.add('Add an Overview photo');
-    if (!hasDamage) tips.add('Add a Close-up damage photo');
-    if (tips.isEmpty) return 'Photo set looks good.';
-    return tips.join(' · ');
+    if (!hasOverview) issues.add('An Overview photo');
+    if (!hasDamage) issues.add('A Close-up damage photo');
+    return issues;
+  }
+
+  String _photoHint(List<PhotoEntity> photos, List<String> issues) {
+    if (issues.isEmpty) return 'Photo set looks good.';
+    return issues.join(' · ');
   }
 
   Future<void> _openViewer(
@@ -326,8 +375,8 @@ class _ReadyBody extends StatelessWidget {
     final result = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (_) => DocumentPreviewPage(
-          prospectId: prospectId,
-          prospectName: prospectName,
+          prospectId: widget.prospectId,
+          prospectName: widget.prospectName,
         ),
       ),
     );

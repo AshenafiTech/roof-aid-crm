@@ -19,16 +19,18 @@ import '../../../documents/presentation/bloc/signature_state.dart';
 class SignatureCapturePage extends StatelessWidget {
   final String prospectId;
   final String prospectName;
-  /// Optional pre-generated unsigned document. When set, the bloc skips
-  /// the generate-pdf round-trip and goes straight to embedding (used
-  /// by the document-preview flow).
-  final String? documentId;
+  /// The unsigned document the homeowner is about to sign. Required —
+  /// mobile is a viewer/signer, never a generator. Documents are
+  /// produced on the web; if there isn't one the rufero shouldn't
+  /// even reach this screen (the preview page surfaces a "not
+  /// generated" message instead).
+  final String documentId;
 
   const SignatureCapturePage({
     super.key,
     required this.prospectId,
     required this.prospectName,
-    this.documentId,
+    required this.documentId,
   });
 
   @override
@@ -47,12 +49,12 @@ class SignatureCapturePage extends StatelessWidget {
 class _SignatureCaptureView extends StatefulWidget {
   final String prospectId;
   final String prospectName;
-  final String? documentId;
+  final String documentId;
 
   const _SignatureCaptureView({
     required this.prospectId,
     required this.prospectName,
-    this.documentId,
+    required this.documentId,
   });
 
   @override
@@ -119,9 +121,8 @@ class _SignatureCaptureViewState extends State<_SignatureCaptureView> {
       body: BlocConsumer<SignatureBloc, SignatureState>(
         listener: (context, state) {
           if (state is SignatureDone) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Signed and saved.')),
-            );
+            // Pop only — the caller (preview page) re-fetches the
+            // doc + shows the success snackbar in its own scope.
             Navigator.of(context).pop(true);
           } else if (state is SignatureFailed) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -130,8 +131,7 @@ class _SignatureCaptureViewState extends State<_SignatureCaptureView> {
           }
         },
         builder: (context, state) {
-          final isBusy = state is SignatureGenerating ||
-              state is SignatureEmbedding;
+          final isBusy = state is SignatureEmbedding;
           return SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
@@ -223,13 +223,7 @@ class _SignatureCaptureViewState extends State<_SignatureCaptureView> {
                                   ),
                                 )
                               : const Icon(Icons.check),
-                          label: Text(
-                            isBusy
-                                ? (state is SignatureGenerating
-                                    ? 'Generating…'
-                                    : 'Signing…')
-                                : 'Confirm & Sign',
-                          ),
+                          label: Text(isBusy ? 'Signing…' : 'Confirm & Sign'),
                           style: FilledButton.styleFrom(
                             minimumSize: const Size.fromHeight(50),
                           ),

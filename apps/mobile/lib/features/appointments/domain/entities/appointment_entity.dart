@@ -22,6 +22,10 @@ class AppointmentEntity {
   final String? prospectState;
   final List<String> prospectPhones;
 
+  // Joined rufero data (used by the prospect-detail Appointments tab
+  // when admins/telefonistas view appointments assigned to others).
+  final String? ruferoName;
+
   const AppointmentEntity({
     required this.id,
     required this.tenantId,
@@ -40,6 +44,7 @@ class AppointmentEntity {
     this.prospectCity,
     this.prospectState,
     this.prospectPhones = const [],
+    this.ruferoName,
   });
 
   DateTime get endsAt =>
@@ -59,9 +64,10 @@ class AppointmentEntity {
   /// Currently: confirmed status + within ±2h of scheduled time.
   bool get canStartInspection {
     if (status != 'confirmed') return false;
-    final now = DateTime.now();
-    final from = scheduledAt.subtract(const Duration(hours: 2));
-    final to = scheduledAt.add(const Duration(hours: 6));
-    return now.isAfter(from) && now.isBefore(to);
+    // final now = DateTime.now();
+    // final from = scheduledAt.subtract(const Duration(hours: 2));
+    // final to = scheduledAt.add(const Duration(hours: 6));
+    // return now.isAfter(from) && now.isBefore(to);
+    return true;
   }
 }

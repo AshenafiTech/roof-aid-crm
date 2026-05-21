@@ -1,5 +1,8 @@
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:get_it/get_it.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../offline/sync_worker.dart';
 
 import '../../features/auth/data/datasources/auth_remote_datasource.dart';
 import '../../features/auth/data/repositories/auth_repository_impl.dart';
@@ -19,6 +22,7 @@ import '../../features/appointments/data/datasources/appointment_remote_datasour
 import '../../features/appointments/data/repositories/appointment_repository_impl.dart';
 import '../../features/appointments/domain/repositories/appointment_repository.dart';
 import '../../features/appointments/domain/usecases/get_my_appointments.dart';
+import '../../features/appointments/domain/usecases/get_prospect_appointments.dart';
 import '../../features/appointments/domain/usecases/transition_appointment.dart';
 import '../../features/appointments/domain/usecases/watch_my_appointments.dart';
 import '../../features/appointments/presentation/bloc/appointments_bloc.dart';
@@ -40,8 +44,10 @@ import '../../features/documents/data/repositories/document_repository_impl.dart
 import '../../features/documents/domain/repositories/document_repository.dart';
 import '../../features/documents/domain/usecases/embed_signature_usecase.dart';
 import '../../features/documents/domain/usecases/generate_pdf_document.dart';
+import '../../features/documents/domain/usecases/get_my_documents.dart';
 import '../../features/documents/domain/usecases/get_prospect_documents.dart';
 import '../../features/documents/presentation/bloc/signature_bloc.dart';
+import '../../features/inspection/data/datasources/inspection_local_datasource.dart';
 import '../../features/inspection/data/datasources/inspection_remote_datasource.dart';
 import '../../features/inspection/data/repositories/inspection_repository_impl.dart';
 import '../../features/inspection/domain/repositories/inspection_repository.dart';
@@ -85,6 +91,12 @@ final sl = GetIt.instance;
 Future<void> initDependencies() async {
   // ── External ──────────────────────────────────────────────
   sl.registerLazySingleton<SupabaseClient>(() => Supabase.instance.client);
+  sl.registerLazySingleton<Connectivity>(() => Connectivity());
+
+  // ── Offline / Sync ────────────────────────────────────────
+  // Eager singleton — main.dart calls start() after DI is built.
+  // Feature repos may push handlers into it via registerHandler.
+  sl.registerLazySingleton<SyncWorker>(() => SyncWorker(sl()));
 
   // ── Auth Feature ──────────────────────────────────────────
 
@@ -216,6 +228,7 @@ Future<void> initDependencies() async {
   );
   sl.registerLazySingleton(() => GetMyAppointments(sl()));
   sl.registerLazySingleton(() => WatchMyAppointments(sl()));
+  sl.registerLazySingleton(() => GetProspectAppointments(sl()));
   sl.registerLazySingleton(() => TransitionAppointment(sl()));
   sl.registerFactory(
     () => AppointmentsBloc(
@@ -261,18 +274,31 @@ Future<void> initDependencies() async {
     () => DocumentRepositoryImpl(sl()),
   );
   sl.registerLazySingleton(() => GetProspectDocuments(sl()));
+  sl.registerLazySingleton(() => GetMyDocuments(sl()));
+  // GeneratePdfDocument intentionally left registered (kept for any
+  // future mobile-side regen scenario), but no mobile surface calls
+  // it — documents are produced by the web app.
   sl.registerLazySingleton(() => GeneratePdfDocument(sl()));
   sl.registerLazySingleton(() => EmbedSignature(sl()));
-  sl.registerFactory(
-    () => SignatureBloc(generate: sl(), embed: sl()),
-  );
+  sl.registerFactory(() => SignatureBloc(embed: sl()));
 
   // ── M5 Inspection Feature ─────────────────────────────────
   sl.registerLazySingleton<InspectionRemoteDatasource>(
     () => InspectionRemoteDatasourceImpl(sl()),
   );
-  sl.registerLazySingleton<InspectionRepository>(
-    () => InspectionRepositoryImpl(sl()),
+  sl.registerLazySingleton<InspectionLocalDatasource>(
+    () => InspectionLocalDatasourceImpl(),
+  );
+  // Repository is eager-registered (not lazy) because its constructor
+  // wires a handler into the SyncWorker — if it stays lazy, the
+  // handler never registers until something pulls the repo, and pending
+  // form patches from the previous session don't drain.
+  sl.registerSingleton<InspectionRepository>(
+    InspectionRepositoryImpl(
+      remote: sl(),
+      local: sl(),
+      syncWorker: sl(),
+    ),
   );
   sl.registerLazySingleton(() => GetOrCreateInspection(sl()));
   sl.registerLazySingleton(() => GetProspectInspections(sl()));

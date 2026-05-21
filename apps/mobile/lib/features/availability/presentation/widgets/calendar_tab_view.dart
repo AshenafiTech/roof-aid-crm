@@ -8,7 +8,10 @@ import '../../../../core/constants/appointment_status.dart';
 import '../../../../core/constants/availability_kind.dart';
 import '../../../appointments/domain/entities/appointment_entity.dart';
 import '../../../appointments/presentation/bloc/appointments_bloc.dart';
+import '../../../appointments/presentation/bloc/appointments_event.dart';
 import '../../../appointments/presentation/bloc/appointments_state.dart';
+import '../../../appointments/presentation/widgets/appointment_detail_sheet.dart';
+import '../../../inspection/presentation/pages/inspection_page.dart';
 import '../../domain/entities/availability_block_entity.dart';
 import '../bloc/calendar_bloc.dart';
 import '../bloc/calendar_event.dart';
@@ -651,19 +654,47 @@ class _ViewBody extends StatelessWidget {
     if (raw is! _CalendarEvent) return;
     final event = raw;
     if (event is _AppointmentCalendarEvent) {
-      // Bubble up via the parent (CalendarPage handles opening the
-      // appointment detail sheet). For now, surface a toast — the List
-      // tab is the primary surface for appointment actions.
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '${DateFormat.jm().format(event.appointment.scheduledAt)} · ${event.appointment.prospectName}',
-          ),
-        ),
-      );
+      _openAppointmentSheet(context, event.appointment);
     } else if (event is _BlockCalendarEvent) {
       _openEditor(context, existing: event.block);
     }
+  }
+
+  /// Same surface as the Schedule List tab — pure UI sheet, callbacks
+  /// dispatch to the page-scoped [AppointmentsBloc] (provided in
+  /// CalendarPage). Realtime then pushes the updated state back into
+  /// both tabs and the calendar redraws.
+  void _openAppointmentSheet(BuildContext context, AppointmentEntity a) {
+    final bloc = context.read<AppointmentsBloc>();
+    AppointmentDetailSheet.show(
+      context,
+      appointment: a,
+      onStartInspection: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => InspectionPage(
+              appointmentId: a.id,
+              prospectId: a.prospectId,
+              prospectName: a.prospectName,
+              scheduledAt: a.scheduledAt,
+            ),
+          ),
+        );
+      },
+      onMarkComplete: () => bloc.add(
+        AppointmentTransitionRequested(
+          appointmentId: a.id,
+          to: AppointmentStatus.completed,
+        ),
+      ),
+      onMarkNoShow: (reason) => bloc.add(
+        AppointmentTransitionRequested(
+          appointmentId: a.id,
+          to: AppointmentStatus.noShow,
+          reason: reason,
+        ),
+      ),
+    );
   }
 
   Future<void> _openEditor(

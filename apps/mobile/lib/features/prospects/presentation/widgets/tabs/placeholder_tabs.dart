@@ -20,33 +20,11 @@ class CallsTab extends StatelessWidget {
   }
 }
 
-class AppointmentsTab extends StatelessWidget {
-  const AppointmentsTab({super.key});
+// AppointmentsTab now lives in `appointments_tab.dart` — real
+// scrollable list of upcoming + past appointments for the prospect.
 
-  @override
-  Widget build(BuildContext context) {
-    return const EmptyState(
-      icon: Icons.event_outlined,
-      title: 'No appointments scheduled',
-      description:
-          'Upcoming and past appointments will show here once scheduling ships (M5).',
-    );
-  }
-}
-
-class DocumentsTab extends StatelessWidget {
-  const DocumentsTab({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const EmptyState(
-      icon: Icons.description_outlined,
-      title: 'No documents on file',
-      description:
-          'Contracts and authorizations will appear here after they are generated (M5).',
-    );
-  }
-}
+// DocumentsTab now lives in `documents_tab.dart` — real list of
+// per-prospect documents with tap-to-open / tap-to-sign.
 
 // InspectionTab now lives in `inspection_tab.dart` — it's the entry
 // point for ad-hoc / walk-in inspections (M5 follow-up, Option B).

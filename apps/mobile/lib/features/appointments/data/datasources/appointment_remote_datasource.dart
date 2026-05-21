@@ -10,6 +10,10 @@ abstract class AppointmentRemoteDatasource {
   Future<List<AppointmentModel>> fetchMine({DateTime? from, DateTime? to});
   Stream<List<AppointmentModel>> watchMine();
 
+  /// All appointments for a prospect, newest scheduled first. RLS
+  /// gates visibility per role.
+  Future<List<AppointmentModel>> fetchForProspect(String prospectId);
+
   /// Calls the `transition_appointment` RPC. Returns the parsed
   /// `{ ok, error }` envelope; throws `ServerException` on non-OK with
   /// the error.message attached.
@@ -41,7 +45,7 @@ class AppointmentRemoteDatasourceImpl implements AppointmentRemoteDatasource {
       var query = client
           .from('appointments')
           .select(
-            '*, prospect:prospects(id, name, address, city, state, phones)',
+            '*, prospect:prospects(id, name, address, city, state, phones), rufero:users!appointments_rufero_id_fkey(id, first_name, last_name, email)',
           )
           .eq('rufero_id', uid);
       if (from != null) {
@@ -52,6 +56,29 @@ class AppointmentRemoteDatasourceImpl implements AppointmentRemoteDatasource {
       }
       final response =
           await query.order('scheduled_at', ascending: true);
+      return (response as List)
+          .map((r) => AppointmentModel.fromMap(r as Map<String, dynamic>))
+          .toList(growable: false);
+    } on ServerException {
+      rethrow;
+    } catch (e) {
+      if (isNetworkError(e)) throw NetworkException(offlineMessage);
+      if (e is PostgrestException) throw ServerException(e.message);
+      throw ServerException('Failed to load appointments: $e');
+    }
+  }
+
+  @override
+  Future<List<AppointmentModel>> fetchForProspect(String prospectId) async {
+    _requireUid();
+    try {
+      final response = await client
+          .from('appointments')
+          .select(
+            '*, prospect:prospects(id, name, address, city, state, phones), rufero:users!appointments_rufero_id_fkey(id, first_name, last_name, email)',
+          )
+          .eq('prospect_id', prospectId)
+          .order('scheduled_at', ascending: false);
       return (response as List)
           .map((r) => AppointmentModel.fromMap(r as Map<String, dynamic>))
           .toList(growable: false);

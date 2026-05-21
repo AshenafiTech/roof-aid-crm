@@ -1,29 +1,35 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/constants/appointment_status.dart';
 import '../../domain/entities/appointment_entity.dart';
-import '../bloc/appointments_bloc.dart';
-import '../bloc/appointments_event.dart';
 
-/// Bottom sheet shown when a rufero taps an appointment in the List tab.
-/// Surfaces "Mark complete" (which we wire to the inspection flow at the
-/// page level) and "No-show" with required reason input.
+/// Bottom sheet shown when a rufero taps an appointment card.
+/// Pure UI — the caller wires the actions (Start Inspection / Mark
+/// complete / No-show), which keeps this sheet reusable from the
+/// Schedule tab (dispatches to [AppointmentsBloc]) and from the
+/// prospect-detail Appointments tab (calls the transition use case
+/// directly + refreshes its own list).
 class AppointmentDetailSheet extends StatelessWidget {
   final AppointmentEntity appointment;
   final VoidCallback? onStartInspection;
+  final VoidCallback? onMarkComplete;
+  final ValueChanged<String>? onMarkNoShow;
 
   const AppointmentDetailSheet({
     super.key,
     required this.appointment,
     this.onStartInspection,
+    this.onMarkComplete,
+    this.onMarkNoShow,
   });
 
   static Future<void> show(
     BuildContext context, {
     required AppointmentEntity appointment,
     VoidCallback? onStartInspection,
+    VoidCallback? onMarkComplete,
+    ValueChanged<String>? onMarkNoShow,
   }) {
     return showModalBottomSheet(
       context: context,
@@ -32,6 +38,8 @@ class AppointmentDetailSheet extends StatelessWidget {
       builder: (_) => AppointmentDetailSheet(
         appointment: appointment,
         onStartInspection: onStartInspection,
+        onMarkComplete: onMarkComplete,
+        onMarkNoShow: onMarkNoShow,
       ),
     );
   }
@@ -46,13 +54,14 @@ class AppointmentDetailSheet extends StatelessWidget {
         AppointmentStatus.terminal.contains(appointment.status);
 
     return Padding(
-      padding: EdgeInsets.fromLTRB(
-        20,
-        0,
-        20,
-        20 + MediaQuery.of(context).viewInsets.bottom,
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
       ),
-      child: Column(
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -89,7 +98,9 @@ class AppointmentDetailSheet extends StatelessWidget {
           ],
           const SizedBox(height: 20),
           if (!isTerminal) ...[
-            if (canComplete && appointment.canStartInspection) ...[
+            if (canComplete &&
+                appointment.canStartInspection &&
+                onStartInspection != null) ...[
               FilledButton.icon(
                 onPressed: () {
                   Navigator.of(context).pop();
@@ -103,10 +114,9 @@ class AppointmentDetailSheet extends StatelessWidget {
               ),
               const SizedBox(height: 8),
             ],
-            if (canComplete)
+            if (canComplete && onMarkComplete != null)
               OutlinedButton.icon(
-                onPressed: () =>
-                    _confirmComplete(context, appointment),
+                onPressed: () => _confirmComplete(context),
                 icon: const Icon(Icons.check),
                 label: const Text('Mark complete'),
                 style: OutlinedButton.styleFrom(
@@ -114,9 +124,9 @@ class AppointmentDetailSheet extends StatelessWidget {
                 ),
               ),
             const SizedBox(height: 8),
-            if (canComplete)
+            if (canComplete && onMarkNoShow != null)
               OutlinedButton.icon(
-                onPressed: () => _markNoShow(context, appointment),
+                onPressed: () => _markNoShow(context),
                 icon: const Icon(Icons.event_busy_outlined),
                 label: const Text('No-show'),
                 style: OutlinedButton.styleFrom(
@@ -133,14 +143,13 @@ class AppointmentDetailSheet extends StatelessWidget {
               ),
             ),
         ],
+          ),
+        ),
       ),
     );
   }
 
-  Future<void> _confirmComplete(
-    BuildContext context,
-    AppointmentEntity appt,
-  ) async {
+  Future<void> _confirmComplete(BuildContext context) async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (dialogCtx) => AlertDialog(
@@ -161,19 +170,11 @@ class AppointmentDetailSheet extends StatelessWidget {
       ),
     );
     if (confirm != true || !context.mounted) return;
-    context.read<AppointmentsBloc>().add(
-          AppointmentTransitionRequested(
-            appointmentId: appt.id,
-            to: AppointmentStatus.completed,
-          ),
-        );
     Navigator.of(context).pop();
+    onMarkComplete?.call();
   }
 
-  Future<void> _markNoShow(
-    BuildContext context,
-    AppointmentEntity appt,
-  ) async {
+  Future<void> _markNoShow(BuildContext context) async {
     final controller = TextEditingController();
     final reason = await showDialog<String>(
       context: context,
@@ -215,14 +216,8 @@ class AppointmentDetailSheet extends StatelessWidget {
       ),
     );
     if (reason == null || reason.isEmpty || !context.mounted) return;
-    context.read<AppointmentsBloc>().add(
-          AppointmentTransitionRequested(
-            appointmentId: appt.id,
-            to: AppointmentStatus.noShow,
-            reason: reason,
-          ),
-        );
     Navigator.of(context).pop();
+    onMarkNoShow?.call(reason);
   }
 }
 

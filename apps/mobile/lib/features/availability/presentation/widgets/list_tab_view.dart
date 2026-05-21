@@ -97,6 +97,7 @@ class _LoadedList extends StatelessWidget {
   }
 
   void _openSheet(BuildContext context, AppointmentEntity a) {
+    final bloc = context.read<AppointmentsBloc>();
     AppointmentDetailSheet.show(
       context,
       appointment: a,
@@ -112,6 +113,19 @@ class _LoadedList extends StatelessWidget {
           ),
         );
       },
+      onMarkComplete: () => bloc.add(
+        AppointmentTransitionRequested(
+          appointmentId: a.id,
+          to: AppointmentStatus.completed,
+        ),
+      ),
+      onMarkNoShow: (reason) => bloc.add(
+        AppointmentTransitionRequested(
+          appointmentId: a.id,
+          to: AppointmentStatus.noShow,
+          reason: reason,
+        ),
+      ),
     );
   }
 

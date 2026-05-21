@@ -30,6 +30,20 @@ class AppointmentRepositoryImpl implements AppointmentRepository {
   Stream<List<AppointmentEntity>> watchMyAppointments() => remote.watchMine();
 
   @override
+  Future<Either<Failure, List<AppointmentEntity>>> getForProspect(
+    String prospectId,
+  ) async {
+    try {
+      final list = await remote.fetchForProspect(prospectId);
+      return Right(list);
+    } on NetworkException catch (e) {
+      return Left(NetworkFailure(e.message));
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    }
+  }
+
+  @override
   Future<Either<Failure, Unit>> transition({
     required String appointmentId,
     required String to,

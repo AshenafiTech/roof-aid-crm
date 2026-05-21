@@ -4,8 +4,27 @@ import '../../../../core/error/exceptions.dart';
 import '../../../../core/network/network_error_detection.dart';
 import '../models/document_model.dart';
 
+/// Raw "document + joined prospect name" row coming back from the
+/// cross-prospect query. Stays in the data layer; the use case lifts
+/// it to the domain `DocumentWithProspect`.
+class DocumentWithProspectModel {
+  final DocumentModel document;
+  final String prospectName;
+
+  const DocumentWithProspectModel({
+    required this.document,
+    required this.prospectName,
+  });
+}
+
 abstract class DocumentRemoteDatasource {
   Future<List<DocumentModel>> fetchForProspect(String prospectId);
+
+  /// Joined query — every doc the caller can see, with the prospect
+  /// name attached. The `!inner` on the prospects join causes RLS
+  /// on `prospects` to filter the doc list down (ruferos only see
+  /// docs on prospects they can see).
+  Future<List<DocumentWithProspectModel>> fetchMyDocuments();
 
   Future<DocumentModel> generatePdf({
     required String prospectId,
@@ -31,6 +50,34 @@ class DocumentRemoteDatasourceImpl implements DocumentRemoteDatasource {
   void _requireAuth() {
     if (client.auth.currentUser?.id == null) {
       throw ServerException('Not authenticated');
+    }
+  }
+
+  @override
+  Future<List<DocumentWithProspectModel>> fetchMyDocuments() async {
+    _requireAuth();
+    try {
+      // `!inner` makes this an INNER JOIN — rows whose prospect is
+      // hidden by RLS are dropped entirely.
+      final response = await client
+          .from('documents')
+          .select('*, prospect:prospects!inner(id, name)')
+          .order('created_at', ascending: false);
+      return (response as List).map((r) {
+        final map = r as Map<String, dynamic>;
+        final prospect = map['prospect'] as Map<String, dynamic>?;
+        return DocumentWithProspectModel(
+          document: DocumentModel.fromMap(map),
+          prospectName:
+              (prospect?['name'] as String?) ?? 'Unknown prospect',
+        );
+      }).toList(growable: false);
+    } on ServerException {
+      rethrow;
+    } catch (e) {
+      if (isNetworkError(e)) throw NetworkException(offlineMessage);
+      if (e is PostgrestException) throw ServerException(e.message);
+      throw ServerException('Failed to load documents: $e');
     }
   }
 

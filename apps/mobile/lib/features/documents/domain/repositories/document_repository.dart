@@ -8,10 +8,17 @@ abstract class DocumentRepository {
     String prospectId,
   );
 
+  /// All documents the caller can see, joined to prospect-summary
+  /// fields so the list view can render "doc-on-Jane-Smith" without
+  /// a second round-trip. Uses an inner join with `prospects` so RLS
+  /// on prospects filters the doc list down (a rufero only sees docs
+  /// on prospects they're assigned to or have an appointment for).
+  Future<Either<Failure, List<DocumentWithProspect>>> getMyDocuments();
+
   /// Calls the `generate-pdf` Edge Function. Returns the new doc row.
   Future<Either<Failure, DocumentEntity>> generatePdf({
     required String prospectId,
-    required String templateKind, // 'authorization' | 'acv_contract' | 'rcv_contract'
+    required String templateKind, // '3rd_party_auth' | 'acv_contract' | 'rcv_contract' | 'supplement'
     Map<String, dynamic>? fields,
   });
 

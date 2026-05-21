@@ -19,10 +19,12 @@ class AppointmentModel extends AppointmentEntity {
     super.prospectCity,
     super.prospectState,
     super.prospectPhones,
+    super.ruferoName,
   });
 
   factory AppointmentModel.fromMap(Map<String, dynamic> map) {
     final prospect = map['prospect'] as Map<String, dynamic>?;
+    final rufero = map['rufero'] as Map<String, dynamic>?;
     return AppointmentModel(
       id: map['id'] as String,
       tenantId: map['tenant_id'] as String,
@@ -43,7 +45,19 @@ class AppointmentModel extends AppointmentEntity {
       prospectCity: prospect?['city'] as String?,
       prospectState: prospect?['state'] as String?,
       prospectPhones: _parsePhones(prospect?['phones']),
+      ruferoName: _ruferoDisplayName(rufero),
     );
+  }
+
+  /// Mirrors the SQL-side fallback in suggest_rufero_for_prospect:
+  /// "first last" if both set, else email.
+  static String? _ruferoDisplayName(Map<String, dynamic>? user) {
+    if (user == null) return null;
+    final first = (user['first_name'] as String?)?.trim() ?? '';
+    final last = (user['last_name'] as String?)?.trim() ?? '';
+    final full = '$first $last'.trim();
+    if (full.isNotEmpty) return full;
+    return user['email'] as String?;
   }
 
   static List<String> _parsePhones(dynamic value) {

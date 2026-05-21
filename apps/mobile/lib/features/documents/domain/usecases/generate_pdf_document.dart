@@ -11,7 +11,7 @@ class GeneratePdfDocument {
 
   Future<Either<Failure, DocumentEntity>> call({
     required String prospectId,
-    String templateKind = 'authorization',
+    String templateKind = '3rd_party_auth',
     Map<String, dynamic>? fields,
   }) {
     return repository.generatePdf(

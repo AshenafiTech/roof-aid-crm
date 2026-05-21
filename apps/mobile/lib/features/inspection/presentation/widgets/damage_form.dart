@@ -27,11 +27,16 @@ const _affectedAreas = <String, String>{
 class DamageForm extends StatefulWidget {
   final DamageFormData initial;
   final ValueChanged<DamageFormData> onChanged;
+  // When true, render inline "Required" errors under any unset
+  // required field. Caller flips this to true after the user taps
+  // Save & Continue with an invalid form.
+  final bool showErrors;
 
   const DamageForm({
     super.key,
     required this.initial,
     required this.onChanged,
+    this.showErrors = false,
   });
 
   @override
@@ -101,6 +106,8 @@ class _DamageFormState extends State<DamageForm> {
               ),
           ],
         ),
+        if (widget.showErrors && _data.roofMaterial == null)
+          _ErrorText('Please pick the roof material.'),
 
         const SizedBox(height: 16),
         _Section(label: 'Storm date'),
@@ -147,6 +154,8 @@ class _DamageFormState extends State<DamageForm> {
               ),
           ],
         ),
+        if (widget.showErrors && _data.affectedAreas.isEmpty)
+          _ErrorText('Pick at least one affected area.'),
 
         const SizedBox(height: 16),
         _Section(label: 'Severity *'),
@@ -183,6 +192,8 @@ class _DamageFormState extends State<DamageForm> {
               ),
           ],
         ),
+        if (widget.showErrors && _data.severity == null)
+          _ErrorText('Tap a number from 1 (minor) to 5 (severe).'),
 
         const SizedBox(height: 16),
         _Section(label: 'Notes'),
@@ -218,6 +229,35 @@ class _Section extends StatelessWidget {
         style: Theme.of(context).textTheme.labelLarge?.copyWith(
               fontWeight: FontWeight.w700,
             ),
+      ),
+    );
+  }
+}
+
+class _ErrorText extends StatelessWidget {
+  final String message;
+  const _ErrorText(this.message);
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Row(
+        children: [
+          Icon(Icons.error_outline, size: 14, color: cs.error),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(
+                fontSize: 12,
+                color: cs.error,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
