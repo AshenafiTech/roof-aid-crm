@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useTransition } from "react";
 import { ChevronRight, Loader2, LogOut, Menu } from "lucide-react";
 
@@ -84,13 +85,17 @@ export function DashboardShell({
       {/* Desktop sidebar */}
       <aside className="side hidden md:flex">
         <div className="side-hd">
-          <div className="brand-mark">
+          <Link href="/" className="brand-mark" aria-label="Roof-Aid home">
             <BrandMark size={16} />
-          </div>
+          </Link>
           {!collapsed && (
-            <div className="brand-name">
+            <Link
+              href="/"
+              className="brand-name"
+              style={{ textDecoration: "none", color: "inherit" }}
+            >
               Roof-Aid<small>CRM</small>
-            </div>
+            </Link>
           )}
           <button
             type="button"
@@ -133,7 +138,15 @@ export function DashboardShell({
             </SheetTrigger>
             <SheetContent side="left" className="w-64 p-0">
               <SheetHeader className="border-b p-4">
-                <SheetTitle className="text-left">Roof-Aid</SheetTitle>
+                <SheetTitle className="text-left">
+                  <Link
+                    href="/"
+                    onClick={() => setMobileOpen(false)}
+                    style={{ color: "inherit", textDecoration: "none" }}
+                  >
+                    Roof-Aid
+                  </Link>
+                </SheetTitle>
               </SheetHeader>
               <div className="flex h-[calc(100%-3.75rem)] flex-col">
                 <SidebarNav

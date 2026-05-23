@@ -1,16 +1,12 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Eye, EyeOff, Loader2 } from "lucide-react";
-
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Eye, EyeOff } from "lucide-react";
 
 import { login } from "./actions";
 
@@ -46,104 +42,95 @@ export function LoginForm() {
 
   function onSubmit(values: LoginFormValues) {
     setServerError(null);
-    console.log("[login-form] submitting", {
-      email: values.email,
-      redirectTo,
-      origin: typeof window !== "undefined" ? window.location.origin : null,
-    });
     startTransition(async () => {
-      const startedAt = Date.now();
       try {
         const result = await login(values.email, values.password, redirectTo);
-        console.log("[login-form] server action returned", {
-          ms: Date.now() - startedAt,
-          result,
-        });
         if (result?.error) {
           setServerError(result.error);
         }
       } catch (err) {
-        console.error("[login-form] server action threw", {
-          ms: Date.now() - startedAt,
-          err,
-        });
         setServerError(
-          err instanceof Error ? err.message : "Unexpected error during sign-in.",
+          err instanceof Error
+            ? err.message
+            : "Unexpected error during sign-in.",
         );
       }
     });
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-      {serverError && (
-        <Alert variant="destructive">
-          <AlertDescription>{serverError}</AlertDescription>
-        </Alert>
-      )}
+    <form onSubmit={handleSubmit(onSubmit)} noValidate>
+      {serverError && <div className="form-err">{serverError}</div>}
 
-      {/* Email field */}
-      <div className="space-y-2">
-        <Label htmlFor="email">Email</Label>
-        <Input
+      <div className="form-group">
+        <label className="form-label" htmlFor="email">
+          Email
+        </label>
+        <input
           id="email"
           type="email"
-          placeholder="you@company.com"
           autoComplete="email"
           autoFocus
           disabled={isPending}
-          aria-invalid={!!errors.email}
+          placeholder="you@company.com"
+          className={`form-input${errors.email ? " error" : ""}`}
           {...register("email")}
         />
         {errors.email && (
-          <p className="text-sm text-destructive">{errors.email.message}</p>
+          <p className="field-err">{errors.email.message}</p>
         )}
       </div>
 
-      {/* Password field */}
-      <div className="space-y-2">
-        <Label htmlFor="password">Password</Label>
-        <div className="relative">
-          <Input
+      <div className="form-group">
+        <label className="form-label" htmlFor="password">
+          Password
+        </label>
+        <div className="pw-wrap">
+          <input
             id="password"
             type={showPassword ? "text" : "password"}
-            placeholder="Enter your password"
             autoComplete="current-password"
             disabled={isPending}
-            aria-invalid={!!errors.password}
-            className="pr-10"
+            placeholder="Enter your password"
+            className={`form-input${errors.password ? " error" : ""}`}
             {...register("password")}
           />
           <button
             type="button"
-            onClick={() => setShowPassword(!showPassword)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+            className="pw-toggle"
+            onClick={() => setShowPassword((v) => !v)}
             tabIndex={-1}
             aria-label={showPassword ? "Hide password" : "Show password"}
           >
-            {showPassword ? (
-              <EyeOff className="h-4 w-4" />
-            ) : (
-              <Eye className="h-4 w-4" />
-            )}
+            {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
           </button>
         </div>
         {errors.password && (
-          <p className="text-sm text-destructive">{errors.password.message}</p>
+          <p className="field-err">{errors.password.message}</p>
         )}
       </div>
 
-      {/* Submit */}
-      <Button type="submit" className="w-full" disabled={isPending}>
+      <button type="submit" className="btn-blue" disabled={isPending}>
         {isPending ? (
           <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            <span className="spin" />
             Signing in...
           </>
         ) : (
-          "Sign in"
+          <>
+            Sign in <span>→</span>
+          </>
         )}
-      </Button>
+      </button>
+
+      <div className="meta">
+        <Link href="/" className="meta-text" style={{ color: "inherit" }}>
+          ← Back to home
+        </Link>
+        <Link href="/signup" className="meta-link">
+          Need an account?
+        </Link>
+      </div>
     </form>
   );
 }

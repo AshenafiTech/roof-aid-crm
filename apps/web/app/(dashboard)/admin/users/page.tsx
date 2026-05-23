@@ -14,7 +14,7 @@ export default async function AdminUsersPage() {
   const user = await getCurrentUser();
 
   if (user.role !== "owner" && user.role !== "super_admin") {
-    redirect("/");
+    redirect("/dashboard");
   }
 
   const users = await listTenantUsers();
