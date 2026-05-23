@@ -110,14 +110,17 @@ class _AppViewState extends State<_AppView> {
           // Clamp system text scaling so "easy mode" / accessibility font
           // sizes can't grow past 1.3× and break fixed-height widgets like
           // NavigationBar and AppBar actions.
+          //
+          // Only the upper bound is clamped — Material widgets (e.g. the
+          // DatePicker header) re-clamp internally with their own
+          // maxScaleFactor, and stacking *both* bounds here causes a
+          // `maxScale > minScale` assertion crash when the resulting
+          // ClampedTextScaler windows don't overlap.
           builder: (context, child) {
             final mq = MediaQuery.of(context);
             return MediaQuery(
               data: mq.copyWith(
-                textScaler: mq.textScaler.clamp(
-                  minScaleFactor: 1.0,
-                  maxScaleFactor: 1.3,
-                ),
+                textScaler: mq.textScaler.clamp(maxScaleFactor: 1.3),
               ),
               child: child!,
             );

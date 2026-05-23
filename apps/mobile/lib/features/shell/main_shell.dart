@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../core/di/injection_container.dart';
+import '../../core/offline/sync_status_banner.dart';
 import '../../core/theme/theme_controller.dart';
 import '../auth/presentation/bloc/auth_bloc.dart';
 import '../auth/presentation/bloc/auth_event.dart';
 import '../auth/presentation/bloc/auth_state.dart';
+import '../availability/presentation/pages/calendar_page.dart';
+import '../documents/presentation/pages/documents_page.dart';
 import '../messages/presentation/bloc/conversations_bloc.dart';
 import '../messages/presentation/bloc/conversations_event.dart';
 import '../messages/presentation/pages/messages_page.dart';
@@ -26,6 +29,13 @@ class MainShell extends StatefulWidget {
 
 class _MainShellState extends State<MainShell> {
   int _currentIndex = 1; // Start on Prospects tab
+
+  // The Documents tab lives inside an IndexedStack and stays mounted
+  // across tab switches, so its FutureBuilder won't auto-refresh when
+  // a sign happens via a different navigation path (e.g. prospect
+  // detail → docs tab → sign). Re-pull when the tab is re-activated.
+  final GlobalKey<DocumentsPageState> _documentsKey =
+      GlobalKey<DocumentsPageState>();
 
   @override
   Widget build(BuildContext context) {
@@ -137,24 +147,22 @@ class _MainShellState extends State<MainShell> {
           ),
         ],
       ),
-      body: IndexedStack(
+      body: Column(
+        children: [
+          // Surfaces offline / queued-sync state above whatever tab is
+          // active. Renders nothing when online with an empty queue.
+          const SyncStatusBanner(),
+          Expanded(
+            child: IndexedStack(
         index: _currentIndex,
         children: [
-          const PlaceholderPage(
-            icon: Icons.calendar_month_outlined,
-            title: 'Schedule',
-            subtitle: 'Your appointments will appear here',
-          ),
+          const CalendarPage(),
           BlocProvider<ProspectsBloc>(
             create: (_) =>
                 sl<ProspectsBloc>()..add(const ProspectsLoadRequested()),
             child: const _ProspectsTab(),
           ),
-          const PlaceholderPage(
-            icon: Icons.description_outlined,
-            title: 'Documents',
-            subtitle: 'Contracts and signed documents will appear here',
-          ),
+          DocumentsPage(key: _documentsKey),
           BlocProvider<ConversationsBloc>(
             create: (_) => sl<ConversationsBloc>()
               ..add(const ConversationsLoadRequested()),
@@ -164,6 +172,9 @@ class _MainShellState extends State<MainShell> {
             icon: Icons.settings_outlined,
             title: 'Settings',
             subtitle: 'Profile and app preferences',
+          ),
+        ],
+            ),
           ),
         ],
       ),
@@ -180,7 +191,15 @@ class _MainShellState extends State<MainShell> {
         ),
         child: NavigationBar(
         selectedIndex: _currentIndex,
-        onDestinationSelected: (i) => setState(() => _currentIndex = i),
+        onDestinationSelected: (i) {
+          // Re-fetch the documents list when the user re-opens the
+          // tab — covers the case where a sign happened on another
+          // surface and the IndexedStack-cached page is stale.
+          if (i == 2 && _currentIndex != 2) {
+            _documentsKey.currentState?.refresh();
+          }
+          setState(() => _currentIndex = i);
+        },
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.calendar_month_outlined),
