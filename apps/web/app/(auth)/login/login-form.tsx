@@ -49,6 +49,17 @@ export function LoginForm() {
           setServerError(result.error);
         }
       } catch (err) {
+        // Next.js redirect() throws a special signal — let it propagate
+        // so the framework can perform the navigation.
+        if (
+          err &&
+          typeof err === "object" &&
+          "digest" in err &&
+          typeof (err as { digest: unknown }).digest === "string" &&
+          (err as { digest: string }).digest.startsWith("NEXT_REDIRECT")
+        ) {
+          throw err;
+        }
         setServerError(
           err instanceof Error
             ? err.message
