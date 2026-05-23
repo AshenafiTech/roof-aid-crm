@@ -321,6 +321,183 @@ export type Database = {
           },
         ]
       }
+      document_edits: {
+        Row: {
+          body_changes: Json
+          created_at: string
+          document_id: string
+          edited_by: string | null
+          field_changes: Json
+          final_content: Json | null
+          id: string
+          template_version_id: string | null
+          tenant_id: string
+        }
+        Insert: {
+          body_changes?: Json
+          created_at?: string
+          document_id: string
+          edited_by?: string | null
+          field_changes?: Json
+          final_content?: Json | null
+          id?: string
+          template_version_id?: string | null
+          tenant_id: string
+        }
+        Update: {
+          body_changes?: Json
+          created_at?: string
+          document_id?: string
+          edited_by?: string | null
+          field_changes?: Json
+          final_content?: Json | null
+          id?: string
+          template_version_id?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_edits_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_edits_edited_by_fkey"
+            columns: ["edited_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_edits_template_version_id_fkey"
+            columns: ["template_version_id"]
+            isOneToOne: false
+            referencedRelation: "document_template_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_edits_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      document_template_versions: {
+        Row: {
+          change_summary: string | null
+          content: Json
+          created_at: string
+          created_by: string | null
+          id: string
+          published_at: string | null
+          source: string
+          source_docx_path: string | null
+          template_id: string
+          tenant_id: string
+          title: string | null
+          variables: Json | null
+          version_no: number
+        }
+        Insert: {
+          change_summary?: string | null
+          content: Json
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          published_at?: string | null
+          source?: string
+          source_docx_path?: string | null
+          template_id: string
+          tenant_id: string
+          title?: string | null
+          variables?: Json | null
+          version_no?: number
+        }
+        Update: {
+          change_summary?: string | null
+          content?: Json
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          published_at?: string | null
+          source?: string
+          source_docx_path?: string | null
+          template_id?: string
+          tenant_id?: string
+          title?: string | null
+          variables?: Json | null
+          version_no?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_template_versions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_template_versions_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "document_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_template_versions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      document_templates: {
+        Row: {
+          active_version_id: string | null
+          created_at: string
+          id: string
+          kind: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          active_version_id?: string | null
+          created_at?: string
+          id?: string
+          kind: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          active_version_id?: string | null
+          created_at?: string
+          id?: string
+          kind?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_templates_active_version_fk"
+            columns: ["active_version_id"]
+            isOneToOne: false
+            referencedRelation: "document_template_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_templates_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       documents: {
         Row: {
           created_at: string | null
@@ -575,6 +752,35 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notification_preferences: {
+        Row: {
+          created_at: string
+          email_new_message: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          email_new_message?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          email_new_message?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_preferences_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "users"
             referencedColumns: ["id"]
           },
         ]
@@ -1074,6 +1280,9 @@ export type Database = {
         Row: {
           billing_cycle: string | null
           calling_hours: Json
+          company_signature_path: string | null
+          company_signature_signer: string | null
+          company_signature_updated_at: string | null
           created_at: string | null
           email_templates: Json
           features: Json | null
@@ -1099,6 +1308,9 @@ export type Database = {
         Insert: {
           billing_cycle?: string | null
           calling_hours?: Json
+          company_signature_path?: string | null
+          company_signature_signer?: string | null
+          company_signature_updated_at?: string | null
           created_at?: string | null
           email_templates?: Json
           features?: Json | null
@@ -1124,6 +1336,9 @@ export type Database = {
         Update: {
           billing_cycle?: string | null
           calling_hours?: Json
+          company_signature_path?: string | null
+          company_signature_signer?: string | null
+          company_signature_updated_at?: string | null
           created_at?: string | null
           email_templates?: Json
           features?: Json | null

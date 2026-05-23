@@ -103,6 +103,7 @@ export default async function AppointmentsPage({
           status={params.status}
           assignedScope={assignedScope}
           ruferoIdFilter={ruferoIdFilter}
+          currentUserRole={user.role}
         />
       ) : (
         <ListView
@@ -114,6 +115,7 @@ export default async function AppointmentsPage({
           ruferoIdFilter={ruferoIdFilter}
           ruferos={ruferos}
           canAssign={canAssign}
+          currentUserRole={user.role}
         />
       )}
     </div>
@@ -129,6 +131,7 @@ async function ListView({
   ruferoIdFilter,
   ruferos,
   canAssign,
+  currentUserRole,
 }: {
   status: string | undefined;
   time: string | undefined;
@@ -138,6 +141,7 @@ async function ListView({
   ruferoIdFilter: string | undefined;
   ruferos: Awaited<ReturnType<typeof listRuferos>>;
   canAssign: boolean;
+  currentUserRole: import("@/lib/types/auth").UserRole;
 }) {
   const pageNum = Math.max(1, parseInt(page ?? "1", 10) || 1);
   const timeRange =
@@ -160,6 +164,7 @@ async function ListView({
       pageSize={result.pageSize}
       ruferos={ruferos}
       canAssign={canAssign}
+      currentUserRole={currentUserRole}
     />
   );
 }
@@ -169,11 +174,13 @@ async function CalendarView({
   status,
   assignedScope,
   ruferoIdFilter,
+  currentUserRole,
 }: {
   monthValue: string | undefined;
   status: string | undefined;
   assignedScope: string | undefined;
   ruferoIdFilter: string | undefined;
+  currentUserRole: import("@/lib/types/auth").UserRole;
 }) {
   const monthStart = parseMonth(monthValue);
   const { start, end } = calendarRange(monthStart);
@@ -186,5 +193,10 @@ async function CalendarView({
     ruferoId: ruferoIdFilter,
   });
 
-  return <AppointmentCalendar appointments={appointments} />;
+  return (
+    <AppointmentCalendar
+      appointments={appointments}
+      currentUserRole={currentUserRole}
+    />
+  );
 }

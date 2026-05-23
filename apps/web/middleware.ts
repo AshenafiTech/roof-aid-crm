@@ -107,6 +107,6 @@ export const config = {
      * - favicon.ico, sitemap.xml, robots.txt
      * - Public assets (images, fonts, etc.)
      */
-    "/((?!_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|woff|woff2)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|pdfjs/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|woff|woff2|mjs|js|map)$).*)",
   ],
 };

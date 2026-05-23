@@ -1,18 +1,26 @@
 // Edge Function — generate-pdf
 //
-// Contract (blocker doc §3.4, stage-4 §4.1):
-//   POST { prospect_id, template_kind, fields? }
-//   -> { document: { id, storage_path, sha256, page_count, status } }
+// Contract:
+//   POST {
+//     prospect_id,
+//     template_kind,
+//     fields?,
+//     final_content?,          // TemplateDoc (section-based) — telefonista's edited copy
+//     field_overrides?,
+//     template_version_id?     // active version the telefonista saw (null when defaults)
+//   }
+//   -> { document: { id, storage_path, sha256, page_count, status, template_version_id? } }
+//
+// Layout: every generated PDF has three regions
+//   1. Fixed header — title + metadata (claim #, date of loss, date,
+//      homeowner, property address, contractor).
+//   2. Sections — auto-numbered, owner-editable.
+//   3. Fixed footer — signature block at the bottom of the LAST page.
 //
 // Storage path: documents/{tenant_id}/documents/{prospect_id}/{doc_id}-unsigned.pdf
-//
-// This is a minimal but correct implementation: it enforces auth, role,
-// tenant scoping, writes a real PDF (placeholder body) via pdf-lib, and
-// inserts the `documents` row. Template prose comes in a follow-up PR
-// per stage-4 §4.4 (legal text owned by the product owner).
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
-import { PDFDocument, StandardFonts, rgb } from 'https://esm.sh/pdf-lib@1.17.1'
+import { PDFDocument, StandardFonts } from 'https://esm.sh/pdf-lib@1.17.1'
 
 import {
   corsHeaders,
@@ -21,8 +29,19 @@ import {
   jsonOk,
   preflight,
 } from '../_shared/auth.ts'
-
-type TemplateKind = '3rd_party_auth' | 'acv_contract' | 'rcv_contract' | 'supplement'
+import {
+  createStandardContext,
+  drawFooters,
+  normalizeTemplateDoc,
+  renderSections,
+  renderSignatureBlock,
+  renderTemplateHeader,
+  substituteTokens,
+  type Block,
+  type ImageFetcher,
+  type TemplateDoc,
+} from '../_shared/template-pdf.ts'
+import { getDefaultDoc, type TemplateKind } from '../_shared/template-defaults.ts'
 
 const ALLOWED_KINDS: TemplateKind[] = [
   '3rd_party_auth',
@@ -34,7 +53,7 @@ const ALLOWED_KINDS: TemplateKind[] = [
 const ALLOWED_ROLES = ['telefonista', 'admin', 'owner', 'super_admin']
 
 const TEMPLATE_TITLES: Record<TemplateKind, string> = {
-  '3rd_party_auth': '3rd Party Authorization',
+  '3rd_party_auth': 'Third-Party Authorization & Contractor Communication Agreement',
   acv_contract: 'ACV Contract',
   rcv_contract: 'RCV Contract',
   supplement: 'Supplement Document',
@@ -63,6 +82,9 @@ serve(async (req) => {
     prospect_id?: string
     template_kind?: TemplateKind
     fields?: Record<string, unknown>
+    final_content?: TemplateDoc | { blocks: unknown[] }
+    field_overrides?: Record<string, string>
+    template_version_id?: string
   }
   try {
     input = await req.json()
@@ -86,7 +108,84 @@ serve(async (req) => {
     return jsonError(403, 'forbidden', 'Cross-tenant access denied')
   }
 
-  // 2. Pre-create the documents row so we have an id for the storage path.
+  // 1b. Resolve tenant name for the signature label + token substitution.
+  const { data: tenantRow } = await supabase
+    .from('tenants')
+    .select('name')
+    .eq('id', prospect.tenant_id)
+    .single()
+  const tenantName = tenantRow?.name?.trim() || 'Roof AID'
+
+  // 2. Resolve template:
+  //    - Telefonista-edited (final_content) → use exactly.
+  //    - Else published custom version → use it.
+  //    - Else built-in defaults.
+  let templateDoc: TemplateDoc
+  let templateVersionId: string | null = null
+  if (input.final_content) {
+    templateDoc = normalizeTemplateDoc(input.final_content)
+    templateVersionId = input.template_version_id ?? null
+  } else {
+    const { data: tpl } = await supabase
+      .from('document_templates')
+      .select('id, active_version_id')
+      .eq('tenant_id', prospect.tenant_id)
+      .eq('kind', input.template_kind)
+      .maybeSingle()
+    if (tpl?.active_version_id) {
+      const { data: ver } = await supabase
+        .from('document_template_versions')
+        .select('id, content')
+        .eq('id', tpl.active_version_id)
+        .single()
+      if (ver?.content) {
+        templateDoc = normalizeTemplateDoc(ver.content)
+        templateVersionId = ver.id
+      } else {
+        templateDoc = getDefaultDoc(input.template_kind)
+      }
+    } else {
+      templateDoc = getDefaultDoc(input.template_kind)
+    }
+  }
+
+  // 3. Resolve token values (header fields + content variables).
+  const homeowner = prospect.name ?? '—'
+  const address = [prospect.address, prospect.city, prospect.state, prospect.zip]
+    .filter(Boolean)
+    .join(', ')
+  const fields = (input.fields ?? {}) as Record<string, unknown>
+  const insurance = (fields.insurance_company as string | undefined) ?? ''
+  const claim = (fields.claim_number as string | undefined) ?? ''
+  const lossDate = (fields.loss_date as string | undefined) ?? ''
+  const deductibleNum = fields.deductible as number | undefined
+  const deductible = typeof deductibleNum === 'number' ? `$${deductibleNum.toFixed(2)}` : ''
+  const totalJobCostNum = fields.total_job_cost as number | undefined
+  const totalJobCost =
+    typeof totalJobCostNum === 'number' ? `$${totalJobCostNum.toFixed(2)}` : ''
+  const scope = (fields.scope_of_work as string | undefined) ?? ''
+  const todayIso = new Date().toISOString().slice(0, 10)
+
+  const tokenValues: Record<string, string> = {
+    homeowner_name: homeowner,
+    property_address: address,
+    contractor_name: tenantName,
+    today: todayIso,
+    insurance_company: insurance,
+    claim_number: claim,
+    loss_date: lossDate,
+    deductible,
+    total_job_cost: totalJobCost,
+    scope_of_work: scope,
+    ...(input.field_overrides ?? {}),
+  }
+  const substituted = substituteTokens(templateDoc, tokenValues)
+
+  // 4. Pre-create the documents row so we have an id for the storage path.
+  const templateData: Record<string, unknown> = { ...(input.fields ?? {}) }
+  if (templateVersionId) templateData.template_version_id = templateVersionId
+  if (input.field_overrides) templateData.field_overrides = input.field_overrides
+
   const { data: doc, error: dErr } = await supabase
     .from('documents')
     .insert({
@@ -95,75 +194,71 @@ serve(async (req) => {
       type: input.template_kind,
       status: 'generated',
       created_by: user.id,
+      template_data: templateData,
     })
     .select('id')
     .single()
   if (dErr || !doc) return jsonError(500, 'db_insert_failed', dErr?.message)
 
-  // 3. Render a minimal PDF. Real legal templates land in a follow-up
-  //    per stage-4 §4.4 — the contract here is the bytes + storage path,
-  //    not the prose.
+  // 5. Render the PDF.
   const pdf = await PDFDocument.create()
-  const page = pdf.addPage([612, 792])
   const helv = await pdf.embedFont(StandardFonts.Helvetica)
   const helvBold = await pdf.embedFont(StandardFonts.HelveticaBold)
+  const helvItalic = await pdf.embedFont(StandardFonts.HelveticaOblique)
 
-  page.drawRectangle({
-    x: 0,
-    y: 732,
-    width: 612,
-    height: 60,
-    color: rgb(0xe8 / 0xff, 0x50 / 0xff, 0x1f / 0xff),
-  })
-  page.drawText(TEMPLATE_TITLES[input.template_kind], {
-    x: 40,
-    y: 752,
-    size: 18,
-    font: helvBold,
-    color: rgb(1, 1, 1),
+  const ctx = createStandardContext({
+    pdf,
+    helv,
+    helvBold,
+    helvItalic,
+    title: TEMPLATE_TITLES[input.template_kind],
   })
 
-  const lines = [
-    `Homeowner: ${prospect.name}`,
-    `Address: ${[prospect.address, prospect.city, prospect.state, prospect.zip]
-      .filter(Boolean)
-      .join(', ')}`,
-    `Phone: ${prospect.phones?.[0] ?? '—'}`,
-    `Email: ${prospect.email ?? '—'}`,
-    '',
-    'This document is a placeholder generated by Roof-Aid CRM.',
-    'Final legal text will be supplied by the product owner before launch.',
-  ]
-  let y = 700
-  for (const line of lines) {
-    page.drawText(line, { x: 40, y, size: 11, font: helv })
-    y -= 18
+  // Image fetcher — resolves storage paths via the authenticated client.
+  const fetchImage: ImageFetcher = async (block: Extract<Block, { type: 'image' }>) => {
+    try {
+      if (block.storagePath) {
+        const { data, error } = await supabase.storage
+          .from('documents')
+          .download(block.storagePath)
+        if (error || !data) return null
+        const bytes = new Uint8Array(await data.arrayBuffer())
+        const mime = block.storagePath.endsWith('.png') ? 'image/png' : 'image/jpeg'
+        return { bytes, mime }
+      }
+      if (block.src && /^https?:\/\//.test(block.src)) {
+        const resp = await fetch(block.src)
+        if (!resp.ok) return null
+        const buf = new Uint8Array(await resp.arrayBuffer())
+        const ct = resp.headers.get('content-type') ?? ''
+        const mime = ct.includes('png') ? 'image/png' : 'image/jpeg'
+        return { bytes: buf, mime }
+      }
+      return null
+    } catch {
+      return null
+    }
   }
 
-  // Signature marker — embed-signature scans for this.
-  const sigY = 120
-  page.drawLine({
-    start: { x: 60, y: sigY },
-    end: { x: 320, y: sigY },
-    thickness: 1,
-    color: rgb(0, 0, 0),
-  })
-  page.drawText('Homeowner signature', { x: 60, y: sigY - 14, size: 8, font: helv })
-  page.drawText(`<<sig:home:60,${sigY}>>`, {
-    x: 0,
-    y: 0,
-    size: 0.001,
-    color: rgb(1, 1, 1),
-    font: helv,
+  // Fixed top metadata block.
+  renderTemplateHeader(ctx, {
+    claim_number: claim,
+    loss_date: lossDate,
+    today: todayIso,
+    homeowner_name: homeowner,
+    property_address: address,
+    contractor_name: tenantName,
   })
 
-  page.drawText('Electronically generated via Roof-Aid CRM', {
-    x: 40,
-    y: 30,
-    size: 8,
-    font: helv,
-    color: rgb(0.4, 0.4, 0.4),
-  })
+  // Owner-editable sections (auto-numbered).
+  await renderSections(ctx, substituted.sections, fetchImage)
+
+  // Fixed bottom signature block. Returns BOTH the homeowner and
+  // representative signature anchors so embed-signature can drop the
+  // PNG on whichever line matches the signer's role.
+  const sigAnchors = renderSignatureBlock(ctx, tenantName)
+
+  drawFooters(ctx)
 
   const bytes = await pdf.save()
   const sha256 = await sha256Hex(bytes)
@@ -180,9 +275,23 @@ serve(async (req) => {
     return jsonError(500, 'storage_upload_failed', uErr.message)
   }
 
+  // Stash signature anchors on the document row so embed-signature
+  // can place the PNG on the right line per signer role, even if the
+  // visual layout moves in the future.
+  const updatedTemplateData = {
+    ...templateData,
+    homeowner_sig_anchor: sigAnchors.homeowner,
+    rep_sig_anchor: sigAnchors.rep,
+    tenant_name: tenantName,
+  }
   await supabase
     .from('documents')
-    .update({ storage_path: storagePath })
+    .update({
+      storage_path: storagePath,
+      sha256,
+      page_count: pdf.getPageCount(),
+      template_data: updatedTemplateData,
+    })
     .eq('id', doc.id)
 
   return jsonOk({
@@ -192,6 +301,7 @@ serve(async (req) => {
       sha256,
       page_count: pdf.getPageCount(),
       status: 'generated',
+      template_version_id: templateVersionId,
     },
   })
 })

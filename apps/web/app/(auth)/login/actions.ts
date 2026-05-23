@@ -33,12 +33,21 @@ export async function login(
   let signInResult;
   try {
     signInResult = await supabase.auth.signInWithPassword({ email, password });
+    const user = signInResult.data?.user;
+    const session = signInResult.data?.session;
     console.log("[login] signInWithPassword returned", {
       ms: Date.now() - startedAt,
-      hasUser: !!signInResult.data?.user,
-      hasSession: !!signInResult.data?.session,
+      hasUser: !!user,
+      hasSession: !!session,
+      userId: user?.id ?? null,
+      userEmail: user?.email ?? null,
+      emailConfirmedAt: user?.email_confirmed_at ?? null,
+      sessionExpiresAt: session?.expires_at ?? null,
+      provider: user?.app_metadata?.provider ?? null,
+      errorName: signInResult.error?.name ?? null,
       errorMessage: signInResult.error?.message ?? null,
       errorStatus: signInResult.error?.status ?? null,
+      errorCode: (signInResult.error as { code?: string } | null)?.code ?? null,
     });
   } catch (err) {
     const e = err as { name?: string; message?: string; cause?: unknown; code?: string };
@@ -57,6 +66,11 @@ export async function login(
   const { error } = signInResult;
 
   if (error) {
+    console.warn("[login] auth error", {
+      message: error.message,
+      status: error.status,
+      name: error.name,
+    });
     if (error.message === "Invalid login credentials") {
       return { error: "Invalid email or password. Please try again." };
     }

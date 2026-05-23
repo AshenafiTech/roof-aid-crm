@@ -7,6 +7,8 @@ import { CallButton } from "@/components/comms/call-button";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { createClient } from "@/lib/supabase/server";
 
+import { listDocumentsForProspect } from "@/lib/queries/documents";
+
 import { BackToProspectsButton } from "./back-button";
 import { ProspectTabs } from "./tabs";
 import { RealtimeRefresh } from "./realtime-refresh";
@@ -40,8 +42,15 @@ export default async function ProspectDetailPage({
   const user = await getCurrentUser();
   const supabase = await createClient();
 
-  const [prospectRes, activitiesRes, notesRes, ruferosRes, smsRes, tenantRes] =
-    await Promise.all([
+  const [
+    prospectRes,
+    activitiesRes,
+    notesRes,
+    ruferosRes,
+    smsRes,
+    tenantRes,
+    documents,
+  ] = await Promise.all([
       supabase
         .from("prospects")
         .select(
@@ -79,6 +88,7 @@ export default async function ProspectDetailPage({
         .select("sms_templates")
         .eq("id", user.tenantId)
         .maybeSingle(),
+      listDocumentsForProspect(id),
     ]);
 
   const prospect = prospectRes.data as ProspectWithAssignee | null;
@@ -147,6 +157,7 @@ export default async function ProspectDetailPage({
         currentUser={user}
         smsMessages={smsMessages}
         smsTemplates={smsTemplates}
+        documents={documents}
       />
       {latestNote && (
         <div className="rounded-md border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/40 dark:bg-amber-950/30">

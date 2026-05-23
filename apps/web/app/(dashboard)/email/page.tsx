@@ -5,6 +5,7 @@ import {
   getUnreadEmailCount,
   listEmailsAction,
 } from "@/lib/email/actions";
+import { getNotificationPreferences } from "@/lib/notifications/preferences";
 import { Card } from "@/components/ui/card";
 import { EmailWorkspace } from "./email-workspace";
 
@@ -36,7 +37,10 @@ export default async function EmailPage({
     );
   }
 
-  const connection = await getGmailConnection();
+  const [connection, preferences] = await Promise.all([
+    getGmailConnection(),
+    getNotificationPreferences(),
+  ]);
 
   let initialInbox = null;
   let initialUnread = 0;
@@ -68,6 +72,7 @@ export default async function EmailPage({
         }}
         initialInbox={initialInbox}
         initialUnread={initialUnread}
+        emailNotificationsEnabled={preferences.emailNewMessage}
       />
     </div>
   );
