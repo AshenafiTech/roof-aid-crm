@@ -33,4 +33,19 @@ abstract class DocumentRepository {
 
   /// 1-hour signed URL for either the unsigned or signed PDF.
   Future<Either<Failure, String>> getSignedUrl(String storagePath);
+
+  /// Absolute path to a locally-cached unsigned PDF for [documentId],
+  /// or null if not cached. The preview page checks this first so it
+  /// can hand a file path to the OS viewer when offline (or just
+  /// faster on weak signal).
+  Future<String?> localUnsignedPdfPath(String documentId);
+
+  /// Absolute path to a locally-cached signed PDF, or null.
+  Future<String?> localSignedPdfPath(String documentId);
+
+  /// True when a signature was captured for [documentId] but the
+  /// embed call hasn't drained yet. UI uses this to show a
+  /// "Signature captured · syncing when online" indicator instead
+  /// of the normal "Already signed" affordances.
+  Future<bool> hasPendingSignature(String documentId);
 }

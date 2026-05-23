@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:open_filex/open_filex.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/di/injection_container.dart';
@@ -59,7 +60,17 @@ class DocumentPreviewPage extends StatefulWidget {
 class _DocumentLookup {
   final DocumentEntity? signable;
   final DocumentEntity? latestSigned;
-  const _DocumentLookup({this.signable, this.latestSigned});
+
+  /// True when a signature was captured locally for this document but
+  /// the embed call hasn't drained yet. Drives a "Signature captured ·
+  /// syncing when online" indicator in the UI.
+  final bool pendingSignature;
+
+  const _DocumentLookup({
+    this.signable,
+    this.latestSigned,
+    this.pendingSignature = false,
+  });
   bool get isEmpty => signable == null && latestSigned == null;
 }
 
@@ -87,10 +98,25 @@ class _DocumentPreviewPageState extends State<DocumentPreviewPage> {
 
   Future<_DocumentLookup> _fetchLookup() async {
     final useCase = sl<GetProspectDocuments>();
+    final repo = sl<DocumentRepository>();
     final result = await useCase(widget.prospectId);
-    return result.fold(
-      (failure) => throw _PreviewError(failure.message),
-      (docs) {
+
+    return await result.fold(
+      (failure) async {
+        // Offline fallback: if the user just signed locally, surface
+        // a synthetic "already signed" view so we don't dump them on
+        // a red error screen seconds after they handed the pen back
+        // to the homeowner.
+        final pinId = widget.documentId;
+        if (pinId != null && await repo.hasPendingSignature(pinId)) {
+          return _DocumentLookup(
+            latestSigned: _localOnlyDoc(pinId),
+            pendingSignature: true,
+          );
+        }
+        throw _PreviewError(failure.message);
+      },
+      (docs) async {
         // Specific-doc mode (tap-from-list): find that exact id,
         // ignore template kind, and place it in the right bucket
         // based on its own status. If the id isn't in the list at
@@ -98,18 +124,28 @@ class _DocumentPreviewPageState extends State<DocumentPreviewPage> {
         // page shows "Document not generated".
         final pinId = widget.documentId;
         if (pinId != null) {
+          final pending = await repo.hasPendingSignature(pinId);
           for (final d in docs) {
             if (d.id != pinId) continue;
-            if (d.status == 'signed') {
-              return _DocumentLookup(latestSigned: d);
+            if (d.status == 'signed' || pending) {
+              return _DocumentLookup(
+                latestSigned: d,
+                pendingSignature: pending,
+              );
             }
             if (_signableStatuses.contains(d.status) &&
                 d.storagePath != null) {
               return _DocumentLookup(signable: d);
             }
-            // Doc exists but isn't in any usable bucket (e.g.
-            // 'failed' status) — treat as empty.
             return const _DocumentLookup();
+          }
+          // Doc not in server list but a local sig exists — still
+          // surface a synthetic "already signed".
+          if (pending) {
+            return _DocumentLookup(
+              latestSigned: _localOnlyDoc(pinId),
+              pendingSignature: true,
+            );
           }
           return const _DocumentLookup();
         }
@@ -133,11 +169,33 @@ class _DocumentPreviewPageState extends State<DocumentPreviewPage> {
           }
           if (signable != null && latestSigned != null) break;
         }
+        final docIdForCheck = latestSigned?.id ?? signable?.id;
+        final pending = docIdForCheck != null
+            ? await repo.hasPendingSignature(docIdForCheck)
+            : false;
         return _DocumentLookup(
           signable: signable,
           latestSigned: latestSigned,
+          pendingSignature: pending,
         );
       },
+    );
+  }
+
+  /// Synthetic placeholder for the rare "user signed offline AND we
+  /// couldn't fetch the server list" case. Status is forced to 'signed'
+  /// so the existing _AlreadySignedBody renders; the actual local PDF
+  /// (if cached) and the pending-signature badge come from elsewhere.
+  DocumentEntity _localOnlyDoc(String id) {
+    final now = DateTime.now();
+    return DocumentEntity(
+      id: id,
+      tenantId: '',
+      prospectId: widget.prospectId,
+      type: widget.templateKind,
+      status: 'signed',
+      createdAt: now,
+      updatedAt: now,
     );
   }
 
@@ -172,12 +230,30 @@ class _DocumentPreviewPageState extends State<DocumentPreviewPage> {
     // Prefer the signed copy when it exists — that's what the rufero
     // wants to view in the "already signed" state. Fall back to the
     // unsigned PDF for the review-before-signing flow.
-    final path = doc.signedStoragePath ?? doc.storagePath;
-    if (path == null) return;
+    final remotePath = doc.signedStoragePath ?? doc.storagePath;
     setState(() => _opening = true);
     try {
       final repo = sl<DocumentRepository>();
-      final result = await repo.getSignedUrl(path);
+
+      // 1. Try the local cache first — this is the offline path AND
+      //    the fast path on weak signal. open_filex hands the file to
+      //    the system PDF viewer through Android's FileProvider, so
+      //    the user gets the native viewer they're used to.
+      final localPath = doc.signedStoragePath != null
+          ? await repo.localSignedPdfPath(doc.id)
+          : await repo.localUnsignedPdfPath(doc.id);
+      if (localPath != null) {
+        final result = await OpenFilex.open(localPath, type: 'application/pdf');
+        if (!mounted) return;
+        if (result.type == ResultType.done) return;
+        // Fall through to the remote path if the OS couldn't open it
+        // (e.g. no PDF app installed). The snackbar below explains.
+      }
+
+      // 2. No cache — fetch the signed URL from the server and hand
+      //    the URL to the system browser / PDF app.
+      if (remotePath == null) return;
+      final result = await repo.getSignedUrl(remotePath);
       if (!mounted) return;
       await result.fold(
         (failure) async {
@@ -291,6 +367,7 @@ class _DocumentPreviewPageState extends State<DocumentPreviewPage> {
             document: lookup.latestSigned!,
             templateTitle: _templateTitle(widget.templateKind),
             opening: _opening,
+            pendingSignature: lookup.pendingSignature,
             onOpen: () => _openPdf(lookup.latestSigned!),
             onRetry: _retry,
           );
@@ -451,6 +528,7 @@ class _AlreadySignedBody extends StatelessWidget {
   final DocumentEntity document;
   final String templateTitle;
   final bool opening;
+  final bool pendingSignature;
   final VoidCallback onOpen;
   final VoidCallback onRetry;
 
@@ -460,6 +538,7 @@ class _AlreadySignedBody extends StatelessWidget {
     required this.opening,
     required this.onOpen,
     required this.onRetry,
+    this.pendingSignature = false,
   });
 
   @override
@@ -474,13 +553,17 @@ class _AlreadySignedBody extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
-              Icons.verified_outlined,
+              pendingSignature ? Icons.sync_outlined : Icons.verified_outlined,
               size: 72,
-              color: theme.colorScheme.primary,
+              color: pendingSignature
+                  ? theme.colorScheme.tertiary
+                  : theme.colorScheme.primary,
             ),
             const SizedBox(height: 20),
             Text(
-              'Document already signed',
+              pendingSignature
+                  ? 'Signature captured'
+                  : 'Document already signed',
               textAlign: TextAlign.center,
               style: theme.textTheme.titleLarge?.copyWith(
                 fontWeight: FontWeight.w700,
@@ -488,9 +571,14 @@ class _AlreadySignedBody extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              'A $templateTitle was signed on $signedOn. '
-              "If you need a new copy signed, ask the office to "
-              "generate a fresh document and tap Retry.",
+              pendingSignature
+                  ? "The homeowner's signature has been saved on this "
+                      "device and will be applied to the document the "
+                      "next time you have a connection. You can hand "
+                      "the phone back — they're done."
+                  : 'A $templateTitle was signed on $signedOn. '
+                      "If you need a new copy signed, ask the office to "
+                      "generate a fresh document and tap Retry.",
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,

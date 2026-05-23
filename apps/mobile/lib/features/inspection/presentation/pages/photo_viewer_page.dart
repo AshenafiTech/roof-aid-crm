@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/constants/photo_tags.dart';
+import '../../../../core/widgets/network_or_file_image.dart';
 import '../../domain/entities/photo_entity.dart';
 
 /// Full-screen, pinch-to-zoom viewer for a single inspection photo.
@@ -65,22 +66,9 @@ class _PhotoViewerPageState extends State<PhotoViewerPage> {
             minScale: 1.0,
             maxScale: 5.0,
             child: Center(
-              child: Image.network(
-                url,
+              child: NetworkOrFileImage(
+                url: url,
                 fit: BoxFit.contain,
-                loadingBuilder: (_, child, progress) {
-                  if (progress == null) return child;
-                  return const Center(
-                    child: CircularProgressIndicator(color: Colors.white),
-                  );
-                },
-                errorBuilder: (_, _, _) => const Center(
-                  child: Icon(
-                    Icons.broken_image_outlined,
-                    color: Colors.white54,
-                    size: 64,
-                  ),
-                ),
               ),
             ),
           );

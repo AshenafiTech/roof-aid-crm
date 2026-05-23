@@ -20,12 +20,18 @@ class SyncStatus {
   /// Cleared as soon as the next drain succeeds.
   final String? lastError;
 
+  /// Wall-clock of the last successful drain (queue went to empty
+  /// after pushing at least one op). Drives the "last synced …"
+  /// caption in the sync banner.
+  final DateTime? lastSyncedAt;
+
   const SyncStatus({
     required this.isOnline,
     required this.isDraining,
     required this.pending,
     this.currentKind,
     this.lastError,
+    this.lastSyncedAt,
   });
 
   static const SyncStatus initial = SyncStatus(
@@ -40,6 +46,7 @@ class SyncStatus {
     int? pending,
     String? Function()? currentKind,
     String? Function()? lastError,
+    DateTime? Function()? lastSyncedAt,
   }) {
     return SyncStatus(
       isOnline: isOnline ?? this.isOnline,
@@ -47,6 +54,8 @@ class SyncStatus {
       pending: pending ?? this.pending,
       currentKind: currentKind != null ? currentKind() : this.currentKind,
       lastError: lastError != null ? lastError() : this.lastError,
+      lastSyncedAt:
+          lastSyncedAt != null ? lastSyncedAt() : this.lastSyncedAt,
     );
   }
 }

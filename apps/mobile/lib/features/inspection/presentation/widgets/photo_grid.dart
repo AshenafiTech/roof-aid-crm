@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/constants/photo_tags.dart';
+import '../../../../core/widgets/network_or_file_image.dart';
 import '../../domain/entities/photo_entity.dart';
 
 class PhotoGrid extends StatelessWidget {
@@ -101,24 +102,7 @@ class _PhotoTile extends StatelessWidget {
                       ),
                     );
                   }
-                  return Image.network(
-                    url,
-                    fit: BoxFit.cover,
-                    loadingBuilder: (_, child, progress) {
-                      if (progress == null) return child;
-                      return const Center(
-                        child: SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                      );
-                    },
-                    errorBuilder: (_, _, _) => Icon(
-                      Icons.broken_image_outlined,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  );
+                  return NetworkOrFileImage(url: url, fit: BoxFit.cover);
                 },
               ),
               if (photo.primaryTag != null)

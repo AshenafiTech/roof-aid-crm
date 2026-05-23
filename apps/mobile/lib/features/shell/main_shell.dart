@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../core/di/injection_container.dart';
+import '../../core/offline/sync_status_banner.dart';
 import '../../core/theme/theme_controller.dart';
 import '../auth/presentation/bloc/auth_bloc.dart';
 import '../auth/presentation/bloc/auth_event.dart';
@@ -146,7 +147,13 @@ class _MainShellState extends State<MainShell> {
           ),
         ],
       ),
-      body: IndexedStack(
+      body: Column(
+        children: [
+          // Surfaces offline / queued-sync state above whatever tab is
+          // active. Renders nothing when online with an empty queue.
+          const SyncStatusBanner(),
+          Expanded(
+            child: IndexedStack(
         index: _currentIndex,
         children: [
           const CalendarPage(),
@@ -165,6 +172,9 @@ class _MainShellState extends State<MainShell> {
             icon: Icons.settings_outlined,
             title: 'Settings',
             subtitle: 'Profile and app preferences',
+          ),
+        ],
+            ),
           ),
         ],
       ),

@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../core/error/exceptions.dart';
@@ -40,6 +42,11 @@ abstract class DocumentRemoteDatasource {
   });
 
   Future<String> getSignedUrl(String storagePath);
+
+  /// Download the raw PDF bytes for a storage path. Used by the
+  /// offline cache to pre-fetch / cache-on-view a document so it can
+  /// later be opened from disk.
+  Future<Uint8List> downloadPdf(String storagePath);
 }
 
 class DocumentRemoteDatasourceImpl implements DocumentRemoteDatasource {
@@ -196,6 +203,23 @@ class DocumentRemoteDatasourceImpl implements DocumentRemoteDatasource {
       if (isNetworkError(e)) throw NetworkException(offlineMessage);
       if (e is StorageException) throw ServerException(e.message);
       throw ServerException('Failed to get download link: $e');
+    }
+  }
+
+  @override
+  Future<Uint8List> downloadPdf(String storagePath) async {
+    _requireAuth();
+    try {
+      final bytes = await client.storage
+          .from('documents')
+          .download(storagePath);
+      return bytes;
+    } on ServerException {
+      rethrow;
+    } catch (e) {
+      if (isNetworkError(e)) throw NetworkException(offlineMessage);
+      if (e is StorageException) throw ServerException(e.message);
+      throw ServerException('Failed to download PDF: $e');
     }
   }
 }

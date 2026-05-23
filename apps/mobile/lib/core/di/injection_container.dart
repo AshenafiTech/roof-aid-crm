@@ -18,6 +18,7 @@ import '../../features/messages/domain/usecases/get_conversations.dart';
 import '../../features/messages/domain/usecases/watch_conversations.dart';
 import '../../features/messages/presentation/bloc/conversations_bloc.dart';
 // ── M5 imports ─────────────────────────────────────────────
+import '../../features/appointments/data/datasources/appointment_local_datasource.dart';
 import '../../features/appointments/data/datasources/appointment_remote_datasource.dart';
 import '../../features/appointments/data/repositories/appointment_repository_impl.dart';
 import '../../features/appointments/domain/repositories/appointment_repository.dart';
@@ -39,6 +40,7 @@ import '../../features/availability/domain/usecases/watch_my_availability_blocks
 import '../../features/availability/presentation/bloc/block_editor_bloc.dart';
 import '../../features/availability/presentation/bloc/calendar_bloc.dart';
 import '../../features/availability/presentation/bloc/working_hours_bloc.dart';
+import '../../features/documents/data/datasources/document_local_datasource.dart';
 import '../../features/documents/data/datasources/document_remote_datasource.dart';
 import '../../features/documents/data/repositories/document_repository_impl.dart';
 import '../../features/documents/domain/repositories/document_repository.dart';
@@ -49,6 +51,7 @@ import '../../features/documents/domain/usecases/get_prospect_documents.dart';
 import '../../features/documents/presentation/bloc/signature_bloc.dart';
 import '../../features/inspection/data/datasources/inspection_local_datasource.dart';
 import '../../features/inspection/data/datasources/inspection_remote_datasource.dart';
+import '../../features/inspection/data/datasources/photo_local_datasource.dart';
 import '../../features/inspection/data/repositories/inspection_repository_impl.dart';
 import '../../features/inspection/domain/repositories/inspection_repository.dart';
 import '../../features/inspection/domain/usecases/delete_inspection_photo.dart';
@@ -61,7 +64,9 @@ import '../../features/inspection/domain/usecases/update_photo_tags.dart';
 import '../../features/inspection/domain/usecases/upload_inspection_photo.dart';
 import '../../features/inspection/domain/usecases/watch_inspection_photos.dart';
 import '../../features/inspection/presentation/bloc/inspection_bloc.dart';
+import '../../features/prospects/data/datasources/note_local_datasource.dart';
 import '../../features/prospects/data/datasources/note_remote_datasource.dart';
+import '../../features/prospects/data/datasources/prospect_local_datasource.dart';
 import '../../features/prospects/data/datasources/prospect_remote_datasource.dart';
 import '../../features/prospects/data/datasources/sms_remote_datasource.dart';
 import '../../features/prospects/data/repositories/note_repository_impl.dart';
@@ -124,10 +129,16 @@ Future<void> initDependencies() async {
   sl.registerLazySingleton<ProspectRemoteDatasource>(
     () => ProspectRemoteDatasourceImpl(sl()),
   );
+  sl.registerLazySingleton<ProspectLocalDatasource>(
+    () => ProspectLocalDatasourceImpl(),
+  );
 
   // Repositories
   sl.registerLazySingleton<ProspectRepository>(
-    () => ProspectRepositoryImpl(sl()),
+    () => ProspectRepositoryImpl(
+      remoteDatasource: sl(),
+      local: sl(),
+    ),
   );
 
   // Use cases
@@ -145,9 +156,21 @@ Future<void> initDependencies() async {
   sl.registerLazySingleton<NoteRemoteDatasource>(
     () => NoteRemoteDatasourceImpl(sl()),
   );
+  sl.registerLazySingleton<NoteLocalDatasource>(
+    () => NoteLocalDatasourceImpl(),
+  );
 
-  // Repositories
-  sl.registerLazySingleton<NoteRepository>(() => NoteRepositoryImpl(sl()));
+  // Repositories — eager singleton so the note_add / note_update /
+  // note_delete sync handlers register at app boot (otherwise queued
+  // notes from a prior session wouldn't drain).
+  sl.registerSingleton<NoteRepository>(
+    NoteRepositoryImpl(
+      remoteDatasource: sl(),
+      local: sl(),
+      syncWorker: sl(),
+      supabase: sl(),
+    ),
+  );
 
   // Use cases
   sl.registerLazySingleton(() => GetProspectNotes(sl()));
@@ -223,8 +246,18 @@ Future<void> initDependencies() async {
   sl.registerLazySingleton<AppointmentRemoteDatasource>(
     () => AppointmentRemoteDatasourceImpl(sl()),
   );
-  sl.registerLazySingleton<AppointmentRepository>(
-    () => AppointmentRepositoryImpl(sl()),
+  sl.registerLazySingleton<AppointmentLocalDatasource>(
+    () => AppointmentLocalDatasourceImpl(),
+  );
+  // Eager singleton — the constructor registers the
+  // appointment_transition sync handler. Lazy registration would
+  // leave queued transitions un-drainable on app start.
+  sl.registerSingleton<AppointmentRepository>(
+    AppointmentRepositoryImpl(
+      remote: sl(),
+      local: sl(),
+      syncWorker: sl(),
+    ),
   );
   sl.registerLazySingleton(() => GetMyAppointments(sl()));
   sl.registerLazySingleton(() => WatchMyAppointments(sl()));
@@ -270,8 +303,18 @@ Future<void> initDependencies() async {
   sl.registerLazySingleton<DocumentRemoteDatasource>(
     () => DocumentRemoteDatasourceImpl(sl()),
   );
-  sl.registerLazySingleton<DocumentRepository>(
-    () => DocumentRepositoryImpl(sl()),
+  sl.registerLazySingleton<DocumentLocalDatasource>(
+    () => DocumentLocalDatasourceImpl(),
+  );
+  // Eager singleton — the constructor registers the embed_signature
+  // sync handler. Lazy registration would leave queued signatures
+  // un-drainable on app start until something pulled the repo.
+  sl.registerSingleton<DocumentRepository>(
+    DocumentRepositoryImpl(
+      remote: sl(),
+      local: sl(),
+      syncWorker: sl(),
+    ),
   );
   sl.registerLazySingleton(() => GetProspectDocuments(sl()));
   sl.registerLazySingleton(() => GetMyDocuments(sl()));
@@ -289,14 +332,19 @@ Future<void> initDependencies() async {
   sl.registerLazySingleton<InspectionLocalDatasource>(
     () => InspectionLocalDatasourceImpl(),
   );
+  sl.registerLazySingleton<PhotoLocalDatasource>(
+    () => PhotoLocalDatasourceImpl(),
+  );
   // Repository is eager-registered (not lazy) because its constructor
-  // wires a handler into the SyncWorker — if it stays lazy, the
-  // handler never registers until something pulls the repo, and pending
-  // form patches from the previous session don't drain.
+  // wires handlers into the SyncWorker (form patch, photo upload, tag
+  // update, photo delete). If it stays lazy, those handlers never
+  // register until something pulls the repo, and pending ops from the
+  // previous session don't drain on app launch.
   sl.registerSingleton<InspectionRepository>(
     InspectionRepositoryImpl(
       remote: sl(),
       local: sl(),
+      photos: sl(),
       syncWorker: sl(),
     ),
   );

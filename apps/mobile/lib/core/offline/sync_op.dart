@@ -11,6 +11,9 @@ class SyncOpKind {
   static const String photoDelete = 'photo_delete';
   static const String embedSignature = 'embed_signature';
   static const String appointmentTransition = 'appointment_transition';
+  static const String noteAdd = 'note_add';
+  static const String noteUpdate = 'note_update';
+  static const String noteDelete = 'note_delete';
 }
 
 /// A single queued mutation. Stored as JSON in Hive so the schema can

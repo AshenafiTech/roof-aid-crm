@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Paths exposed by the FileProvider registered in AndroidManifest.xml.
+  Used by open_filex to grant the system PDF viewer read access to
+  files under the app's internal documents directory (where the M5
+  offline pipeline caches signed/unsigned document PDFs and the
+  inspection photo blobs live).
+
+  - files-path / cache-path: the app's internal storage (where
+    path_provider's `getApplicationDocumentsDirectory()` returns).
+  - external-* variants: harmless to include — covers cases where
+    files end up on shared storage on older devices.
+-->
+<paths>
+    <files-path name="files" path="." />
+    <cache-path name="cache" path="." />
+    <external-files-path name="external_files" path="." />
+    <external-cache-path name="external_cache" path="." />
+</paths>
