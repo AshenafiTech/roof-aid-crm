@@ -1,5 +1,6 @@
 import { UserProvider } from "@/components/providers/user-provider";
 import { getCurrentUser } from "@/lib/auth/current-user";
+import { hasPrivilege } from "@/lib/auth/privileges";
 import { getUnreadEmailCount } from "@/lib/email/actions";
 import { getUnreadNotificationCount } from "@/lib/queries/dashboard";
 import { getRecentNotifications } from "@/lib/queries/notifications";
@@ -16,7 +17,7 @@ export default async function DashboardLayout({
   // Fetch user + notifications in parallel where possible.
   const user = await getCurrentUser();
 
-  const showEmailNav = user.role === "owner" || user.role === "telefonista";
+  const showEmailNav = hasPrivilege(user, "send_email");
 
   // These run in parallel
   const [unreadCount, recentNotifications, emailUnreadCount] = await Promise.all([

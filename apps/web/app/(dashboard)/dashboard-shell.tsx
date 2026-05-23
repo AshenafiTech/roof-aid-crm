@@ -113,7 +113,7 @@ export function DashboardShell({
           </button>
         </div>
         <SidebarNav
-          role={user.role}
+          user={user}
           collapsed={collapsed}
           emailUnreadCount={emailUnreadCount}
         />
@@ -150,7 +150,7 @@ export function DashboardShell({
               </SheetHeader>
               <div className="flex h-[calc(100%-3.75rem)] flex-col">
                 <SidebarNav
-                  role={user.role}
+                  user={user}
                   emailUnreadCount={emailUnreadCount}
                   onNavigate={() => setMobileOpen(false)}
                 />

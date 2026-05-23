@@ -183,6 +183,32 @@ export async function createAccount(
     };
   }
 
+  // Seed the default Owner / Admin / Telefonista / Rufero roles for this
+  // tenant (idempotent). Failure here is non-fatal but degrades the
+  // privilege system — log and continue.
+  // `seed_default_roles` lives in migration 038 and isn't yet in
+  // database.types.ts — call via a typed-erased reference.
+  const adminRpc = admin.rpc as unknown as (
+    fn: string,
+    args: Record<string, unknown>,
+  ) => Promise<{ error: { message: string } | null }>;
+  const { error: rolesSeedErr } = await adminRpc("seed_default_roles", {
+    p_tenant_id: tenant.id,
+  });
+  if (rolesSeedErr) {
+    console.error(
+      `[signup] seed_default_roles failed for tenant ${tenant.id}: ${rolesSeedErr.message}`,
+    );
+  }
+
+  // Resolve the seeded Owner role id so we can stamp role_id on the user.
+  const { data: ownerRole } = await admin
+    .from("roles" as never)
+    .select("id")
+    .eq("tenant_id", tenant.id as never)
+    .eq("slug", "owner" as never)
+    .maybeSingle<{ id: string }>();
+
   const { data: authData, error: authErr } = await admin.auth.admin.createUser({
     email,
     password,
@@ -199,11 +225,12 @@ export async function createAccount(
     id: authData.user.id,
     tenant_id: tenant.id,
     role: "owner",
+    ...(ownerRole?.id ? { role_id: ownerRole.id } : {}),
     email,
     first_name: firstName,
     last_name: lastName,
     phone,
-  });
+  } as never);
 
   if (userInsertErr) {
     await admin.auth.admin.deleteUser(authData.user.id);
