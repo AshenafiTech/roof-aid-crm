@@ -5,6 +5,7 @@ import 'dart:convert';
 class SyncOpKind {
   SyncOpKind._();
 
+  static const String inspectionCreate = 'inspection_create';
   static const String inspectionFormPatch = 'inspection_form_patch';
   static const String photoUpload = 'photo_upload';
   static const String photoTagUpdate = 'photo_tag_update';

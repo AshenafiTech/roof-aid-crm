@@ -44,6 +44,31 @@ class InspectionRepositoryImpl implements InspectionRepository {
     required this.syncWorker,
     Uuid? uuid,
   }) : _uuid = uuid ?? const Uuid() {
+    // ── Inspection create: when the rufero arrives at an appointment
+    //    offline for the first time, we generate a local UUID + stub
+    //    so the form / photo paths have a stable id to write against.
+    //    On drain, push that same id to the server so any subsequent
+    //    queued ops still find the right row.
+    syncWorker.registerHandler(
+      SyncOpKind.inspectionCreate,
+      (op) async {
+        final inspectionId = op.payload['inspection_id'] as String;
+        final appointmentId = op.payload['appointment_id'] as String;
+        final prospectId = op.payload['prospect_id'] as String;
+        final draft = await local.getById(inspectionId);
+        if (draft == null) return;
+        // getOrCreate is idempotent server-side: if a row already
+        // exists for this appointment, the server returns it (with
+        // whatever id it has). Surface that as the canonical row.
+        final saved = await remote.getOrCreateForAppointment(
+          appointmentId: appointmentId,
+          prospectId: prospectId,
+          id: inspectionId,
+        );
+        await local.save(saved, dirty: await local.isDirty(inspectionId));
+      },
+    );
+
     // ── Form patch: replay the latest Hive draft. Idempotent — running
     //    it twice is a no-op since the server takes the most recent
     //    values either way.
@@ -149,12 +174,44 @@ class InspectionRepositoryImpl implements InspectionRepository {
         await local.save(i, dirty: false);
       }
       return Right(i);
-    } on NetworkException catch (e) {
-      // Offline — fall back to a previously cached draft for this
-      // appointment if we have one.
+    } on NetworkException catch (_) {
+      // Offline. Two paths:
+      //   1. We've loaded this inspection online before — local has
+      //      a cached row, return it and let the user continue.
+      //   2. First visit while offline — stub a draft locally with
+      //      a client-side UUID + queue an `inspection_create` op
+      //      so the rufero can take photos / fill the form right
+      //      now and we'll catch up on the server when reconnected.
       final cached = await local.findByAppointmentId(appointmentId);
       if (cached != null) return Right(cached);
-      return Left(NetworkFailure(e.message));
+
+      final localId = _uuid.v4();
+      final now = DateTime.now();
+      final stub = InspectionEntity(
+        id: localId,
+        // tenant_id is filled in by the server on drain; leave blank
+        // locally so the field is unambiguous.
+        tenantId: '',
+        prospectId: prospectId,
+        appointmentId: appointmentId,
+        // rufero_id is the authenticated user — we don't have it in
+        // the repo without pulling Supabase in. Server will overwrite
+        // with `auth.uid()` on insert, so blank here is fine.
+        ruferoId: '',
+        createdAt: now,
+        updatedAt: now,
+      );
+      await local.save(stub, dirty: false);
+      await syncWorker.enqueue(
+        kind: SyncOpKind.inspectionCreate,
+        payload: {
+          'inspection_id': localId,
+          'appointment_id': appointmentId,
+          'prospect_id': prospectId,
+        },
+        dedupKey: appointmentId,
+      );
+      return Right(stub);
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message));
     }
@@ -457,11 +514,44 @@ class InspectionRepositoryImpl implements InspectionRepository {
   ) async {
     try {
       final list = await remote.fetchForProspect(prospectId);
-      return Right(list);
-    } on NetworkException catch (e) {
-      return Left(NetworkFailure(e.message));
+      // Cache each server-side row so the next offline read serves
+      // the same data. Don't clobber dirty drafts — the user has
+      // unpushed edits we don't want to overwrite with stale server
+      // values mid-stream.
+      for (final i in list) {
+        if (!(await local.isDirty(i.id))) {
+          await local.save(i, dirty: false);
+        }
+      }
+      // Read back through the cache so any offline-only stubs the
+      // rufero started (queued inspection_create not yet drained)
+      // merge into the result and show in the UI.
+      final cached = await local.findByProspectId(prospectId);
+      return Right(_mergeInspections(list, cached));
+    } on NetworkException catch (_) {
+      // Offline — return whatever drafts the rufero has touched for
+      // this prospect. Empty list is a valid answer if they've never
+      // loaded this prospect online and never started an inspection
+      // offline either.
+      final cached = await local.findByProspectId(prospectId);
+      return Right(cached);
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message));
     }
+  }
+
+  /// Merge server + locally-pending inspections, server winning on
+  /// id collision (the local copy might be a stub that's already
+  /// been drained server-side under a different id — keep both in
+  /// that case so the rufero sees their work).
+  List<InspectionEntity> _mergeInspections(
+    List<InspectionEntity> remote,
+    List<InspectionEntity> cached,
+  ) {
+    final seen = <String>{for (final i in remote) i.id};
+    final extras = cached.where((i) => !seen.contains(i.id));
+    final out = [...remote, ...extras]
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return out;
   }
 }

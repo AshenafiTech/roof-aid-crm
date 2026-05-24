@@ -252,11 +252,18 @@ Future<void> initDependencies() async {
   // Eager singleton — the constructor registers the
   // appointment_transition sync handler. Lazy registration would
   // leave queued transitions un-drainable on app start.
+  // documentsForPreCache lets schedule fetches warm the PDF cache
+  // for every prospect on today's list — the rufero arrives at
+  // each visit with the docs already on disk for offline viewing.
   sl.registerSingleton<AppointmentRepository>(
     AppointmentRepositoryImpl(
       remote: sl(),
       local: sl(),
       syncWorker: sl(),
+      // Lazy resolver — DocumentRepository is registered later in
+      // this file. Resolving at call time avoids any registration-
+      // order coupling between the two repos.
+      documentsForPreCache: () => sl<DocumentRepository>(),
     ),
   );
   sl.registerLazySingleton(() => GetMyAppointments(sl()));

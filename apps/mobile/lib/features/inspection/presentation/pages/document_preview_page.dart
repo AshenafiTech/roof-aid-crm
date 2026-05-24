@@ -235,19 +235,36 @@ class _DocumentPreviewPageState extends State<DocumentPreviewPage> {
     try {
       final repo = sl<DocumentRepository>();
 
-      // 1. Try the local cache first — this is the offline path AND
-      //    the fast path on weak signal. open_filex hands the file to
-      //    the system PDF viewer through Android's FileProvider, so
-      //    the user gets the native viewer they're used to.
-      final localPath = doc.signedStoragePath != null
-          ? await repo.localSignedPdfPath(doc.id)
-          : await repo.localUnsignedPdfPath(doc.id);
-      if (localPath != null) {
-        final result = await OpenFilex.open(localPath, type: 'application/pdf');
-        if (!mounted) return;
-        if (result.type == ResultType.done) return;
-        // Fall through to the remote path if the OS couldn't open it
-        // (e.g. no PDF app installed). The snackbar below explains.
+      // 1. Try the local cache first; fetch + cache on demand if it
+      //    isn't there yet. Covers two paths:
+      //      - Offline: returns cached path, opens straight from disk.
+      //      - Online + sign just drained: the drain's PDF download
+      //        may have failed silently — this gives the cache a
+      //        second chance to fill so the viewer sees the embedded
+      //        signature instead of the older unsigned copy.
+      //    open_filex hands the file to the system PDF viewer through
+      //    Android's FileProvider, so the user gets the native viewer
+      //    they're used to.
+      if (remotePath != null) {
+        final localPath = await repo.ensureLocalPdfPath(
+          documentId: doc.id,
+          storagePath: remotePath,
+          signed: doc.signedStoragePath != null,
+          // doc.updatedAt is the server's row timestamp. ensureLocal
+          // re-fetches whenever this is newer than our cached_at —
+          // the only reliable way to spot the two-party-sign case
+          // where the same storage path holds different bytes.
+          serverUpdatedAt: doc.updatedAt,
+        );
+        if (localPath != null) {
+          final result =
+              await OpenFilex.open(localPath, type: 'application/pdf');
+          if (!mounted) return;
+          if (result.type == ResultType.done) return;
+          // Fall through to the remote path if the OS couldn't open
+          // it (e.g. no PDF app installed). The snackbar below
+          // explains.
+        }
       }
 
       // 2. No cache — fetch the signed URL from the server and hand
