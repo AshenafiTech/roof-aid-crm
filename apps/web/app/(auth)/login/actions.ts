@@ -83,6 +83,6 @@ export async function login(
     return { error: "Something went wrong. Please try again later." };
   }
 
-  console.log("[login] success — redirecting", { to: redirectTo || "/" });
-  redirect(redirectTo || "/");
+  console.log("[login] success — redirecting", { to: redirectTo || "/dashboard" });
+  redirect(redirectTo || "/dashboard");
 }

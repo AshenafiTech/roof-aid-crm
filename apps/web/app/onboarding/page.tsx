@@ -57,7 +57,7 @@ export default async function OnboardingPage() {
     <main className="container mx-auto px-4 py-12 space-y-6">
       <div className="max-w-2xl mx-auto">
         <Link
-          href="/"
+          href="/dashboard"
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="size-3.5" />

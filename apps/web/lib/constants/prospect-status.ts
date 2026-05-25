@@ -16,7 +16,7 @@ export const PROSPECT_STATUS_LABELS: Record<ProspectStatus, string> = {
   contacted: "Contacted",
   follow_up: "Follow Up",
   scheduled: "Scheduled",
-  closed_customer: "Closed Customer",
+  closed_customer: "Closed",
   not_viable: "Not Viable",
 };
 

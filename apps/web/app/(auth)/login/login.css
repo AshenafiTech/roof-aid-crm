@@ -1,0 +1,287 @@
+/* Scoped to .ra-login — won't leak into the dashboard. */
+.ra-login {
+  --ra-blue:#1058A7;
+  --ra-blue-d:#0A3D7A;
+  --ra-blue-m:#1A6EC4;
+  --ra-blue-l:#4A9FE0;
+  --ra-sky:#EBF4FC;
+  --ra-ink:#0D1922;
+  --ra-muted:#4E6070;
+  --ra-light:#F5F8FA;
+  --ra-border:#D5E6F3;
+  --ra-white:#FFFFFF;
+  --ra-green:#22A05B;
+  --ra-red:#C0392B;
+  --ra-accent:#F5A623;
+
+  font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
+  background: var(--ra-light);
+  color: var(--ra-ink);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+.ra-login *,
+.ra-login *::before,
+.ra-login *::after { box-sizing: border-box; margin: 0; padding: 0; }
+.ra-login a { color: inherit; text-decoration: none; }
+
+.ra-login .shell {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  /* Lock to viewport so each panel can manage its own overflow.
+     Without this, the taller form panel stretches the grid and the
+     brand panel's content gets pushed below the fold. */
+  height: 100dvh;
+  min-height: 600px;
+  overflow: hidden;
+}
+
+/* LEFT BRAND PANEL */
+.ra-login .brand {
+  background: var(--ra-ink);
+  padding: 40px 48px;
+  display: flex;
+  flex-direction: column;
+  /* Stack from the top with a generous gap. space-between would shove the
+     footer to the very bottom and leave a big empty zone above the
+     headline when the viewport is tall. */
+  gap: 28px;
+  position: relative;
+  overflow: hidden;
+  height: 100%;
+}
+/* Footer pushed to the bottom of the brand column, regardless of where
+   the headline ended. */
+.ra-login .brand-foot { margin-top: auto; }
+.ra-login .brand-bg-grid {
+  position: absolute; inset: 0;
+  background-image:
+    linear-gradient(rgba(16,88,167,.1) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(16,88,167,.1) 1px, transparent 1px);
+  background-size: 56px 56px;
+  pointer-events: none;
+}
+.ra-login .brand-glow {
+  position: absolute; top: -160px; left: -100px;
+  width: 500px; height: 500px;
+  background: radial-gradient(circle, rgba(16,88,167,.32) 0%, transparent 68%);
+  pointer-events: none;
+}
+.ra-login .brand-glow-2 {
+  position: absolute; bottom: -120px; right: -80px;
+  width: 400px; height: 400px;
+  background: radial-gradient(circle, rgba(16,88,167,.20) 0%, transparent 68%);
+  pointer-events: none;
+}
+.ra-login .brand > * { position: relative; z-index: 1; }
+
+.ra-login .brand-logo {
+  display: flex; align-items: center; gap: 12px;
+}
+.ra-login .brand-logo-mark {
+  width: 40px; height: 40px;
+  border-radius: 8px;
+  background: var(--ra-blue);
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Bebas Neue', system-ui, sans-serif;
+  font-size: 20px; color: white;
+}
+.ra-login .brand-logo-name {
+  font-family: 'Bebas Neue', system-ui, sans-serif;
+  font-size: 24px; letter-spacing: .07em; color: white;
+}
+.ra-login .brand-logo-name span { color: var(--ra-blue-l); }
+
+.ra-login .brand-mid { display: flex; flex-direction: column; gap: 18px; max-width: 460px; }
+.ra-login .brand-tag {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: rgba(16,88,167,.25); border: 1px solid rgba(74,159,224,.3);
+  border-radius: 100px; padding: 5px 14px;
+  font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+  color: #7DBDE8; width: fit-content;
+}
+.ra-login .live-dot {
+  width: 7px; height: 7px; background: var(--ra-accent); border-radius: 50%;
+  animation: ra-login-blink 1.6s infinite;
+}
+@keyframes ra-login-blink { 0%,100%{opacity:1;} 50%{opacity:.3;} }
+
+.ra-login .brand-h1 {
+  font-family: 'Bebas Neue', system-ui, sans-serif;
+  font-size: clamp(36px, 4.2vw, 56px);
+  line-height: .95; letter-spacing: .025em;
+  color: white;
+}
+.ra-login .brand-h1 em { font-style: normal; color: var(--ra-blue-l); display: block; }
+
+.ra-login .brand-p {
+  font-size: 15px; line-height: 1.6;
+  color: rgba(255,255,255,.6);
+  font-weight: 300;
+  max-width: 440px;
+}
+.ra-login .brand-p strong { color: rgba(255,255,255,.88); font-weight: 500; }
+
+.ra-login .brand-numbers { display: flex; gap: 28px; flex-wrap: wrap; }
+.ra-login .bn { border-left: 2px solid var(--ra-blue-m); padding-left: 12px; }
+.ra-login .bn-val { font-family: 'Bebas Neue', system-ui, sans-serif; font-size: 32px; color: white; line-height: 1; }
+.ra-login .bn-lbl { font-size: 10px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: rgba(255,255,255,.4); margin-top: 3px; }
+
+.ra-login .brand-foot {
+  font-size: 12px; color: rgba(255,255,255,.4); line-height: 1.6;
+}
+.ra-login .brand-foot a { color: var(--ra-blue-l); }
+
+/* RIGHT FORM PANEL */
+.ra-login .form-panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 48px;
+  /* If the form ever does exceed the viewport (small/short screens),
+     scroll the form column independently rather than stretching the
+     whole shell. */
+  height: 100%;
+  overflow-y: auto;
+}
+.ra-login .form-card {
+  width: 100%;
+  max-width: 420px;
+}
+
+.ra-login .screen-label {
+  font-size: 11px; font-weight: 700; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--ra-blue); margin-bottom: 10px;
+}
+.ra-login .screen-h {
+  font-family: 'Bebas Neue', system-ui, sans-serif;
+  font-size: 36px; letter-spacing: .02em; color: var(--ra-ink);
+  line-height: 1; margin-bottom: 8px;
+}
+.ra-login .screen-sub {
+  font-size: 14px; color: var(--ra-muted); line-height: 1.55;
+  font-weight: 300; margin-bottom: 20px;
+}
+
+.ra-login .form-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+.ra-login .form-label {
+  font-size: 11px; font-weight: 700; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--ra-muted);
+}
+.ra-login .form-input {
+  padding: 12px 14px; border: 1.5px solid var(--ra-border); border-radius: 8px;
+  font-family: inherit; font-size: 15px; color: var(--ra-ink); background: white;
+  outline: none; transition: border-color .2s; appearance: none; width: 100%;
+}
+.ra-login .form-input:focus { border-color: var(--ra-blue); }
+.ra-login .form-input.error { border-color: var(--ra-red); }
+.ra-login .field-err { font-size: 12px; color: var(--ra-red); margin-top: 2px; }
+
+.ra-login .pw-wrap { position: relative; }
+.ra-login .pw-toggle {
+  position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+  background: transparent; border: 0; cursor: pointer; padding: 4px;
+  color: var(--ra-muted); display: flex; align-items: center;
+}
+.ra-login .pw-toggle:hover { color: var(--ra-ink); }
+.ra-login .pw-wrap .form-input { padding-right: 42px; }
+
+.ra-login .btn-blue {
+  width: 100%;
+  background: var(--ra-blue); color: white; border: none;
+  padding: 14px; border-radius: 8px;
+  font-family: inherit; font-size: 15px; font-weight: 700;
+  cursor: pointer; transition: all .2s;
+  box-shadow: 0 4px 14px rgba(16,88,167,.35);
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.ra-login .btn-blue:hover { background: var(--ra-blue-m); transform: translateY(-1px); }
+.ra-login .btn-blue:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+
+.ra-login .form-err {
+  background: #FDEDEC; border: 1px solid #F5C0BB; color: #922D22;
+  border-radius: 8px; padding: 10px 14px; font-size: 13px; margin-bottom: 16px;
+}
+
+.ra-login .meta {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 14px;
+}
+.ra-login .meta-link {
+  font-size: 13px; color: var(--ra-blue); font-weight: 600;
+}
+.ra-login .meta-link:hover { color: var(--ra-blue-m); }
+.ra-login .meta-text { font-size: 13px; color: var(--ra-muted); }
+
+.ra-login .divider {
+  display: flex; align-items: center; gap: 14px;
+  margin: 18px 0;
+  color: var(--ra-muted); font-size: 11px; font-weight: 600;
+  letter-spacing: .1em; text-transform: uppercase;
+}
+.ra-login .divider::before,
+.ra-login .divider::after {
+  content: ''; flex: 1; height: 1px; background: var(--ra-border);
+}
+
+.ra-login .signup-cta {
+  display: block; width: 100%;
+  text-align: center; padding: 11px;
+  border: 1.5px solid var(--ra-border); border-radius: 8px;
+  font-family: inherit; font-size: 13px; font-weight: 700;
+  color: var(--ra-blue);
+  background: white;
+  transition: all .2s;
+}
+.ra-login .signup-cta:hover {
+  border-color: var(--ra-blue);
+  background: var(--ra-sky);
+}
+
+.ra-login .spin {
+  width: 16px; height: 16px;
+  border: 2px solid rgba(255,255,255,.4);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: ra-login-spin .8s linear infinite;
+}
+@keyframes ra-login-spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 880px) {
+  .ra-login .shell {
+    grid-template-columns: 1fr;
+    /* On narrow viewports, stack vertically and let the document scroll
+       (single-column flow). 100dvh would crop the form on mobile. */
+    height: auto;
+    overflow: visible;
+  }
+  /* Brand collapses to a slim header — just the logo. Hides the marketing
+     copy and footer so the email + password fields are above the fold
+     immediately on mobile. */
+  .ra-login .brand {
+    padding: 14px 20px;
+    height: auto;
+    gap: 0;
+  }
+  .ra-login .brand-mid,
+  .ra-login .brand-foot,
+  .ra-login .brand-bg-grid,
+  .ra-login .brand-glow,
+  .ra-login .brand-glow-2 { display: none; }
+  .ra-login .brand-logo-mark { width: 32px; height: 32px; font-size: 16px; }
+  .ra-login .brand-logo-name { font-size: 18px; }
+  .ra-login .form-panel {
+    padding: 20px 20px 28px;
+    height: auto;
+    overflow: visible;
+    align-items: flex-start;
+  }
+  .ra-login .screen-label { margin-bottom: 6px; }
+  .ra-login .screen-h { font-size: 28px; margin-bottom: 4px; }
+  .ra-login .screen-sub {
+    /* The headline already says it — sub is just decoration on mobile and
+       costs ~50px of vertical space. */
+    display: none;
+  }
+  .ra-login .divider { margin: 14px 0; }
+}

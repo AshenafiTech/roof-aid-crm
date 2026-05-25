@@ -18,7 +18,7 @@ export default async function PhoneNumbersPage() {
     user.role !== "admin" &&
     user.role !== "super_admin"
   ) {
-    redirect("/");
+    redirect("/dashboard");
   }
 
   const numbers = await listPhoneNumbers();

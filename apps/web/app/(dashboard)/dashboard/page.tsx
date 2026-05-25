@@ -13,14 +13,14 @@ import {
   getRiskCounts,
 } from "@/lib/queries/dashboard-metrics";
 
-import { CloseRateGauge } from "./close-rate-gauge";
-import { CumulativeSalesChart } from "./cumulative-sales-chart";
-import { DashboardRealtime } from "./dashboard-realtime";
-import { DealsLeaderboard } from "./deals-leaderboard";
-import { PipelineFunnel } from "./pipeline-funnel";
-import { RecentDeals } from "./recent-deals";
-import { RevenueHero, ClosedWonCard } from "./revenue-hero";
-import { SdrActivityChart } from "./sdr-activity-chart";
+import { CloseRateGauge } from "../close-rate-gauge";
+import { CumulativeSalesChart } from "../cumulative-sales-chart";
+import { DashboardRealtime } from "../dashboard-realtime";
+import { DealsLeaderboard } from "../deals-leaderboard";
+import { PipelineFunnel } from "../pipeline-funnel";
+import { RecentDeals } from "../recent-deals";
+import { RevenueHero, ClosedWonCard } from "../revenue-hero";
+import { SdrActivityChart } from "../sdr-activity-chart";
 
 export const metadata = {
   title: "Dashboard — Roof-Aid CRM",
