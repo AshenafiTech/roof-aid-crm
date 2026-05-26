@@ -76,7 +76,13 @@ const inviteSchema = z.object({
 
 export type InviteUserInput = z.infer<typeof inviteSchema>;
 
-export async function inviteUser(input: InviteUserInput) {
+export type InviteUserResult =
+  | { ok: true; id: string; tempPassword: string }
+  | { ok: false; error: string };
+
+export async function inviteUser(
+  input: InviteUserInput,
+): Promise<InviteUserResult> {
   const parsed = inviteSchema.parse(input);
   const { profile } = await requireUserMgmt();
 
@@ -89,7 +95,7 @@ export async function inviteUser(input: InviteUserInput) {
     .maybeSingle();
 
   if (existingAuth) {
-    throw new Error("A user with this email already exists");
+    return { ok: false, error: "A user with this email already exists" };
   }
 
   const tempPassword = crypto.randomUUID().slice(0, 16) + "Aa1!";
@@ -104,8 +110,8 @@ export async function inviteUser(input: InviteUserInput) {
     },
   });
 
-  if (authError) throw new Error(authError.message);
-  if (!authData.user) throw new Error("Failed to create auth user");
+  if (authError) return { ok: false, error: authError.message };
+  if (!authData.user) return { ok: false, error: "Failed to create auth user" };
 
   const newRoleId = await lookupRoleId(profile.tenant_id, parsed.role);
 
@@ -125,20 +131,16 @@ export async function inviteUser(input: InviteUserInput) {
 
   if (insertError) {
     await admin.auth.admin.deleteUser(authData.user.id);
-    throw new Error(insertError.message);
+    return { ok: false, error: insertError.message };
   }
 
-  const { error: resetError } = await admin.auth.admin.generateLink({
+  await admin.auth.admin.generateLink({
     type: "magiclink",
     email: parsed.email,
   });
 
-  if (resetError) {
-    // non-fatal — user exists but won't get email
-  }
-
   revalidatePath("/admin/users");
-  return { id: authData.user.id, tempPassword };
+  return { ok: true, id: authData.user.id, tempPassword };
 }
 
 const editSchema = z.object({
