@@ -83,6 +83,22 @@ async function uniqueSlug(
 export async function createAccount(
   input: CreateAccountInput,
 ): Promise<CreateAccountResult> {
+  try {
+    return await createAccountInner(input);
+  } catch (e) {
+    // In production builds Next.js strips the thrown error message from the
+    // RSC payload and renders the generic "page couldn't load" screen.
+    // Surface the real message to the client so the wizard can display it
+    // (and log it server-side for Vercel runtime logs).
+    const message = e instanceof Error ? e.message : "Unknown signup error";
+    console.error("[signup] createAccount threw:", e);
+    return { ok: false, error: message };
+  }
+}
+
+async function createAccountInner(
+  input: CreateAccountInput,
+): Promise<CreateAccountResult> {
   const firstName = input.firstName.trim();
   const lastName = input.lastName.trim();
   const companyName = input.companyName.trim();
@@ -187,8 +203,9 @@ export async function createAccount(
   // tenant (idempotent). Failure here is non-fatal but degrades the
   // privilege system — log and continue.
   // `seed_default_roles` lives in migration 038 and isn't yet in
-  // database.types.ts — call via a typed-erased reference.
-  const adminRpc = admin.rpc as unknown as (
+  // database.types.ts — call via a type-erased reference. Must bind so
+  // Supabase's rpc method retains its `this` (it reads `this.rest`).
+  const adminRpc = admin.rpc.bind(admin) as unknown as (
     fn: string,
     args: Record<string, unknown>,
   ) => Promise<{ error: { message: string } | null }>;

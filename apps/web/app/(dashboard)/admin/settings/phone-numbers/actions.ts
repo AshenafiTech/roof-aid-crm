@@ -6,6 +6,7 @@ import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import {
+  findPhoneNumberByE164,
   purchaseNumber,
   releaseNumber,
   searchAvailableNumbers,
@@ -208,6 +209,104 @@ export async function addPhoneNumber(input: {
     return { ok: true, phone_number_id: row.id, e164: purchased.e164 };
   } catch (err) {
     if (purchasedTelnyxId) await safeReleaseNumber(purchasedTelnyxId, errorMessage(err));
+    return { ok: false, error: errorMessage(err) };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Import an already-purchased number (rescue)
+//
+// Use this when a number was ordered on Telnyx but never written to
+// tenant_phone_numbers (e.g. the post-order lookup 404'd, leaving an
+// orphan we've already paid for). Takes just the E.164 — we resolve
+// the global numeric Telnyx id ourselves via the owned-numbers list.
+// ---------------------------------------------------------------------------
+
+const importSchema = z.object({
+  e164: z
+    .string()
+    .trim()
+    .regex(/^\+1\d{10}$/, "Phone number must be E.164 (+1 followed by 10 digits)"),
+  label: z.string().trim().min(1).max(50).default("Main"),
+});
+
+export async function importExistingPhoneNumber(input: {
+  e164: string;
+  label?: string;
+}): Promise<AddResult> {
+  try {
+    const { profile } = await requireOwnerOrAdmin();
+    const parsed = importSchema.parse({
+      e164: input.e164,
+      label: input.label ?? "Main",
+    });
+
+    const admin = createAdminClient();
+
+    // Refuse if we already have this number attached anywhere.
+    const { data: existing } = await admin
+      .from("tenant_phone_numbers")
+      .select("id, tenant_id, e164")
+      .eq("e164", parsed.e164)
+      .maybeSingle();
+    if (existing) {
+      return {
+        ok: false,
+        error: `${parsed.e164} is already attached to a tenant — nothing to import.`,
+      };
+    }
+
+    // Look up the global phone-number record on Telnyx by E.164.
+    const phoneRecord = await findPhoneNumberByE164(parsed.e164);
+    if (!phoneRecord) {
+      return {
+        ok: false,
+        error: `Telnyx has no owned number matching ${parsed.e164}. Confirm the E.164 string in the Telnyx portal → My Numbers.`,
+      };
+    }
+
+    const capabilities = (phoneRecord.features ?? [])
+      .map((f) => f.name)
+      .filter((n) => n === "voice" || n === "sms" || n === "mms");
+
+    const { count } = await admin
+      .from("tenant_phone_numbers")
+      .select("id", { count: "exact", head: true })
+      .eq("tenant_id", profile.tenant_id)
+      .eq("status", "active");
+    const isFirst = (count ?? 0) === 0;
+
+    const { data: row, error: insertErr } = await admin
+      .from("tenant_phone_numbers")
+      .insert({
+        tenant_id: profile.tenant_id,
+        telnyx_number_id: phoneRecord.id,
+        e164: phoneRecord.phone_number,
+        capabilities,
+        messaging_profile_id:
+          phoneRecord.messaging_profile_id ??
+          process.env.TELNYX_MESSAGING_PROFILE_ID ??
+          null,
+        voice_app_id: phoneRecord.connection_id ?? null,
+        label: parsed.label,
+        is_primary: isFirst,
+        status: "active",
+        created_by: profile.id,
+      })
+      .select("id")
+      .single();
+
+    if (insertErr || !row) {
+      return {
+        ok: false,
+        error: `Telnyx lookup succeeded but database write failed: ${insertErr?.message ?? "unknown"}`,
+      };
+    }
+
+    revalidatePath("/admin/settings/phone-numbers");
+    revalidatePath("/onboarding");
+    return { ok: true, phone_number_id: row.id, e164: phoneRecord.phone_number };
+  } catch (err) {
     return { ok: false, error: errorMessage(err) };
   }
 }
