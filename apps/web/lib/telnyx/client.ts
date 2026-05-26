@@ -104,6 +104,25 @@ interface PhoneNumberDetailResponse {
   }
 }
 
+interface PhoneNumberListResponse {
+  data: Array<{
+    id: string
+    phone_number: string
+    messaging_profile_id?: string | null
+    connection_id?: string | null
+    features?: Array<{ name: string }>
+  }>
+}
+
+// Telnyx processes number orders asynchronously. The POST often returns
+// status="pending" — and even when it doesn't, the global
+// `/phone_numbers/{id}` resource isn't queryable until the order
+// reaches "success". Total wait is bounded so we don't hang on a stuck
+// order (Telnyx support's worst case is ~tens of seconds; the typical
+// US number completes in <2s).
+const ORDER_POLL_INTERVAL_MS = 750
+const ORDER_POLL_MAX_ATTEMPTS = 20 // ~15s total
+
 /**
  * Purchase a US number and atomically attach it to a Telnyx connection
  * (Voice Call Control App OR a per-tenant Credentials Connection) plus
@@ -156,24 +175,89 @@ export async function purchaseNumber(opts: {
     })
   }
 
-  // Pull the canonical capabilities list off the number itself — the
-  // order response doesn't always include the full feature list.
-  const detail = await telnyxFetch<PhoneNumberDetailResponse>({
-    method: 'GET',
-    path: `/phone_numbers/${assigned.id}`,
-  })
+  // Poll the order to completion. The id inside `order.data.phone_numbers[i]`
+  // is a NumberOrderPhoneNumber sub-resource id, NOT the global
+  // /v2/phone_numbers/{id}. The global resource also doesn't exist until
+  // the order status flips to "success" — querying earlier 404s.
+  let finalStatus = order.data.status
+  if (finalStatus !== 'success') {
+    for (let attempt = 0; attempt < ORDER_POLL_MAX_ATTEMPTS; attempt++) {
+      if (finalStatus === 'failure') {
+        throw new TelnyxError({
+          message: `Telnyx number order ${order.data.id} failed for ${opts.e164}`,
+          status: 0,
+          raw: order,
+        })
+      }
+      await new Promise((r) => setTimeout(r, ORDER_POLL_INTERVAL_MS))
+      const polled = await telnyxFetch<NumberOrderResponse>({
+        method: 'GET',
+        path: `/number_orders/${order.data.id}`,
+      })
+      finalStatus = polled.data.status
+      if (finalStatus === 'success') break
+    }
+    if (finalStatus !== 'success') {
+      throw new TelnyxError({
+        message: `Telnyx number order ${order.data.id} for ${opts.e164} did not reach "success" within ${Math.round((ORDER_POLL_INTERVAL_MS * ORDER_POLL_MAX_ATTEMPTS) / 1000)}s (last status: ${finalStatus}). The number may still provision — check Telnyx portal.`,
+        status: 0,
+      })
+    }
+  }
 
-  const capabilities = (detail.data.features ?? [])
+  // Resolve the global phone-number resource id by E.164. The sub-resource
+  // id returned in the order response cannot be used against /phone_numbers.
+  const phoneRecord = await findPhoneNumberByE164(assigned.phone_number)
+  if (!phoneRecord) {
+    throw new TelnyxError({
+      message: `Telnyx number order ${order.data.id} succeeded but /phone_numbers lookup returned no row for ${assigned.phone_number}. The number is provisioned on Telnyx but not attached locally — use the rescue importer to attach it.`,
+      status: 0,
+    })
+  }
+
+  const capabilities = (phoneRecord.features ?? [])
     .map((f) => f.name)
     .filter((n): n is Capability => n === 'voice' || n === 'sms' || n === 'mms')
 
   return {
-    telnyx_number_id: assigned.id,
-    e164: assigned.phone_number,
+    telnyx_number_id: phoneRecord.id,
+    e164: phoneRecord.phone_number,
     capabilities,
-    messaging_profile_id: detail.data.messaging_profile_id ?? messagingProfileId,
-    voice_app_id: detail.data.connection_id ?? connectionId,
+    messaging_profile_id: phoneRecord.messaging_profile_id ?? messagingProfileId,
+    voice_app_id: phoneRecord.connection_id ?? connectionId,
   }
+}
+
+/**
+ * Find an owned phone number's global resource record by E.164 string.
+ * Returns null if not found in this account. Used after a number order
+ * completes (the order response only includes a sub-resource id, not the
+ * global one) and by the orphan-rescue importer.
+ *
+ * Telnyx's `filter[phone_number]` is the documented path but can return
+ * empty under specific encoding edge cases — we try a couple of variants
+ * before giving up.
+ */
+export async function findPhoneNumberByE164(
+  e164: string,
+): Promise<{
+  id: string
+  phone_number: string
+  messaging_profile_id?: string | null
+  connection_id?: string | null
+  features?: Array<{ name: string }>
+} | null> {
+  const candidates = [e164, e164.startsWith('+') ? e164.slice(1) : `+${e164}`]
+  for (const value of candidates) {
+    const res = await telnyxFetch<PhoneNumberListResponse>({
+      method: 'GET',
+      path: '/phone_numbers',
+      query: { 'filter[phone_number]': value },
+    })
+    const match = res.data?.find((r) => r.phone_number === e164) ?? res.data?.[0]
+    if (match) return match
+  }
+  return null
 }
 
 // ----------------------------------------------------------------------------

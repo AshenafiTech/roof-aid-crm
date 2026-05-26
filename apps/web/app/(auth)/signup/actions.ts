@@ -203,8 +203,9 @@ async function createAccountInner(
   // tenant (idempotent). Failure here is non-fatal but degrades the
   // privilege system — log and continue.
   // `seed_default_roles` lives in migration 038 and isn't yet in
-  // database.types.ts — call via a typed-erased reference.
-  const adminRpc = admin.rpc as unknown as (
+  // database.types.ts — call via a type-erased reference. Must bind so
+  // Supabase's rpc method retains its `this` (it reads `this.rest`).
+  const adminRpc = admin.rpc.bind(admin) as unknown as (
     fn: string,
     args: Record<string, unknown>,
   ) => Promise<{ error: { message: string } | null }>;

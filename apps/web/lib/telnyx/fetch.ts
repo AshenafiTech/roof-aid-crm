@@ -45,6 +45,7 @@ async function sleep(ms: number) {
 }
 
 export async function telnyxFetch<T>(init: RequestInit): Promise<T> {
+  console.log(`[telnyx-trace] → ${init.method} ${init.path}`)
   const apiKey = process.env.TELNYX_API_KEY
   if (!apiKey) {
     throw new TelnyxError({
@@ -101,6 +102,11 @@ export async function telnyxFetch<T>(init: RequestInit): Promise<T> {
       continue
     }
 
+    // Log enough context to triage in dev logs without leaking the API key.
+    console.error(
+      `[telnyx] ${init.method} ${init.path} → ${res.status}`,
+      { body: errBody },
+    )
     throw fromTelnyxResponse(res.status, errBody)
   }
 
