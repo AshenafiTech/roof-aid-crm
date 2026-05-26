@@ -83,6 +83,22 @@ async function uniqueSlug(
 export async function createAccount(
   input: CreateAccountInput,
 ): Promise<CreateAccountResult> {
+  try {
+    return await createAccountInner(input);
+  } catch (e) {
+    // In production builds Next.js strips the thrown error message from the
+    // RSC payload and renders the generic "page couldn't load" screen.
+    // Surface the real message to the client so the wizard can display it
+    // (and log it server-side for Vercel runtime logs).
+    const message = e instanceof Error ? e.message : "Unknown signup error";
+    console.error("[signup] createAccount threw:", e);
+    return { ok: false, error: message };
+  }
+}
+
+async function createAccountInner(
+  input: CreateAccountInput,
+): Promise<CreateAccountResult> {
   const firstName = input.firstName.trim();
   const lastName = input.lastName.trim();
   const companyName = input.companyName.trim();
