@@ -410,6 +410,10 @@ function InviteDialog({
     start(async () => {
       try {
         const result = await inviteUser({ email, firstName, lastName, role, phone, telnyxExtension: telnyxExt });
+        if (!result.ok) {
+          toast.error(result.error);
+          return;
+        }
         const newUser: TenantUser = {
           id: result.id, first_name: firstName, last_name: lastName, email,
           phone: phone || null, role, is_active: true,
