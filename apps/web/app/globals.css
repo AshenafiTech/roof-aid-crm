@@ -76,12 +76,16 @@
   --row-h: 44px;
   --pad-x: 16px;
 
-  /* Accent — violet */
-  --accent-h: 285;
-  --accent-color: oklch(0.60 0.17 var(--accent-h));
-  --accent-soft: oklch(0.60 0.17 var(--accent-h) / 0.18);
+  /* Accent — Roof-Aid blue, matched to the marketing landing.
+     Hue 250 sits at the same hue family as #1058A7 (the landing's
+     --blue token). L=0.50 / C=0.16 gives a punchy mid-blue that
+     keeps shadcn buttons legible without going so dark that hover
+     states look muddy. */
+  --accent-h: 250;
+  --accent-color: oklch(0.50 0.16 var(--accent-h));
+  --accent-soft: oklch(0.50 0.16 var(--accent-h) / 0.14);
   --accent-fg-c: oklch(0.99 0.005 var(--accent-h));
-  --accent-ring: oklch(0.60 0.17 var(--accent-h) / 0.40);
+  --accent-ring: oklch(0.50 0.16 var(--accent-h) / 0.40);
 
   /* Status hues */
   --danger: oklch(0.66 0.18 25);
@@ -135,8 +139,8 @@
   --sidebar-border:                var(--line);
   --sidebar-ring:                  var(--accent-color);
 
-  /* Chart palette — violet-led, vibrant */
-  --chart-1: oklch(0.60 0.17 285);   /* violet (brand) */
+  /* Chart palette — blue-led, vibrant, mirrors the landing's pricing/CTA hues */
+  --chart-1: oklch(0.50 0.16 250);   /* blue (brand) */
   --chart-2: oklch(0.700 0.160 210); /* cyan */
   --chart-3: oklch(0.770 0.170 75);  /* amber */
   --chart-4: oklch(0.660 0.240 345); /* fuchsia */

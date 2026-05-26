@@ -4,10 +4,12 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/config/supabase_config.dart';
 import 'core/di/injection_container.dart';
 import 'core/network/network_error_detection.dart';
+import 'core/offline/sync_worker.dart';
 import 'app.dart';
 
 Future<void> main() async {
@@ -43,11 +45,16 @@ Future<void> main() async {
     };
 
     await dotenv.load(fileName: 'assets/.env');
+    await Hive.initFlutter();
     await Supabase.initialize(
       url: SupabaseConfig.url,
       anonKey: SupabaseConfig.anonKey,
     );
     await initDependencies();
+    // Boot the sync worker AFTER DI so feature repos have had a chance
+    // to register their handlers. start() is idempotent so any
+    // accidental second call is harmless.
+    await sl<SyncWorker>().start();
     runApp(const RoofAidApp());
   }, (error, stack) {
     if (isNetworkError(error)) {

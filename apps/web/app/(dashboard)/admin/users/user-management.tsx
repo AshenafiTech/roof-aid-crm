@@ -97,7 +97,13 @@ function formatDate(d: string | null): string {
 
 /* ── Main component ── */
 
-export function UserManagement({ initialUsers }: { initialUsers: TenantUser[] }) {
+export function UserManagement({
+  initialUsers,
+  canDelete = true,
+}: {
+  initialUsers: TenantUser[];
+  canDelete?: boolean;
+}) {
   const [users, setUsers] = useState(initialUsers);
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState(ALL_FILTER);
@@ -208,6 +214,7 @@ export function UserManagement({ initialUsers }: { initialUsers: TenantUser[] })
               <UserRow
                 key={user.id}
                 user={user}
+                canDelete={canDelete}
                 onEdit={() => setEditingUser(user)}
                 onDeactivate={() => setConfirmAction({ type: user.is_active ? "deactivate" : "activate", user })}
                 onResetPassword={() => setConfirmAction({ type: "reset", user })}
@@ -275,12 +282,14 @@ export function UserManagement({ initialUsers }: { initialUsers: TenantUser[] })
 /* ── User row ── */
 function UserRow({
   user,
+  canDelete,
   onEdit,
   onDeactivate,
   onResetPassword,
   onDelete,
 }: {
   user: TenantUser;
+  canDelete: boolean;
   onEdit: () => void;
   onDeactivate: () => void;
   onResetPassword: () => void;
@@ -361,9 +370,11 @@ function UserRow({
                   : <><CheckCircle2 className="mr-2 h-3.5 w-3.5" /> Reactivate</>
                 }
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={onDelete} className="text-destructive focus:text-destructive">
-                <Trash2 className="mr-2 h-3.5 w-3.5" /> Delete User
-              </DropdownMenuItem>
+              {canDelete && (
+                <DropdownMenuItem onClick={onDelete} className="text-destructive focus:text-destructive">
+                  <Trash2 className="mr-2 h-3.5 w-3.5" /> Delete User
+                </DropdownMenuItem>
+              )}
             </>
           )}
         </DropdownMenuContent>
@@ -399,6 +410,10 @@ function InviteDialog({
     start(async () => {
       try {
         const result = await inviteUser({ email, firstName, lastName, role, phone, telnyxExtension: telnyxExt });
+        if (!result.ok) {
+          toast.error(result.error);
+          return;
+        }
         const newUser: TenantUser = {
           id: result.id, first_name: firstName, last_name: lastName, email,
           phone: phone || null, role, is_active: true,

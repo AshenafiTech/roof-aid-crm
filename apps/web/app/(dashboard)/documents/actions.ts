@@ -6,6 +6,8 @@ import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
 import { canEditProspect } from "@/lib/auth/permissions";
+import { getCurrentUser } from "@/lib/auth/current-user";
+import { hasPrivilege, requirePrivilege } from "@/lib/auth/privileges";
 import type { UserRole } from "@/lib/types/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { substituteTokens } from "@/lib/templates/blocks";
@@ -404,10 +406,11 @@ const deleteSchema = z.object({
 
 export async function deleteDocument(input: z.infer<typeof deleteSchema>) {
   const parsed = deleteSchema.parse(input);
-  const { supabase, profile } = await requireUserWithProfile();
+  const { supabase } = await requireUserWithProfile();
 
-  if (!["admin", "owner", "super_admin"].includes(profile.role)) {
-    throw new Error("Only admins can delete documents");
+  const currentUser = await getCurrentUser();
+  if (!hasPrivilege(currentUser, "delete_documents")) {
+    throw new Error("You don't have permission to delete documents");
   }
 
   const { data: doc, error: getErr } = await supabase
@@ -463,13 +466,12 @@ const signSchema = z.object({
 
 export async function signDocument(input: z.infer<typeof signSchema>) {
   const parsed = signSchema.parse(input);
-  const { supabase, profile } = await requireUserWithProfile();
+  const { supabase } = await requireUserWithProfile();
+
   // Web signing is restricted to the company representative path —
-  // only owner / admin / super_admin can sign from the web.
-  const allowed: UserRole[] = ["owner", "admin", "super_admin"];
-  if (!allowed.includes(profile.role as UserRole)) {
-    throw new Error("Only an owner or admin can sign as the company representative");
-  }
+  // requires the sign_documents_as_company privilege.
+  const currentUser = await getCurrentUser();
+  requirePrivilege(currentUser, "sign_documents_as_company");
   const h = await headers();
 
   const { data, error } = await supabase.functions.invoke("embed-signature", {

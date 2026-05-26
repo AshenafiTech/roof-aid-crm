@@ -14,6 +14,7 @@ abstract class NoteRemoteDatasource {
   Future<NoteModel> addNote({
     required String prospectId,
     required String body,
+    String? id,
   });
 
   Future<NoteModel> updateNote({required String noteId, required String body});
@@ -98,6 +99,7 @@ class NoteRemoteDatasourceImpl implements NoteRemoteDatasource {
   Future<NoteModel> addNote({
     required String prospectId,
     required String body,
+    String? id,
   }) async {
     final userId = _requireUser();
 
@@ -115,6 +117,11 @@ class NoteRemoteDatasourceImpl implements NoteRemoteDatasource {
       final inserted = await client
           .from('notes')
           .insert({
+            // Offline path supplies a client-generated UUID so the
+            // local cache id survives the drain — otherwise an update
+            // or delete written between capture and drain wouldn't
+            // be able to find the right server row.
+            'id': ?id,
             'prospect_id': prospectId,
             'body': body,
             'author_id': userId,

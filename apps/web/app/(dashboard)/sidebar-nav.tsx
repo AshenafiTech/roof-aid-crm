@@ -4,30 +4,30 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { cn } from "@/lib/utils";
-import type { UserRole } from "@/lib/types/auth";
+import type { AuthUser } from "@/lib/types/auth";
 
 import {
   NAV_ITEMS,
-  filterNavForRole,
+  filterNavForUser,
   isRouteActive,
   type NavItem,
 } from "./nav-items";
 
 type Props = {
-  role: UserRole;
+  user: Pick<AuthUser, "role" | "privileges" | "isSuperRole">;
   collapsed?: boolean;
   emailUnreadCount?: number;
   onNavigate?: () => void;
 };
 
 export function SidebarNav({
-  role,
+  user,
   collapsed = false,
   emailUnreadCount = 0,
   onNavigate,
 }: Props) {
   const pathname = usePathname();
-  const items = filterNavForRole(NAV_ITEMS, role);
+  const items = filterNavForUser(NAV_ITEMS, user);
   const main = items.filter((i) => i.section === "main");
   const tools = items.filter((i) => i.section === "tools");
   const admin = items.filter((i) => i.section === "admin");

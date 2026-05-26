@@ -9,6 +9,9 @@ import '../bloc/sms_bloc.dart';
 import '../bloc/sms_event.dart';
 import '../widgets/dnc_banner.dart';
 import '../widgets/quick_actions_bar.dart';
+import '../widgets/tabs/appointments_tab.dart';
+import '../widgets/tabs/documents_tab.dart';
+import '../widgets/tabs/inspection_tab.dart';
 import '../widgets/tabs/notes_tab.dart';
 import '../widgets/tabs/overview_tab.dart';
 import '../widgets/tabs/placeholder_tabs.dart';
@@ -64,15 +67,15 @@ class ProspectDetailPage extends StatelessWidget {
               child: TabBarView(
                 children: [
                   OverviewTab(prospect: prospect),
-                  const AppointmentsTab(),
+                  AppointmentsTab(prospect: prospect),
                   const CallsTab(),
                   BlocProvider<SmsBloc>(
                     create: (_) =>
                         sl<SmsBloc>()..add(SmsLoadRequested(prospect.id)),
                     child: const SmsTab(),
                   ),
-                  const DocumentsTab(),
-                  const InspectionTab(),
+                  DocumentsTab(prospect: prospect),
+                  InspectionTab(prospect: prospect),
                   BlocProvider<NotesBloc>(
                     create: (_) =>
                         sl<NotesBloc>()..add(NotesLoadRequested(prospect.id)),

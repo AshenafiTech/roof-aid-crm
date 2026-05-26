@@ -1,8 +1,21 @@
 import Link from "next/link";
-import { ArrowRight, Bell, Clock, FileText, Mail, Phone, PenLine, Users } from "lucide-react";
+import { redirect } from "next/navigation";
+import {
+  ArrowRight,
+  Bell,
+  Clock,
+  FileText,
+  Mail,
+  Phone,
+  PenLine,
+  ShieldCheck,
+  Users,
+} from "lucide-react";
 
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { getCurrentUser } from "@/lib/auth/current-user";
+import { hasPrivilege } from "@/lib/auth/privileges";
 import { createClient } from "@/lib/supabase/server";
 
 export const metadata = {
@@ -20,6 +33,11 @@ interface SettingsCard {
 
 export default async function AdminSettingsPage() {
   const supabase = await createClient();
+  const currentUser = await getCurrentUser();
+  if (!hasPrivilege(currentUser, "access_settings")) {
+    redirect("/dashboard");
+  }
+  const canManageRoles = hasPrivilege(currentUser, "manage_roles");
 
   // Quick comms-readiness probe so the cards can show "missing" / "ok"
   const { data: user } = await supabase.auth.getUser();
@@ -83,6 +101,17 @@ export default async function AdminSettingsPage() {
       href: "/admin/users",
       icon: Users,
     },
+    ...(canManageRoles
+      ? [
+          {
+            title: "Roles & privileges",
+            description:
+              "Customize what each role can do. Tune the four defaults — Owner, Admin, Telefonista, Rufero — or create custom roles.",
+            href: "/admin/settings/roles",
+            icon: ShieldCheck,
+          } satisfies SettingsCard,
+        ]
+      : []),
     {
       title: "SMS & email templates",
       description:

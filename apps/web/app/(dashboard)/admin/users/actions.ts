@@ -5,11 +5,33 @@ import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getCurrentUser } from "@/lib/auth/current-user";
+import { hasPrivilege } from "@/lib/auth/privileges";
+import { withRoles } from "@/lib/supabase/roles-augment";
 import type { UserRole } from "@/lib/types/auth";
 
 const MANAGEABLE_ROLES: UserRole[] = ["admin", "telefonista", "rufero"];
 
-async function requireOwner() {
+/**
+ * Look up the role_id for the given (tenant, slug) pair. Returns null
+ * if the role doesn't exist (e.g., super_admin which has no tenant row).
+ */
+async function lookupRoleId(
+  tenantId: string,
+  slug: string,
+): Promise<string | null> {
+  const supabase = await createClient();
+  const ext = withRoles(supabase);
+  const { data } = await ext
+    .from("roles")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("slug", slug)
+    .maybeSingle();
+  return data?.id ?? null;
+}
+
+async function requireUserMgmt() {
   const supabase = await createClient();
   const {
     data: { user },
@@ -23,15 +45,16 @@ async function requireOwner() {
     .single();
   if (error || !profile) throw new Error("Profile not found");
 
-  if (profile.role !== "owner" && profile.role !== "super_admin") {
-    throw new Error("Only owners can manage users");
+  const currentUser = await getCurrentUser();
+  if (!hasPrivilege(currentUser, "manage_users")) {
+    throw new Error("You don't have permission to manage users");
   }
 
-  return { supabase, profile };
+  return { supabase, profile, currentUser };
 }
 
 export async function listTenantUsers() {
-  const { supabase } = await requireOwner();
+  const { supabase } = await requireUserMgmt();
   const { data, error } = await supabase
     .from("users")
     .select("id, first_name, last_name, email, phone, role, is_active, telnyx_extension, sendgrid_sender, created_at")
@@ -53,9 +76,15 @@ const inviteSchema = z.object({
 
 export type InviteUserInput = z.infer<typeof inviteSchema>;
 
-export async function inviteUser(input: InviteUserInput) {
+export type InviteUserResult =
+  | { ok: true; id: string; tempPassword: string }
+  | { ok: false; error: string };
+
+export async function inviteUser(
+  input: InviteUserInput,
+): Promise<InviteUserResult> {
   const parsed = inviteSchema.parse(input);
-  const { profile } = await requireOwner();
+  const { profile } = await requireUserMgmt();
 
   const admin = createAdminClient();
 
@@ -66,7 +95,7 @@ export async function inviteUser(input: InviteUserInput) {
     .maybeSingle();
 
   if (existingAuth) {
-    throw new Error("A user with this email already exists");
+    return { ok: false, error: "A user with this email already exists" };
   }
 
   const tempPassword = crypto.randomUUID().slice(0, 16) + "Aa1!";
@@ -81,37 +110,37 @@ export async function inviteUser(input: InviteUserInput) {
     },
   });
 
-  if (authError) throw new Error(authError.message);
-  if (!authData.user) throw new Error("Failed to create auth user");
+  if (authError) return { ok: false, error: authError.message };
+  if (!authData.user) return { ok: false, error: "Failed to create auth user" };
+
+  const newRoleId = await lookupRoleId(profile.tenant_id, parsed.role);
 
   const { error: insertError } = await admin.from("users").insert({
     id: authData.user.id,
     tenant_id: profile.tenant_id,
     role: parsed.role,
+    // role_id is added in migration 038 and not yet in database.types.ts.
+    ...(newRoleId ? { role_id: newRoleId } : {}),
     email: parsed.email,
     first_name: parsed.firstName,
     last_name: parsed.lastName,
     phone: parsed.phone?.trim() || null,
     telnyx_extension: parsed.telnyxExtension?.trim() || null,
     is_active: true,
-  });
+  } as never);
 
   if (insertError) {
     await admin.auth.admin.deleteUser(authData.user.id);
-    throw new Error(insertError.message);
+    return { ok: false, error: insertError.message };
   }
 
-  const { error: resetError } = await admin.auth.admin.generateLink({
+  await admin.auth.admin.generateLink({
     type: "magiclink",
     email: parsed.email,
   });
 
-  if (resetError) {
-    // non-fatal — user exists but won't get email
-  }
-
   revalidatePath("/admin/users");
-  return { id: authData.user.id, tempPassword };
+  return { ok: true, id: authData.user.id, tempPassword };
 }
 
 const editSchema = z.object({
@@ -128,7 +157,7 @@ export type EditUserInput = z.infer<typeof editSchema>;
 
 export async function editUser(input: EditUserInput) {
   const parsed = editSchema.parse(input);
-  const { supabase, profile } = await requireOwner();
+  const { supabase, profile } = await requireUserMgmt();
 
   const { data: target, error: findError } = await supabase
     .from("users")
@@ -141,8 +170,16 @@ export async function editUser(input: EditUserInput) {
     throw new Error("Cannot edit another owner");
   }
 
+  // If the role string changes, also resolve the matching role_id so the
+  // privilege system stays in sync.
+  let nextRoleId: string | null | undefined = undefined;
+  if (parsed.role && target.role !== "owner") {
+    nextRoleId = await lookupRoleId(profile.tenant_id, parsed.role);
+  }
+
   const patch = {
     role: (parsed.role && target.role !== "owner") ? parsed.role : undefined,
+    role_id: nextRoleId,
     first_name: parsed.firstName,
     last_name: parsed.lastName,
     phone: parsed.phone !== undefined ? (parsed.phone.trim() || null) : undefined,
@@ -158,7 +195,7 @@ export async function editUser(input: EditUserInput) {
 
   const { error: updateError } = await supabase
     .from("users")
-    .update(cleanPatch as typeof patch)
+    .update(cleanPatch as never)
     .eq("id", parsed.id);
   if (updateError) throw updateError;
 
@@ -179,7 +216,7 @@ const toggleActiveSchema = z.object({
 
 export async function toggleUserActive(input: z.infer<typeof toggleActiveSchema>) {
   const parsed = toggleActiveSchema.parse(input);
-  const { supabase, profile } = await requireOwner();
+  const { supabase, profile } = await requireUserMgmt();
 
   if (parsed.id === profile.id) {
     throw new Error("You cannot deactivate yourself");
@@ -216,7 +253,7 @@ export async function toggleUserActive(input: z.infer<typeof toggleActiveSchema>
 
 export async function resetUserPassword(userId: string) {
   z.string().uuid().parse(userId);
-  const { supabase, profile } = await requireOwner();
+  const { supabase, profile } = await requireUserMgmt();
 
   const { data: target } = await supabase
     .from("users")
@@ -241,7 +278,11 @@ export async function resetUserPassword(userId: string) {
 
 export async function deleteUser(userId: string) {
   z.string().uuid().parse(userId);
-  const { supabase, profile } = await requireOwner();
+  const { supabase, profile, currentUser } = await requireUserMgmt();
+
+  if (!hasPrivilege(currentUser, "delete_users")) {
+    throw new Error("You don't have permission to delete users");
+  }
 
   if (userId === profile.id) throw new Error("You cannot delete yourself");
 

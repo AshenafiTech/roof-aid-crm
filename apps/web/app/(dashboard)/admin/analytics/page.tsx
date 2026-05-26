@@ -26,7 +26,7 @@ export default async function AdminAnalyticsPage() {
   const user = await getCurrentUser();
 
   if (user.role !== "owner" && user.role !== "admin" && user.role !== "super_admin") {
-    redirect("/");
+    redirect("/dashboard");
   }
 
   const [pipeline, todayAppts, unread, activity, team, conversion] =

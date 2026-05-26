@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import { RouteProgress } from "@/components/route-progress";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/theme-provider";
 
@@ -41,6 +42,7 @@ export default function RootLayout({
           defaultTheme="light"
           disableTransitionOnChange
         >
+          <RouteProgress />
           {children}
           <Toaster richColors position="top-right" />
         </ThemeProvider>

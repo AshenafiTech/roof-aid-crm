@@ -2,7 +2,17 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 // Routes that don't require authentication
+// Routes that don't require authentication AND should bounce authed users
+// away (to /dashboard). Only /login matches this — there's nothing useful
+// for an already-authed user to do on the login page.
 const PUBLIC_ROUTES = ["/login"];
+
+// Routes that are reachable both signed-in and signed-out. The page decides
+// what to render. /signup is here because the wizard creates the session
+// part-way through and steps 3-6 continue on the same /signup URL after
+// sign-in — middleware must not bounce. / (landing) is here so the logo
+// link works for both visitors and authed users.
+const ALWAYS_OPEN_ROUTES = ["/", "/signup"];
 
 // Role-based route restrictions
 const ROLE_ROUTES: { prefix: string; allowed: string[] }[] = [
@@ -49,6 +59,7 @@ export async function middleware(request: NextRequest) {
   const isPublicRoute = PUBLIC_ROUTES.some((route) =>
     pathname.startsWith(route)
   );
+  const isAlwaysOpen = ALWAYS_OPEN_ROUTES.includes(pathname);
 
   // Any redirect we return MUST carry forward the cookies that getUser()
   // may have refreshed via the setAll adapter — otherwise the browser
@@ -64,7 +75,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // --- Unauthenticated user trying to access a protected route ---
-  if (!user && !isPublicRoute) {
+  if (!user && !isPublicRoute && !isAlwaysOpen) {
     // API routes return JSON 401 instead of redirecting to /login.
     // A redirect to the HTML login page poisons callers that do
     // `await res.json()` (e.g. the softphone's credentials fetch),
@@ -78,9 +89,9 @@ export async function middleware(request: NextRequest) {
     return redirectWithCookies(redirectUrl);
   }
 
-  // --- Authenticated user on login page → send to dashboard ---
+  // --- Authenticated user on login/signup page → send to dashboard ---
   if (user && isPublicRoute) {
-    return redirectWithCookies(new URL("/", request.url));
+    return redirectWithCookies(new URL("/dashboard", request.url));
   }
 
   // --- Role-based access control ---
