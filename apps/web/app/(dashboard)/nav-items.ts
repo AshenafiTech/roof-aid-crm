@@ -201,7 +201,23 @@ export function filterNavForRole(items: NavItem[], role: UserRole) {
   return items.filter((item) => item.roles?.includes(role));
 }
 
-export function isRouteActive(pathname: string, href: string) {
+export function isRouteActive(
+  pathname: string,
+  href: string,
+  allHrefs?: readonly string[],
+) {
   if (href === "/") return pathname === "/";
-  return pathname === href || pathname.startsWith(`${href}/`);
+  const matches = pathname === href || pathname.startsWith(`${href}/`);
+  if (!matches) return false;
+  // If a more specific nav href also matches, defer to it so that
+  // e.g. `/admin/settings/roles` highlights "Roles & Privileges" only,
+  // not "Settings".
+  if (allHrefs) {
+    for (const other of allHrefs) {
+      if (other === href || other === "/") continue;
+      if (other.length <= href.length) continue;
+      if (pathname === other || pathname.startsWith(`${other}/`)) return false;
+    }
+  }
+  return true;
 }

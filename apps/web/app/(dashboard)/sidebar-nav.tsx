@@ -31,6 +31,7 @@ export function SidebarNav({
   const main = items.filter((i) => i.section === "main");
   const tools = items.filter((i) => i.section === "tools");
   const admin = items.filter((i) => i.section === "admin");
+  const allHrefs = items.map((i) => i.href);
 
   const badgeFor = (href: string): number => {
     if (href === "/email") return emailUnreadCount;
@@ -43,6 +44,7 @@ export function SidebarNav({
         label="Main"
         items={main}
         pathname={pathname}
+        allHrefs={allHrefs}
         collapsed={collapsed}
         badgeFor={badgeFor}
         onNavigate={onNavigate}
@@ -52,6 +54,7 @@ export function SidebarNav({
           label="Tools"
           items={tools}
           pathname={pathname}
+          allHrefs={allHrefs}
           collapsed={collapsed}
           badgeFor={badgeFor}
           onNavigate={onNavigate}
@@ -62,6 +65,7 @@ export function SidebarNav({
           label="Admin"
           items={admin}
           pathname={pathname}
+          allHrefs={allHrefs}
           collapsed={collapsed}
           badgeFor={badgeFor}
           onNavigate={onNavigate}
@@ -75,6 +79,7 @@ function Section({
   label,
   items,
   pathname,
+  allHrefs,
   collapsed,
   badgeFor,
   onNavigate,
@@ -82,6 +87,7 @@ function Section({
   label: string;
   items: NavItem[];
   pathname: string;
+  allHrefs: readonly string[];
   collapsed: boolean;
   badgeFor: (href: string) => number;
   onNavigate?: () => void;
@@ -91,7 +97,7 @@ function Section({
       <div className="nav-group-label">{label}</div>
       {items.map((item) => {
         const Icon = item.icon;
-        const active = isRouteActive(pathname, item.href);
+        const active = isRouteActive(pathname, item.href, allHrefs);
         const badge = badgeFor(item.href);
         return (
           <Link
