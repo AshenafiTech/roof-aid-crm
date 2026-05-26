@@ -20,15 +20,7 @@
 -- ============================================================
 
 -- ------------------------------------------------------------
--- 1. Backfill: lift any orphaned delivery_status into status
--- ------------------------------------------------------------
-UPDATE sms_logs
-   SET status = delivery_status
- WHERE status IS NULL
-   AND delivery_status IS NOT NULL;
-
--- ------------------------------------------------------------
--- 2. Expand status CHECK
+-- 1. Expand status CHECK
 -- 'delivery_unconfirmed' is what Telnyx returns for messages it sent
 -- but couldn't get a delivery receipt for (toll-free, some carriers).
 -- Treating it as its own status keeps the UI honest instead of
@@ -45,61 +37,75 @@ ALTER TABLE sms_logs ADD CONSTRAINT sms_logs_status_check
     'received'
   ));
 
--- Mirror the same constraint on delivery_status so the legacy column
--- can't drift back to free-form values during the transition.
-ALTER TABLE sms_logs DROP CONSTRAINT IF EXISTS sms_logs_delivery_status_check;
-ALTER TABLE sms_logs ADD CONSTRAINT sms_logs_delivery_status_check
-  CHECK (delivery_status IS NULL OR delivery_status IN (
-    'queued',
-    'sent',
-    'delivered',
-    'delivery_unconfirmed',
-    'failed',
-    'received'
-  ));
-
 -- ------------------------------------------------------------
--- 3. Sync trigger: keep status and delivery_status mirrored.
--- Treats `status` as canonical. If the writer set only one of them,
--- the trigger fills the other. If they conflict, status wins.
+-- 2. Drift cleanup — only runs on legacy DBs where an out-of-band
+-- send_sms RPC added a parallel `delivery_status` column.
+-- On a clean install this block is a no-op so the migration applies
+-- cleanly to fresh projects.
 -- ------------------------------------------------------------
-CREATE OR REPLACE FUNCTION sms_logs_sync_status() RETURNS TRIGGER
-LANGUAGE plpgsql AS $$
+DO $$
 BEGIN
-  -- INSERT path
-  IF TG_OP = 'INSERT' THEN
-    IF NEW.status IS NULL AND NEW.delivery_status IS NOT NULL THEN
-      NEW.status := NEW.delivery_status;
-    ELSIF NEW.delivery_status IS NULL AND NEW.status IS NOT NULL THEN
-      NEW.delivery_status := NEW.status;
-    END IF;
-    RETURN NEW;
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_schema = 'public'
+       AND table_name  = 'sms_logs'
+       AND column_name = 'delivery_status'
+  ) THEN
+    -- 2a. Backfill: lift any orphaned delivery_status into status
+    UPDATE sms_logs
+       SET status = delivery_status
+     WHERE status IS NULL
+       AND delivery_status IS NOT NULL;
+
+    -- 2b. Mirror the status CHECK onto the legacy column.
+    EXECUTE 'ALTER TABLE sms_logs DROP CONSTRAINT IF EXISTS sms_logs_delivery_status_check';
+    EXECUTE $cc$
+      ALTER TABLE sms_logs ADD CONSTRAINT sms_logs_delivery_status_check
+        CHECK (delivery_status IS NULL OR delivery_status IN (
+          'queued','sent','delivered','delivery_unconfirmed','failed','received'
+        ))
+    $cc$;
+
+    -- 2c. Sync trigger: keep status and delivery_status mirrored.
+    --     status is canonical; if a writer set only one, fill the other.
+    EXECUTE $fn$
+      CREATE OR REPLACE FUNCTION sms_logs_sync_status() RETURNS TRIGGER
+      LANGUAGE plpgsql AS $body$
+      BEGIN
+        IF TG_OP = 'INSERT' THEN
+          IF NEW.status IS NULL AND NEW.delivery_status IS NOT NULL THEN
+            NEW.status := NEW.delivery_status;
+          ELSIF NEW.delivery_status IS NULL AND NEW.status IS NOT NULL THEN
+            NEW.delivery_status := NEW.status;
+          END IF;
+          RETURN NEW;
+        END IF;
+        IF TG_OP = 'UPDATE' THEN
+          IF NEW.status IS DISTINCT FROM OLD.status
+             AND NEW.delivery_status IS NOT DISTINCT FROM OLD.delivery_status THEN
+            NEW.delivery_status := NEW.status;
+          ELSIF NEW.delivery_status IS DISTINCT FROM OLD.delivery_status
+             AND NEW.status IS NOT DISTINCT FROM OLD.status THEN
+            NEW.status := NEW.delivery_status;
+          END IF;
+          RETURN NEW;
+        END IF;
+        RETURN NEW;
+      END;
+      $body$
+    $fn$;
+
+    EXECUTE 'DROP TRIGGER IF EXISTS sms_logs_sync_status_trg ON sms_logs';
+    EXECUTE 'CREATE TRIGGER sms_logs_sync_status_trg
+             BEFORE INSERT OR UPDATE OF status, delivery_status ON sms_logs
+             FOR EACH ROW EXECUTE FUNCTION sms_logs_sync_status()';
+
+    EXECUTE $cm$
+      COMMENT ON COLUMN sms_logs.delivery_status IS
+        'DEPRECATED — kept for backward compat with the drift-installed send_sms RPC. A trigger keeps it mirrored with status. Will be dropped once all callers are migrated.'
+    $cm$;
   END IF;
-
-  -- UPDATE path
-  IF TG_OP = 'UPDATE' THEN
-    -- If only one column was changed in this UPDATE, propagate to the other.
-    IF NEW.status IS DISTINCT FROM OLD.status
-       AND NEW.delivery_status IS NOT DISTINCT FROM OLD.delivery_status THEN
-      NEW.delivery_status := NEW.status;
-    ELSIF NEW.delivery_status IS DISTINCT FROM OLD.delivery_status
-       AND NEW.status IS NOT DISTINCT FROM OLD.status THEN
-      NEW.status := NEW.delivery_status;
-    END IF;
-    RETURN NEW;
-  END IF;
-
-  RETURN NEW;
-END;
-$$;
-
-DROP TRIGGER IF EXISTS sms_logs_sync_status_trg ON sms_logs;
-CREATE TRIGGER sms_logs_sync_status_trg
-BEFORE INSERT OR UPDATE OF status, delivery_status ON sms_logs
-FOR EACH ROW EXECUTE FUNCTION sms_logs_sync_status();
-
-COMMENT ON COLUMN sms_logs.delivery_status IS
-  'DEPRECATED — kept for backward compat with the drift-installed send_sms RPC. A trigger keeps it mirrored with status. Will be dropped once all callers are migrated.';
+END $$;
 
 -- ------------------------------------------------------------
 -- 4. MMS support
@@ -131,9 +137,7 @@ CREATE POLICY "sms_logs_insert" ON sms_logs FOR INSERT TO authenticated
     AND direction = 'outbound'
   );
 
--- ------------------------------------------------------------
--- 6. Helpful index for unread-count queries (mobile + web badge)
--- ------------------------------------------------------------
-CREATE INDEX IF NOT EXISTS sms_logs_inbound_unread
-  ON sms_logs (tenant_id, prospect_id, created_at DESC)
-  WHERE direction = 'inbound' AND read_at IS NULL;
+-- NOTE: the sms_logs_inbound_unread index that used to live here was moved
+-- to migration 022_mobile_sms_compat.sql, which is where `read_at` is
+-- formally defined. On legacy DBs the column was drift-added before this
+-- migration ran; on fresh DBs the column doesn't exist until 022.

@@ -24,6 +24,16 @@
 -- conversations_remote_datasource.dart. Entity shape is unchanged.
 -- ============================================================
 
+-- ------------------------------------------------------------
+-- 0. sent_at column — formalisation.
+-- On legacy prod this column was drift-added by an undocumented
+-- send_sms RPC and is referenced below (and by migrations 030,
+-- 031, 032, 034). On fresh installs it doesn't exist yet, so we
+-- add it idempotently here before the RPC references it.
+-- ------------------------------------------------------------
+ALTER TABLE sms_logs
+  ADD COLUMN IF NOT EXISTS sent_at timestamptz;
+
 CREATE OR REPLACE FUNCTION get_sms_conversations()
 RETURNS SETOF jsonb
 LANGUAGE sql
