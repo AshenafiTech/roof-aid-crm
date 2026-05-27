@@ -42,17 +42,17 @@
   padding: 40px 48px;
   display: flex;
   flex-direction: column;
-  /* Stack from the top with a generous gap. space-between would shove the
-     footer to the very bottom and leave a big empty zone above the
-     headline when the viewport is tall. */
   gap: 28px;
   position: relative;
   overflow: hidden;
   height: 100%;
 }
-/* Footer pushed to the bottom of the brand column, regardless of where
-   the headline ended. */
-.ra-login .brand-foot { margin-top: auto; }
+/* Default for flex-flow brand children: stack above the absolutely
+   positioned decorations. Declared BEFORE the .brand-bg-grid /
+   .brand-glow rules so their `position: absolute` wins the cascade
+   (same specificity → later rule wins). */
+.ra-login .brand > * { position: relative; z-index: 1; }
+
 .ra-login .brand-bg-grid {
   position: absolute; inset: 0;
   background-image:
@@ -73,7 +73,6 @@
   background: radial-gradient(circle, rgba(16,88,167,.20) 0%, transparent 68%);
   pointer-events: none;
 }
-.ra-login .brand > * { position: relative; z-index: 1; }
 
 .ra-login .brand-logo {
   display: flex; align-items: center; gap: 12px;
@@ -92,7 +91,18 @@
 }
 .ra-login .brand-logo-name span { color: var(--ra-blue-l); }
 
-.ra-login .brand-mid { display: flex; flex-direction: column; gap: 18px; max-width: 460px; }
+/* brand-mid grows to absorb the remaining space between the logo and
+   the foot; `justify-content: center` then vertically centers the
+   headline+paragraph+stats group, so the headline aligns with the
+   form-card on the right (which is also vertically centered). */
+.ra-login .brand-mid {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 18px;
+  max-width: 460px;
+  flex: 1;
+}
 .ra-login .brand-tag {
   display: inline-flex; align-items: center; gap: 8px;
   background: rgba(16,88,167,.25); border: 1px solid rgba(74,159,224,.3);
