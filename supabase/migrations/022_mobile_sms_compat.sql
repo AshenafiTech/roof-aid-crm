@@ -30,11 +30,19 @@ CREATE EXTENSION IF NOT EXISTS pg_net;
 
 -- ------------------------------------------------------------
 -- 1. read_at column — required by mobile's unread-badge logic
--- (the index in 017_sms_logs_status_reconcile.sql already references it
--- but the column itself was never formally added; this fixes that.)
+-- (the column was drift-installed on legacy DBs before 017 referenced
+-- it; this is its formal definition. On fresh installs both the column
+-- and its companion index land here.)
 -- ------------------------------------------------------------
 ALTER TABLE sms_logs
   ADD COLUMN IF NOT EXISTS read_at timestamptz;
+
+-- Index for unread-count queries (mobile + web badge). Originally
+-- defined in 017_sms_logs_status_reconcile.sql; moved here so it sits
+-- in the same migration as the column it depends on.
+CREATE INDEX IF NOT EXISTS sms_logs_inbound_unread
+  ON sms_logs (tenant_id, prospect_id, created_at DESC)
+  WHERE direction = 'inbound' AND read_at IS NULL;
 
 -- ------------------------------------------------------------
 -- 2. mark_sms_read RPC — tenant-scoped, idempotent

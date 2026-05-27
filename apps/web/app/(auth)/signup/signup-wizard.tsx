@@ -60,9 +60,7 @@ const STEPS = [
   { n: 1, title: "Create Account", sub: "Plan + basic info" },
   { n: 2, title: "Agreements", sub: "Data, supplement terms, T&C" },
   { n: 3, title: "Company Profile", sub: "Business info" },
-  { n: 4, title: "Get Your Leads", sub: "Upload or buy a list" },
-  { n: 5, title: "Your Templates", sub: "Review outreach sequences" },
-  { n: 6, title: "You're Ready", sub: "Access your dashboard" },
+  { n: 4, title: "You're Ready", sub: "Access your dashboard" },
 ];
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -176,7 +174,6 @@ export function SignupWizard() {
   const [step1Err, setStep1Err] = useState<string | null>(null);
   const [step2Err, setStep2Err] = useState<string | null>(null);
   const [step3Err, setStep3Err] = useState<string | null>(null);
-  const [openTemplate, setOpenTemplate] = useState<number | null>(null);
   const [pending, startTransition] = useTransition();
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
@@ -347,17 +344,8 @@ export function SignupWizard() {
               onSkip={() => gotoStep(4)}
             />
           )}
-          {step === 4 && <Step4 onNext={() => gotoStep(5)} />}
-          {step === 5 && (
-            <Step5
-              openTemplate={openTemplate}
-              setOpenTemplate={setOpenTemplate}
-              onBack={() => gotoStep(4)}
-              onNext={() => gotoStep(6)}
-            />
-          )}
-          {step === 6 && (
-            <Step6
+          {step === 4 && (
+            <Step4
               firstName={form.firstName}
               planLabel={form.plan ?? "free"}
               onGo={() => router.push("/dashboard")}
@@ -388,7 +376,7 @@ function Step1({
 
   return (
     <>
-      <div className="screen-label">Step 1 of 6</div>
+      <div className="screen-label">Step 1 of 4</div>
       <h1 className="screen-h">Start your free trial.</h1>
       <p className="screen-sub">
         14 days free. No credit card required.{" "}
@@ -596,7 +584,7 @@ function Step2({
   const allChecked = form.agreeData && form.agreeSupp && form.agreeTerms;
   return (
     <>
-      <div className="screen-label">Step 2 of 6</div>
+      <div className="screen-label">Step 2 of 4</div>
       <h1 className="screen-h">Before we begin.</h1>
       <p className="screen-sub">
         Please read and accept the following agreements.
@@ -747,7 +735,7 @@ function Step3({
 }) {
   return (
     <>
-      <div className="screen-label">Step 3 of 6</div>
+      <div className="screen-label">Step 3 of 4</div>
       <h1 className="screen-h">Your company profile.</h1>
       <p className="screen-sub">
         This information appears on your documents and outreach.{" "}
@@ -815,162 +803,7 @@ function Step3({
   );
 }
 
-function Step4({ onNext }: { onNext: () => void }) {
-  return (
-    <>
-      <div className="screen-label">Step 4 of 6</div>
-      <h1 className="screen-h">Get your leads.</h1>
-      <p className="screen-sub">
-        Upload your own list or buy verified homeowner records for your region.{" "}
-        <strong>You can do both.</strong>
-      </p>
-
-      <div className="lead-options">
-        <div className="lead-card">
-          <div className="lead-card-icon">📂</div>
-          <div className="lead-card-h">Upload Your List</div>
-          <div className="lead-card-p">
-            Import your own customer file. CSV or Excel. Available from the
-            Prospects page once you&apos;re inside.
-          </div>
-          <div className="lead-card-price">Free</div>
-          <button className="btn btn-ghost" style={{ width: "100%", justifyContent: "center" }} onClick={onNext}>
-            I&apos;ll do this later
-          </button>
-        </div>
-        <div className="lead-card">
-          <div className="lead-card-icon">📍</div>
-          <div className="lead-card-h">Buy a Lead List</div>
-          <div className="lead-card-p">
-            Verified homeowner records geo-targeted to your service area.
-            Available after your dashboard is open.
-          </div>
-          <div className="lead-card-price">
-            $799 first region · $599 each additional
-          </div>
-          <button className="btn btn-blue" style={{ width: "100%", justifyContent: "center" }} onClick={onNext}>
-            Continue to next step →
-          </button>
-        </div>
-      </div>
-
-      <div className="btn-row">
-        <button className="btn btn-ghost" onClick={onNext}>
-          Skip — I&apos;ll add leads later
-        </button>
-      </div>
-    </>
-  );
-}
-
-function Step5({
-  openTemplate,
-  setOpenTemplate,
-  onBack,
-  onNext,
-}: {
-  openTemplate: number | null;
-  setOpenTemplate: (n: number | null) => void;
-  onBack: () => void;
-  onNext: () => void;
-}) {
-  const TEMPLATES = [
-    {
-      day: "Day 1",
-      name: "AI Outbound Call Script",
-      channel: "📞 Call",
-      body: '"Hi, this is Riley calling on behalf of [Company Name]. Your area was recently affected by a hail storm and we want to make sure your home is protected. We\'re a licensed local roofing company and we\'re offering free roof inspections this week. Would you be interested in scheduling a quick inspection?"',
-    },
-    {
-      day: "Day 1 · +2 hours",
-      name: "Follow-Up SMS",
-      channel: "💬 SMS",
-      body: '"Hi [First Name], just left you a voicemail about a free roof inspection after the recent storm. Reply YES if you\'d like us to stop by. — [Company Name]"',
-    },
-    {
-      day: "Day 3",
-      name: "Email Outreach",
-      channel: "✉️ Email",
-      body: 'Subject: Free roof inspection — storm damage in [City]. "Hi [First Name], your neighborhood was hit by hail on [Date]. We\'re a licensed local roofer inspecting homes in your area this week at no charge."',
-    },
-    {
-      day: "Day 7",
-      name: "Follow-Up Call Script",
-      channel: "📞 Call",
-      body: '"Hi [First Name], this is Riley from [Company]. We\'ve already helped several families in your neighborhood get their storm damage covered by insurance. Can we stop by for 15 minutes?"',
-    },
-    {
-      day: "Day 14",
-      name: "Closing Email",
-      channel: "✉️ Email",
-      body: 'Subject: Closing our file — [First Name]. "Hi [First Name], we\'re wrapping up our outreach for storm damage in your area. If you\'d like a free inspection before we close your file, reply to this email or call us directly."',
-    },
-  ];
-
-  return (
-    <>
-      <div className="screen-label">Step 5 of 6</div>
-      <h1 className="screen-h">Your outreach sequences.</h1>
-      <p className="screen-sub">
-        Your templates are pre-loaded in English and Spanish.{" "}
-        <strong>Preview them now</strong> — you can edit them anytime from
-        Settings.
-      </p>
-
-      <div className="info-banner">
-        📞{" "}
-        <div>
-          Calling and SMS activate once you connect a Telnyx number from the
-          dashboard. You can edit all templates now.
-        </div>
-      </div>
-
-      <div className="templates-list">
-        {TEMPLATES.map((t, idx) => (
-          <div key={idx} className="template-item">
-            <div
-              className="template-header"
-              onClick={() =>
-                setOpenTemplate(openTemplate === idx ? null : idx)
-              }
-            >
-              <div>
-                <div className="template-day">{t.day}</div>
-                <div className="template-name">{t.name}</div>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span className="template-ch">{t.channel}</span>
-                <span
-                  className={`template-toggle ${
-                    openTemplate === idx ? "open" : ""
-                  }`}
-                >
-                  ▾
-                </span>
-              </div>
-            </div>
-            <div
-              className={`template-body ${openTemplate === idx ? "open" : ""}`}
-            >
-              <p>{t.body}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="btn-row">
-        <button className="btn btn-blue" onClick={onNext}>
-          Looks Good — Finish Setup →
-        </button>
-        <button className="btn btn-ghost" onClick={onBack}>
-          ← Back
-        </button>
-      </div>
-    </>
-  );
-}
-
-function Step6({
+function Step4({
   firstName,
   planLabel,
   onGo,
@@ -997,9 +830,6 @@ function Step6({
         </div>
         <div className="success-check">
           <span className="ck">✓</span> Company profile saved
-        </div>
-        <div className="success-check">
-          <span className="ck">✓</span> Outreach templates loaded
         </div>
         <div className="success-check" style={{ color: "var(--ra-muted)" }}>
           <span style={{ color: "var(--ra-accent)", fontSize: 18, fontWeight: 700 }}>
