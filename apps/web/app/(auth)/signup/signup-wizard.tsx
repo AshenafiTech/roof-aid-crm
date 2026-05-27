@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import { toast } from "sonner";
 
 import {
   createAccount,
@@ -167,42 +168,93 @@ const TIER_3_IDS: SelectedPlan[] = ["tier-3a", "tier-3b", "tier-3c"];
 
 // ────────────────────────────────────────────────────────────────────────────
 
+type FieldErrors = Partial<Record<keyof FormState, string>>;
+
+const STEP1_ORDER: (keyof FormState)[] = [
+  "firstName",
+  "lastName",
+  "companyName",
+  "email",
+  "phone",
+  "state",
+  "password",
+  "plan",
+];
+
+const STEP2_ORDER: (keyof FormState)[] = [
+  "agreeData",
+  "agreeSupp",
+  "agreeTerms",
+];
+
+function focusFirstError(
+  errs: FieldErrors,
+  order: (keyof FormState)[],
+): void {
+  const firstKey = order.find((k) => errs[k]);
+  if (!firstKey) return;
+  const el = document.getElementById(`signup-${String(firstKey)}`);
+  if (!el) return;
+  el.scrollIntoView({ behavior: "smooth", block: "center" });
+  if (el instanceof HTMLElement) el.focus({ preventScroll: true });
+}
+
 export function SignupWizard() {
   const router = useRouter();
   const [step, setStep] = useState<number>(1);
   const [form, setForm] = useState<FormState>(EMPTY);
-  const [step1Err, setStep1Err] = useState<string | null>(null);
-  const [step2Err, setStep2Err] = useState<string | null>(null);
-  const [step3Err, setStep3Err] = useState<string | null>(null);
+  const [step1Errors, setStep1Errors] = useState<FieldErrors>({});
+  const [step2Errors, setStep2Errors] = useState<FieldErrors>({});
   const [pending, startTransition] = useTransition();
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
+    setStep1Errors((prev) => {
+      if (!prev[key]) return prev;
+      const { [key]: _, ...rest } = prev;
+      return rest;
+    });
+    setStep2Errors((prev) => {
+      if (!prev[key]) return prev;
+      const { [key]: _, ...rest } = prev;
+      return rest;
+    });
   }
 
   function validateStep1(): boolean {
-    setStep1Err(null);
-    if (
-      !form.firstName.trim() ||
-      !form.lastName.trim() ||
-      !form.companyName.trim() ||
-      !form.email.trim() ||
-      !form.phone.trim() ||
-      !form.state
-    ) {
-      setStep1Err("All fields are required.");
+    const errs: FieldErrors = {};
+    if (!form.firstName.trim()) errs.firstName = "Required";
+    if (!form.lastName.trim()) errs.lastName = "Required";
+    if (!form.companyName.trim()) errs.companyName = "Required";
+    if (!form.email.trim()) {
+      errs.email = "Required";
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
+      errs.email = "Enter a valid email address";
+    }
+    if (!form.phone.trim()) errs.phone = "Required";
+    if (!form.state) errs.state = "Select your state";
+    if (!form.password) {
+      errs.password = "Required";
+    } else if (form.password.length < 8) {
+      errs.password = "Must be at least 8 characters";
+    }
+    if (!form.plan) errs.plan = "Select a plan to continue";
+    setStep1Errors(errs);
+    if (Object.keys(errs).length > 0) {
+      focusFirstError(errs, STEP1_ORDER);
       return false;
     }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
-      setStep1Err("Please enter a valid email address.");
-      return false;
-    }
-    if (form.password.length < 8) {
-      setStep1Err("Password must be at least 8 characters.");
-      return false;
-    }
-    if (!form.plan) {
-      setStep1Err("Please select a plan to continue.");
+    return true;
+  }
+
+  function validateStep2(): boolean {
+    const errs: FieldErrors = {};
+    if (!form.agreeData) errs.agreeData = "You must accept this agreement";
+    if (!form.agreeSupp) errs.agreeSupp = "You must accept this agreement";
+    if (!form.agreeTerms) errs.agreeTerms = "You must accept this agreement";
+    setStep2Errors(errs);
+    if (Object.keys(errs).length > 0) {
+      focusFirstError(errs, STEP2_ORDER);
       return false;
     }
     return true;
@@ -218,11 +270,7 @@ export function SignupWizard() {
   }
 
   function submitAgreements() {
-    if (!form.agreeData || !form.agreeSupp || !form.agreeTerms) {
-      setStep2Err("All three agreements must be accepted.");
-      return;
-    }
-    setStep2Err(null);
+    if (!validateStep2()) return;
     startTransition(async () => {
       const result = await createAccount({
         firstName: form.firstName,
@@ -240,7 +288,7 @@ export function SignupWizard() {
         },
       });
       if (!result.ok) {
-        setStep2Err(result.error);
+        toast.error(result.error);
         return;
       }
       gotoStep(3);
@@ -248,7 +296,6 @@ export function SignupWizard() {
   }
 
   function submitProfile() {
-    setStep3Err(null);
     startTransition(async () => {
       const result = await saveCompanyProfile({
         address: form.address,
@@ -256,7 +303,7 @@ export function SignupWizard() {
         website: form.website,
       });
       if (!result.ok) {
-        setStep3Err(result.error);
+        toast.error(result.error);
         return;
       }
       gotoStep(4);
@@ -320,7 +367,7 @@ export function SignupWizard() {
             <Step1
               form={form}
               update={update}
-              err={step1Err}
+              errors={step1Errors}
               onNext={next1}
             />
           )}
@@ -328,7 +375,7 @@ export function SignupWizard() {
             <Step2
               form={form}
               update={update}
-              err={step2Err}
+              errors={step2Errors}
               pending={pending}
               onBack={() => gotoStep(1)}
               onNext={submitAgreements}
@@ -338,7 +385,6 @@ export function SignupWizard() {
             <Step3
               form={form}
               update={update}
-              err={step3Err}
               pending={pending}
               onNext={submitProfile}
               onSkip={() => gotoStep(4)}
@@ -364,15 +410,17 @@ export function SignupWizard() {
 function Step1({
   form,
   update,
-  err,
+  errors,
   onNext,
 }: {
   form: FormState;
   update: <K extends keyof FormState>(key: K, value: FormState[K]) => void;
-  err: string | null;
+  errors: FieldErrors;
   onNext: () => void;
 }) {
   const isTier3 = !!form.plan && TIER_3_IDS.includes(form.plan);
+  const inputCls = (key: keyof FormState) =>
+    `form-input${errors[key] ? " error" : ""}`;
 
   return (
     <>
@@ -383,26 +431,30 @@ function Step1({
         <strong>Pick your plan and get started in minutes.</strong>
       </p>
 
-      {err && <div className="form-err">{err}</div>}
-
       <div className="form-row">
         <div className="form-group">
           <label className="form-label">First Name</label>
           <input
-            className="form-input"
+            id="signup-firstName"
+            className={inputCls("firstName")}
             placeholder="Mike"
             value={form.firstName}
             onChange={(e) => update("firstName", e.target.value)}
+            aria-invalid={!!errors.firstName}
           />
+          {errors.firstName && <p className="field-err">{errors.firstName}</p>}
         </div>
         <div className="form-group">
           <label className="form-label">Last Name</label>
           <input
-            className="form-input"
+            id="signup-lastName"
+            className={inputCls("lastName")}
             placeholder="Torres"
             value={form.lastName}
             onChange={(e) => update("lastName", e.target.value)}
+            aria-invalid={!!errors.lastName}
           />
+          {errors.lastName && <p className="field-err">{errors.lastName}</p>}
         </div>
       </div>
 
@@ -410,11 +462,16 @@ function Step1({
         <div className="form-group">
           <label className="form-label">Company Name</label>
           <input
-            className="form-input"
+            id="signup-companyName"
+            className={inputCls("companyName")}
             placeholder="Apex Roofing LLC"
             value={form.companyName}
             onChange={(e) => update("companyName", e.target.value)}
+            aria-invalid={!!errors.companyName}
           />
+          {errors.companyName && (
+            <p className="field-err">{errors.companyName}</p>
+          )}
         </div>
       </div>
 
@@ -422,22 +479,28 @@ function Step1({
         <div className="form-group">
           <label className="form-label">Email Address</label>
           <input
-            className="form-input"
+            id="signup-email"
+            className={inputCls("email")}
             type="email"
             placeholder="you@yourcompany.com"
             value={form.email}
             onChange={(e) => update("email", e.target.value)}
+            aria-invalid={!!errors.email}
           />
+          {errors.email && <p className="field-err">{errors.email}</p>}
         </div>
         <div className="form-group">
           <label className="form-label">Mobile Phone</label>
           <input
-            className="form-input"
+            id="signup-phone"
+            className={inputCls("phone")}
             type="tel"
             placeholder="(555) 000-0000"
             value={form.phone}
             onChange={(e) => update("phone", e.target.value)}
+            aria-invalid={!!errors.phone}
           />
+          {errors.phone && <p className="field-err">{errors.phone}</p>}
         </div>
       </div>
 
@@ -445,9 +508,11 @@ function Step1({
         <div className="form-group">
           <label className="form-label">State</label>
           <select
-            className="form-input form-select"
+            id="signup-state"
+            className={`${inputCls("state")} form-select`}
             value={form.state}
             onChange={(e) => update("state", e.target.value)}
+            aria-invalid={!!errors.state}
           >
             <option value="">Select your state...</option>
             {STATES.map((s) => (
@@ -456,16 +521,20 @@ function Step1({
               </option>
             ))}
           </select>
+          {errors.state && <p className="field-err">{errors.state}</p>}
         </div>
         <div className="form-group">
           <label className="form-label">Password</label>
           <input
-            className="form-input"
+            id="signup-password"
+            className={inputCls("password")}
             type="password"
             placeholder="At least 8 characters"
             value={form.password}
             onChange={(e) => update("password", e.target.value)}
+            aria-invalid={!!errors.password}
           />
+          {errors.password && <p className="field-err">{errors.password}</p>}
         </div>
       </div>
 
@@ -480,7 +549,7 @@ function Step1({
       >
         Select your plan:
       </p>
-      <div className="tier-grid">
+      <div id="signup-plan" className="tier-grid">
         {PLANS_PRIMARY.map((p) => (
           <PlanCardEl
             key={p.id}
@@ -490,6 +559,7 @@ function Step1({
           />
         ))}
       </div>
+      {errors.plan && <p className="field-err">{errors.plan}</p>}
 
       <p
         style={{
@@ -569,19 +639,18 @@ function PlanCardEl({
 function Step2({
   form,
   update,
-  err,
+  errors,
   pending,
   onBack,
   onNext,
 }: {
   form: FormState;
   update: <K extends keyof FormState>(key: K, value: FormState[K]) => void;
-  err: string | null;
+  errors: FieldErrors;
   pending: boolean;
   onBack: () => void;
   onNext: () => void;
 }) {
-  const allChecked = form.agreeData && form.agreeSupp && form.agreeTerms;
   return (
     <>
       <div className="screen-label">Step 2 of 4</div>
@@ -589,8 +658,6 @@ function Step2({
       <p className="screen-sub">
         Please read and accept the following agreements.
       </p>
-
-      {err && <div className="form-err">{err}</div>}
 
       <div className="agree-box">
         <div className="agree-section">
@@ -616,12 +683,15 @@ function Step2({
           </div>
           <label className="agree-check">
             <input
+              id="signup-agreeData"
               type="checkbox"
               checked={form.agreeData}
               onChange={(e) => update("agreeData", e.target.checked)}
+              aria-invalid={!!errors.agreeData}
             />
             <span>I have read and agree to the Data &amp; Ownership terms</span>
           </label>
+          {errors.agreeData && <p className="field-err">{errors.agreeData}</p>}
         </div>
 
         <div className="agree-section">
@@ -651,14 +721,17 @@ function Step2({
           </div>
           <label className="agree-check">
             <input
+              id="signup-agreeSupp"
               type="checkbox"
               checked={form.agreeSupp}
               onChange={(e) => update("agreeSupp", e.target.checked)}
+              aria-invalid={!!errors.agreeSupp}
             />
             <span>
               I have read and agree to the Supplement Engine fee terms
             </span>
           </label>
+          {errors.agreeSupp && <p className="field-err">{errors.agreeSupp}</p>}
         </div>
 
         <div className="agree-section">
@@ -693,19 +766,24 @@ function Step2({
           </div>
           <label className="agree-check">
             <input
+              id="signup-agreeTerms"
               type="checkbox"
               checked={form.agreeTerms}
               onChange={(e) => update("agreeTerms", e.target.checked)}
+              aria-invalid={!!errors.agreeTerms}
             />
             <span>I have read and agree to the Terms of Service</span>
           </label>
+          {errors.agreeTerms && (
+            <p className="field-err">{errors.agreeTerms}</p>
+          )}
         </div>
       </div>
 
       <div className="btn-row">
         <button
           className="btn btn-blue"
-          disabled={!allChecked || pending}
+          disabled={pending}
           onClick={onNext}
         >
           {pending ? "Creating your workspace..." : "I Agree — Create Account →"}
@@ -721,14 +799,12 @@ function Step2({
 function Step3({
   form,
   update,
-  err,
   pending,
   onNext,
   onSkip,
 }: {
   form: FormState;
   update: <K extends keyof FormState>(key: K, value: FormState[K]) => void;
-  err: string | null;
   pending: boolean;
   onNext: () => void;
   onSkip: () => void;
@@ -741,8 +817,6 @@ function Step3({
         This information appears on your documents and outreach.{" "}
         <strong>You can update it anytime.</strong>
       </p>
-
-      {err && <div className="form-err">{err}</div>}
 
       <div className="form-row single">
         <div className="form-group">
