@@ -37,6 +37,25 @@ interface TelnyxErrorBody {
   }>
 }
 
+// Order succeeded on Telnyx (number is paid for) but the post-order global
+// resource lookup could not resolve within the retry window. The e164 is
+// guaranteed to be the just-purchased number, so callers can release it
+// via `releaseNumberByE164` to keep the buy+attach flow atomic.
+export class PartialPurchaseError extends TelnyxError {
+  readonly e164: string
+  readonly orderId: string
+
+  constructor(opts: { e164: string; orderId: string }) {
+    super({
+      message: `Telnyx number order ${opts.orderId} for ${opts.e164} reached "success" but the global phone-number lookup did not resolve within the retry window. The number is provisioned on Telnyx; the caller must attempt release-by-E.164 to keep the purchase atomic.`,
+      status: 0,
+    })
+    this.name = 'PartialPurchaseError'
+    this.e164 = opts.e164
+    this.orderId = opts.orderId
+  }
+}
+
 export function fromTelnyxResponse(status: number, body: unknown): TelnyxError {
   const errs = (body as TelnyxErrorBody | null)?.errors ?? []
   const first = errs[0]
