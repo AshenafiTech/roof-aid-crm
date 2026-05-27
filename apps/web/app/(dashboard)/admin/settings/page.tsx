@@ -97,7 +97,7 @@ export default async function AdminSettingsPage() {
     {
       title: "Users",
       description:
-        "Add team members, assign roles (owner / admin / telefonista / rufero), set Telnyx extensions.",
+        "Add team members, assign roles (owner / admin / telefonista / rufero), set phone extensions.",
       href: "/admin/users",
       icon: Users,
     },

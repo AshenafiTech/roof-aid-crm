@@ -49,7 +49,7 @@ export async function telnyxFetch<T>(init: RequestInit): Promise<T> {
   const apiKey = process.env.TELNYX_API_KEY
   if (!apiKey) {
     throw new TelnyxError({
-      message: 'TELNYX_API_KEY is not set in the server environment',
+      message: 'Phone service is not configured on the server. Please contact support.',
       status: 0,
     })
   }
@@ -112,7 +112,7 @@ export async function telnyxFetch<T>(init: RequestInit): Promise<T> {
 
   // Network/transport-level failure after all retries
   throw new TelnyxError({
-    message: `Telnyx request failed after ${MAX_RETRIES} attempts: ${(lastError as Error)?.message ?? 'unknown error'}`,
+    message: `Phone service request failed after ${MAX_RETRIES} attempts: ${(lastError as Error)?.message ?? 'unknown error'}`,
     status: 0,
     raw: lastError,
   })

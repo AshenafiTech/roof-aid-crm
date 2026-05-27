@@ -38,7 +38,10 @@ export function NumberPicker() {
           purchaseAction={purchaseAndAttachNumber}
           submitLabel="Buy & continue"
           successToast={(e164) =>
-            `Number ${formatE164(e164)} is now your business line.`
+            `Your business line is ready — ${formatE164(e164)}`
+          }
+          successDescription={() =>
+            "You can now make calls and send texts from your dashboard. Try reaching out to a lead."
           }
           onSuccess={() => router.refresh()}
         />

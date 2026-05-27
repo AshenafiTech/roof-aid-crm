@@ -105,7 +105,7 @@ export async function POST() {
   } catch (err) {
     if (err instanceof TelnyxError) {
       return NextResponse.json(
-        { error: `Telnyx: ${err.message}` },
+        { error: err.message },
         { status: 502 },
       );
     }

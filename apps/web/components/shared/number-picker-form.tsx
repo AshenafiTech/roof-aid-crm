@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { Loader2, MapPin, Search } from "lucide-react";
 import { toast } from "sonner";
 
@@ -29,7 +29,17 @@ export interface NumberPickerFormProps {
   submitLabel?: string;
   defaultLabelValue?: string;
   successToast?: (e164: string) => string;
+  successDescription?: (e164: string) => string;
   onSuccess?: (e164: string) => void;
+}
+
+// Phase copy shown beneath the button while the purchase + attach flow
+// runs. Purpose is to reassure the customer that the wait (typically
+// 5–15s, up to ~30s in worst case) is expected and they shouldn't bail.
+function purchasePhaseMessage(elapsedMs: number): string {
+  if (elapsedMs < 5_000) return "Reserving your number…";
+  if (elapsedMs < 15_000) return "Setting up your line…";
+  return "Almost ready…";
 }
 
 export function NumberPickerForm({
@@ -38,6 +48,7 @@ export function NumberPickerForm({
   submitLabel = "Buy number",
   defaultLabelValue = "Main",
   successToast,
+  successDescription,
   onSuccess,
 }: NumberPickerFormProps) {
   const [areaCode, setAreaCode] = useState("");
@@ -48,6 +59,22 @@ export function NumberPickerForm({
 
   const [searching, startSearch] = useTransition();
   const [purchasing, startPurchase] = useTransition();
+  const [purchaseElapsedMs, setPurchaseElapsedMs] = useState(0);
+
+  // Tick a clock while a purchase is in flight so the button + subtext can
+  // walk through reassuring phase copy. Reset to zero whenever purchasing
+  // flips back off (success or failure).
+  useEffect(() => {
+    if (!purchasing) {
+      setPurchaseElapsedMs(0);
+      return;
+    }
+    const start = Date.now();
+    const id = setInterval(() => {
+      setPurchaseElapsedMs(Date.now() - start);
+    }, 500);
+    return () => clearInterval(id);
+  }, [purchasing]);
 
   // Clear the result set and return to the initial state so the user can
   // try a different area code (with the Popular Markets chips visible again).
@@ -110,9 +137,11 @@ export function NumberPickerForm({
         toast.error(res.error);
         return;
       }
+      const description = successDescription?.(res.e164);
       toast.success(
         successToast?.(res.e164) ??
           `Number ${formatE164(res.e164)} added.`,
+        description ? { description } : undefined,
       );
       onSuccess?.(res.e164);
     });
@@ -248,14 +277,25 @@ export function NumberPickerForm({
             </p>
           </div>
 
-          <div className="flex justify-end pt-2">
+          <div className="flex flex-col items-end gap-1.5 pt-2">
             <Button
               onClick={handlePurchase}
               disabled={purchasing || !selected || labelValue.trim().length === 0}
             >
-              {purchasing ? <Loader2 className="size-4 animate-spin" /> : null}
-              {submitLabel}
+              {purchasing ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  {purchasePhaseMessage(purchaseElapsedMs)}
+                </>
+              ) : (
+                submitLabel
+              )}
             </Button>
+            {purchasing && (
+              <p className="text-xs text-muted-foreground">
+                This can take up to 30 seconds — please keep this tab open.
+              </p>
+            )}
           </div>
         </div>
       )}

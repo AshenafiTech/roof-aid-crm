@@ -157,7 +157,7 @@ export function PhoneNumbersManagement({
                   <strong className="tabular-nums">
                     {formatE164(confirmRelease.e164)}
                   </strong>{" "}
-                  ({confirmRelease.label}) back to Telnyx and stop billing.
+                  ({confirmRelease.label}) and stop billing for it.
                   Existing call and SMS history is preserved. The number cannot
                   be re-claimed afterward.
                 </>

@@ -261,7 +261,7 @@ export async function importExistingPhoneNumber(input: {
     if (!phoneRecord) {
       return {
         ok: false,
-        error: `Telnyx has no owned number matching ${parsed.e164}. Confirm the E.164 string in the Telnyx portal → My Numbers.`,
+        error: `We don't have a number matching ${parsed.e164} in inventory. Please contact support to verify.`,
       };
     }
 
@@ -299,7 +299,7 @@ export async function importExistingPhoneNumber(input: {
     if (insertErr || !row) {
       return {
         ok: false,
-        error: `Telnyx lookup succeeded but database write failed: ${insertErr?.message ?? "unknown"}`,
+        error: `Number located but database write failed: ${insertErr?.message ?? "unknown"}`,
       };
     }
 
