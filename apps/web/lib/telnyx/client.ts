@@ -11,7 +11,7 @@
 
 import 'server-only'
 import { telnyxFetch } from './fetch'
-import { TelnyxError } from './errors'
+import { PartialPurchaseError, TelnyxError } from './errors'
 import type {
   AvailableNumber,
   Capability,
@@ -179,10 +179,17 @@ export async function purchaseNumber(opts: {
   // is a NumberOrderPhoneNumber sub-resource id, NOT the global
   // /v2/phone_numbers/{id}. The global resource also doesn't exist until
   // the order status flips to "success" — querying earlier 404s.
+  const pollStartedAt = Date.now()
   let finalStatus = order.data.status
+  console.log(
+    `[telnyx:order] created order_id=${order.data.id} e164=${opts.e164} initial_status=${finalStatus}`,
+  )
   if (finalStatus !== 'success') {
     for (let attempt = 0; attempt < ORDER_POLL_MAX_ATTEMPTS; attempt++) {
       if (finalStatus === 'failure') {
+        console.error(
+          `[telnyx:order] failed order_id=${order.data.id} e164=${opts.e164} attempts=${attempt}`,
+        )
         throw new TelnyxError({
           message: `Telnyx number order ${order.data.id} failed for ${opts.e164}`,
           status: 0,
@@ -195,23 +202,44 @@ export async function purchaseNumber(opts: {
         path: `/number_orders/${order.data.id}`,
       })
       finalStatus = polled.data.status
-      if (finalStatus === 'success') break
+      if (finalStatus === 'success') {
+        console.log(
+          `[telnyx:order] succeeded order_id=${order.data.id} e164=${opts.e164} attempts=${attempt + 1} ms=${Date.now() - pollStartedAt}`,
+        )
+        break
+      }
     }
     if (finalStatus !== 'success') {
-      throw new TelnyxError({
-        message: `Telnyx number order ${order.data.id} for ${opts.e164} did not reach "success" within ${Math.round((ORDER_POLL_INTERVAL_MS * ORDER_POLL_MAX_ATTEMPTS) / 1000)}s (last status: ${finalStatus}). The number may still provision — check Telnyx portal.`,
-        status: 0,
+      // Order is in limbo: still "pending" after our poll budget. Telnyx may
+      // eventually flip it to "success" (billing starts) or "failure" (free).
+      // We can't know synchronously, so we throw PartialPurchaseError to give
+      // the caller a chance to release-by-E.164. If the order never actually
+      // billed, releaseNumberByE164 will return false (no-op; harmless). If
+      // it did bill, the release succeeds and atomicity is preserved.
+      console.warn(
+        `[telnyx:order] poll-timeout order_id=${order.data.id} e164=${opts.e164} last_status=${finalStatus} ms=${Date.now() - pollStartedAt} — throwing PartialPurchaseError`,
+      )
+      throw new PartialPurchaseError({
+        e164: opts.e164,
+        orderId: order.data.id,
       })
     }
+  } else {
+    console.log(
+      `[telnyx:order] immediate-success order_id=${order.data.id} e164=${opts.e164}`,
+    )
   }
 
   // Resolve the global phone-number resource id by E.164. The sub-resource
   // id returned in the order response cannot be used against /phone_numbers.
-  const phoneRecord = await findPhoneNumberByE164(assigned.phone_number)
+  // Telnyx's filter endpoint is eventually consistent post-order, so we
+  // retry with backoff. If it still fails, throw a typed error that carries
+  // the E.164 so the caller can release-by-E.164 — keeping buy+attach atomic.
+  const phoneRecord = await findPhoneNumberByE164WithRetry(assigned.phone_number)
   if (!phoneRecord) {
-    throw new TelnyxError({
-      message: `Telnyx number order ${order.data.id} succeeded but /phone_numbers lookup returned no row for ${assigned.phone_number}. The number is provisioned on Telnyx but not attached locally — use the rescue importer to attach it.`,
-      status: 0,
+    throw new PartialPurchaseError({
+      e164: assigned.phone_number,
+      orderId: order.data.id,
     })
   }
 
@@ -257,6 +285,52 @@ export async function findPhoneNumberByE164(
     const match = res.data?.find((r) => r.phone_number === e164) ?? res.data?.[0]
     if (match) return match
   }
+  return null
+}
+
+// Backoff schedule between attempts. Total wait ~30s — enough to ride out
+// Telnyx's eventual-consistency propagation after a successful number order.
+const POST_ORDER_LOOKUP_DELAYS_MS = [500, 1500, 3000, 5000, 8000, 12000]
+
+/**
+ * Like `findPhoneNumberByE164`, but with exponential backoff. Used after a
+ * number order completes — Telnyx's global `/phone_numbers` filter is
+ * eventually consistent, so an immediate lookup can return empty even
+ * though the number is fully provisioned and billing has started.
+ *
+ * Each attempt logs `[telnyx:lookup]` so the propagation behaviour is
+ * visible in production logs; grep by E.164 to see how many retries a
+ * given number required.
+ */
+export async function findPhoneNumberByE164WithRetry(
+  e164: string,
+): Promise<Awaited<ReturnType<typeof findPhoneNumberByE164>>> {
+  const startedAt = Date.now()
+  // First attempt has no delay.
+  let found = await findPhoneNumberByE164(e164)
+  if (found) {
+    console.log(
+      `[telnyx:lookup] hit e164=${e164} attempts=1 ms=${Date.now() - startedAt}`,
+    )
+    return found
+  }
+  for (let i = 0; i < POST_ORDER_LOOKUP_DELAYS_MS.length; i++) {
+    const delay = POST_ORDER_LOOKUP_DELAYS_MS[i]
+    console.log(
+      `[telnyx:lookup] miss e164=${e164} attempt=${i + 1} retry_in_ms=${delay}`,
+    )
+    await new Promise((r) => setTimeout(r, delay))
+    found = await findPhoneNumberByE164(e164)
+    if (found) {
+      console.log(
+        `[telnyx:lookup] hit e164=${e164} attempts=${i + 2} ms=${Date.now() - startedAt}`,
+      )
+      return found
+    }
+  }
+  console.warn(
+    `[telnyx:lookup] exhausted e164=${e164} attempts=${POST_ORDER_LOOKUP_DELAYS_MS.length + 1} ms=${Date.now() - startedAt}`,
+  )
   return null
 }
 
@@ -411,6 +485,37 @@ export async function releaseNumber(telnyxNumberId: string): Promise<void> {
     path: `/phone_numbers/${telnyxNumberId}`,
     idempotent: false, // DELETE is naturally idempotent on Telnyx side
   })
+}
+
+/**
+ * Release by E.164 — used to roll back a purchase when we have the dialed
+ * number string but never captured the global Telnyx resource id (e.g. the
+ * order succeeded but the post-order lookup eventually-consistency-failed).
+ *
+ * Returns true on successful release, false if the number could not be
+ * located on Telnyx within the retry window. Callers MUST log false as
+ * CRITICAL — the number is paid for and orphaned.
+ */
+export async function releaseNumberByE164(e164: string): Promise<boolean> {
+  const found = await findPhoneNumberByE164WithRetry(e164)
+  if (!found) {
+    console.warn(
+      `[telnyx:release] could-not-locate e164=${e164} — number not findable on Telnyx, release skipped`,
+    )
+    return false
+  }
+  try {
+    await releaseNumber(found.id)
+    console.log(
+      `[telnyx:release] released e164=${e164} telnyx_number_id=${found.id}`,
+    )
+    return true
+  } catch (err) {
+    console.error(
+      `[telnyx:release] delete-failed e164=${e164} telnyx_number_id=${found.id} error=${err instanceof Error ? err.message : String(err)}`,
+    )
+    throw err
+  }
 }
 
 // ----------------------------------------------------------------------------
