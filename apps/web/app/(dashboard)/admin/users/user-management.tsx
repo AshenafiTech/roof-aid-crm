@@ -497,7 +497,7 @@ function InviteDialog({
               <Input id="inv-phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+1 555..." />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="inv-ext" className="text-xs">Telnyx Extension <span className="text-muted-foreground font-normal">(optional)</span></Label>
+              <Label htmlFor="inv-ext" className="text-xs">Phone Extension <span className="text-muted-foreground font-normal">(optional)</span></Label>
               <Input id="inv-ext" value={telnyxExt} onChange={(e) => setTelnyxExt(e.target.value)} placeholder="1001" />
             </div>
           </div>
@@ -624,7 +624,7 @@ function EditDialog({
               <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+1 555..." />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Telnyx Extension</Label>
+              <Label className="text-xs">Phone Extension</Label>
               <Input value={telnyxExt} onChange={(e) => setTelnyxExt(e.target.value)} placeholder="1001" />
             </div>
           </div>
