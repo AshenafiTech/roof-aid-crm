@@ -51,9 +51,24 @@ export async function middleware(request: NextRequest) {
   // getUser() sends a request to the Supabase Auth server every time,
   // which guarantees the token is validated. getSession() only reads
   // from the cookie and can be spoofed.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  //
+  // Fail-open on transient Supabase Auth failures so a flake on the
+  // upstream auth API doesn't crash every page load with a 500. We log
+  // the failure with a stable prefix and treat the request as
+  // unauthenticated for this hop — the downstream layout will either
+  // redirect to /login (for protected routes) or render the public
+  // landing/signup page as usual.
+  let user: { id: string; user_metadata?: { role?: string } } | null = null;
+  try {
+    const result = await supabase.auth.getUser();
+    user = result.data.user;
+  } catch (err) {
+    console.error("[middleware:auth] getUser threw", {
+      path: request.nextUrl.pathname,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    user = null;
+  }
 
   const { pathname } = request.nextUrl;
   const isPublicRoute = PUBLIC_ROUTES.some((route) =>

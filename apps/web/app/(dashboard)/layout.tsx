@@ -19,11 +19,36 @@ export default async function DashboardLayout({
 
   const showEmailNav = hasPrivilege(user, "send_email");
 
-  // These run in parallel
+  // These run in parallel. Each fetch is wrapped so a single transient
+  // failure on a side-bar widget (notifications, unread email count) does
+  // NOT take down the entire dashboard layout. Without this, any of these
+  // throwing causes Next.js to fall back to an error boundary — which the
+  // customer perceives as "the whole app is broken" even though only a
+  // counter failed to load. Log and degrade to a sane default.
   const [unreadCount, recentNotifications, emailUnreadCount] = await Promise.all([
-    getUnreadNotificationCount(user.id),
-    getRecentNotifications(user.id, 5),
-    showEmailNav ? getUnreadEmailCount() : Promise.resolve(0),
+    getUnreadNotificationCount(user.id).catch((err) => {
+      console.error("[dashboard-layout] unread-count failed", {
+        user_id: user.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return 0;
+    }),
+    getRecentNotifications(user.id, 5).catch((err) => {
+      console.error("[dashboard-layout] recent-notifications failed", {
+        user_id: user.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return [];
+    }),
+    showEmailNav
+      ? getUnreadEmailCount().catch((err) => {
+          console.error("[dashboard-layout] email-unread-count failed", {
+            user_id: user.id,
+            error: err instanceof Error ? err.message : String(err),
+          });
+          return 0;
+        })
+      : Promise.resolve(0),
   ]);
 
   return (
