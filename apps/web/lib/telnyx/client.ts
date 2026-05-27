@@ -151,7 +151,7 @@ export async function purchaseNumber(opts: {
   if (!messagingProfileId || !connectionId) {
     throw new TelnyxError({
       message:
-        'A Telnyx connection (per-tenant or platform via TELNYX_VOICE_APP_ID) and TELNYX_MESSAGING_PROFILE_ID are required to purchase numbers',
+        'Calling is not fully configured. Please contact support.',
       status: 0,
     })
   }
@@ -169,7 +169,7 @@ export async function purchaseNumber(opts: {
   const assigned = order.data.phone_numbers[0]
   if (!assigned) {
     throw new TelnyxError({
-      message: `Telnyx number order completed but returned no assigned number for ${opts.e164}`,
+      message: `Number order completed but returned no assigned number for ${opts.e164}. Please try again.`,
       status: 200,
       raw: order,
     })
@@ -191,7 +191,7 @@ export async function purchaseNumber(opts: {
           `[telnyx:order] failed order_id=${order.data.id} e164=${opts.e164} attempts=${attempt}`,
         )
         throw new TelnyxError({
-          message: `Telnyx number order ${order.data.id} failed for ${opts.e164}`,
+          message: `Could not provision ${opts.e164}. Please try a different number.`,
           status: 0,
           raw: order,
         })
@@ -383,7 +383,7 @@ export async function mintLoginToken(opts: {
   const c = cred.data;
   if (!c.sip_username || !c.sip_password) {
     throw new TelnyxError({
-      message: "Telnyx credential response missing sip_username or sip_password",
+      message: "Phone service credential response was incomplete. Please try again.",
       status: 0,
       raw: cred,
     });
@@ -565,7 +565,7 @@ export async function initiateCall(
     process.env.TELNYX_VOICE_APP_ID ?? process.env.TELNYX_APP_ID
   if (!voiceAppId) {
     throw new TelnyxError({
-      message: 'TELNYX_VOICE_APP_ID must be set to initiate calls',
+      message: 'Calling is not fully configured. Please contact support.',
       status: 0,
     })
   }

@@ -67,7 +67,7 @@ export async function ensureTenantTelnyxConnection(opts: {
     });
   } catch (err) {
     if (err instanceof TelnyxError) {
-      throw new Error(`Telnyx connection-create failed: ${err.message}`);
+      throw new Error(`Phone service connection setup failed: ${err.message}`);
     }
     throw err;
   }
@@ -85,7 +85,7 @@ export async function ensureTenantTelnyxConnection(opts: {
       `[ensureTenantTelnyxConnection] CRITICAL: created Telnyx connection ${connection.id} but failed to stamp on tenant ${opts.tenantId}: ${updateErr.message}`,
     );
     throw new Error(
-      `Connection was created on Telnyx but could not be saved to the tenant record. Contact support and reference connection id ${connection.id}.`,
+      `Phone service connection was set up but could not be saved to your account. Please contact support and reference reference id ${connection.id}.`,
     );
   }
 

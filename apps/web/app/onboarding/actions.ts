@@ -360,7 +360,8 @@ export async function purchaseAndAttachNumber(input: {
 
       return {
         ok: false,
-        error: `Number purchase rolled back — attachment failed (${errorMessage(err)}). Please retry.`,
+        error:
+          "We couldn't finish setting up that number. No charge was made — please try again or pick a different number.",
       };
     }
 

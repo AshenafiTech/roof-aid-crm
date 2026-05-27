@@ -72,7 +72,7 @@ export function SdrActivityChart({ rows }: { rows: LeaderboardRow[] }) {
 
       {!hasCallData && (
         <p className="mt-2 text-[10px] italic text-muted-foreground">
-          Call data will populate after Telnyx integration (M4).
+          Call data will populate once calling is set up for your tenant.
         </p>
       )}
     </Card>
