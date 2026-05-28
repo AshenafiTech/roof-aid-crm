@@ -202,32 +202,13 @@ export function NewDocumentDialog({
         {step === "fields" && kind && (
           <div className="space-y-3 pt-2">
             {kind === "3rd_party_auth" && (
-              <>
-                <FieldGroup>
-                  <Label>Insurance carrier</Label>
-                  <Input
-                    value={insurance}
-                    onChange={(e) => setInsurance(e.target.value)}
-                    placeholder="State Farm"
-                  />
-                </FieldGroup>
-                <FieldGroup>
-                  <Label>Claim #</Label>
-                  <Input
-                    value={claim}
-                    onChange={(e) => setClaim(e.target.value)}
-                    placeholder="STF-2026-001"
-                  />
-                </FieldGroup>
-                <FieldGroup>
-                  <Label>Date of loss</Label>
-                  <Input
-                    type="date"
-                    value={lossDate}
-                    onChange={(e) => setLossDate(e.target.value)}
-                  />
-                </FieldGroup>
-              </>
+              <div className="rounded-md border border-dashed bg-muted/40 p-4 text-sm text-muted-foreground">
+                No fields to enter. Homeowner, property address, and
+                contractor are pulled from the prospect and your company
+                profile. Claim number, date, and date of loss stay blank
+                so they can be filled in on-site or by mobile after
+                inspection.
+              </div>
             )}
 
             {(kind === "acv_contract" || kind === "rcv_contract") && (
