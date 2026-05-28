@@ -24,6 +24,7 @@ abstract class InspectionRemoteDatasource {
   Future<InspectionModel> getOrCreateForAppointment({
     required String appointmentId,
     required String prospectId,
+    String? id,
   });
 
   /// Calls `start_ad_hoc_inspection(prospect_id)` RPC. Returns the
@@ -129,6 +130,7 @@ class InspectionRemoteDatasourceImpl implements InspectionRemoteDatasource {
   Future<InspectionModel> getOrCreateForAppointment({
     required String appointmentId,
     required String prospectId,
+    String? id,
   }) async {
     final uid = _requireUid();
     try {
@@ -146,6 +148,11 @@ class InspectionRemoteDatasourceImpl implements InspectionRemoteDatasource {
       final response = await client
           .from('inspection_reports')
           .insert({
+            // Honor a client-supplied UUID when present so an
+            // offline-created stub keeps its id after drain — any
+            // queued form_patch / photo_upload ops that reference
+            // this inspection still find the right server row.
+            'id': ?id,
             'tenant_id': tenantId,
             'prospect_id': prospectId,
             'appointment_id': appointmentId,

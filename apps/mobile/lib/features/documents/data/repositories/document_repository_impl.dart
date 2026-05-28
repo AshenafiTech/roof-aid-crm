@@ -92,14 +92,22 @@ class DocumentRepositoryImpl implements DocumentRepository {
   ) async {
     try {
       final list = await remote.fetchForProspect(prospectId);
+      // Cache the metadata list so an offline reopen of this prospect
+      // can still resolve the signable / signed document buckets
+      // without a server round-trip.
+      await local.cacheDocList(prospectId, list);
       // Fire-and-forget background pre-cache of unsigned + signed PDFs
       // for this prospect's docs. The rufero who pulls up a prospect
       // in the morning with signal will have everything on disk for
       // an offline afternoon.
       unawaited(_warmCacheForList(list));
       return Right(list);
-    } on NetworkException catch (e) {
-      return Left(NetworkFailure(e.message));
+    } on NetworkException catch (_) {
+      // Offline — fall back to the cached metadata list. Empty if the
+      // rufero has never loaded this prospect online, in which case
+      // the caller will show "Document not generated".
+      final cached = await local.getCachedDocList(prospectId);
+      return Right(cached);
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message));
     }
@@ -211,22 +219,75 @@ class DocumentRepositoryImpl implements DocumentRepository {
     return pending != null;
   }
 
+  @override
+  Future<String?> ensureLocalPdfPath({
+    required String documentId,
+    required String storagePath,
+    required bool signed,
+    DateTime? serverUpdatedAt,
+  }) async {
+    final cached = signed
+        ? await local.signedPdfPath(documentId)
+        : await local.unsignedPdfPath(documentId);
+    final cachedAt = signed
+        ? await local.signedCachedAt(documentId)
+        : await local.unsignedCachedAt(documentId);
+
+    // 1. Cache hit AND fresh — the common path. "Fresh" means we
+    //    cached it at or after the server's updated_at. Two cases
+    //    where the cache is considered stale:
+    //      (a) Server's updated_at is newer than our cached_at.
+    //          Covers the two-party-sign scenario where the same
+    //          signed_storage_path holds the company-only PDF first
+    //          and the fully-signed PDF after the homeowner signs.
+    //      (b) cached_at is null. This happens for PDFs cached by
+    //          an older app version that didn't track the timestamp
+    //          — we have no proof the file matches the server, so
+    //          re-fetch to be safe (one-time cost per legacy file).
+    final isStale = serverUpdatedAt != null &&
+        (cachedAt == null || serverUpdatedAt.isAfter(cachedAt));
+    if (cached != null && !isStale) return cached;
+
+    // 2. Cache miss or stale — fetch on demand. Covers:
+    //      - Missing cache (warm-up hasn't run, or drain swallowed the
+    //        downloadPdf step).
+    //      - Stale cache (homeowner just signed; bytes changed even
+    //        though signed_storage_path didn't).
+    try {
+      final bytes = await remote.downloadPdf(storagePath);
+      final path = signed
+          ? await local.cacheSignedPdf(documentId: documentId, bytes: bytes)
+          : await local.cacheUnsignedPdf(
+              documentId: documentId, bytes: bytes);
+      return path;
+    } on NetworkException catch (_) {
+      // Stale-but-online-fetch-failed → at least return the stale
+      // copy so the user can see *something*. The next online open
+      // will retry.
+      return cached;
+    } on ServerException catch (_) {
+      return cached;
+    }
+  }
+
   // ── helpers ───────────────────────────────────────────────
 
   /// Background pre-cache. Errors are swallowed — this is a "nice to
-  /// have"; the real read path falls back to the server.
+  /// have"; the real read path falls back to the server. Re-downloads
+  /// when the cache is missing OR stale (cached before the server's
+  /// last update — important for the two-party signing case).
   Future<void> _warmCacheForList(List<DocumentEntity> docs) async {
     for (final d in docs) {
       try {
         final unsignedPath = d.storagePath;
         if (unsignedPath != null &&
-            (await local.unsignedPdfPath(d.id)) == null) {
+            await _shouldRefresh(d.id, d.updatedAt, signed: false)) {
           final bytes = await remote.downloadPdf(unsignedPath);
           await local.cacheUnsignedPdf(documentId: d.id, bytes: bytes);
         }
         final signedPath = d.signedStoragePath;
         if (signedPath != null &&
-            (await local.signedPdfPath(d.id)) == null) {
+            await _shouldRefresh(d.id, d.updatedAt, signed: true)) {
           final bytes = await remote.downloadPdf(signedPath);
           await local.cacheSignedPdf(documentId: d.id, bytes: bytes);
         }
@@ -234,6 +295,26 @@ class DocumentRepositoryImpl implements DocumentRepository {
         // Network blip, RLS deny, malformed path — skip and move on.
       }
     }
+  }
+
+  /// True when the local cache is missing OR older than the server's
+  /// last update. Mirrors the staleness rule in [ensureLocalPdfPath]
+  /// so the warm-up and the on-demand paths agree on what "fresh"
+  /// means.
+  Future<bool> _shouldRefresh(
+    String documentId,
+    DateTime serverUpdatedAt, {
+    required bool signed,
+  }) async {
+    final path = signed
+        ? await local.signedPdfPath(documentId)
+        : await local.unsignedPdfPath(documentId);
+    if (path == null) return true;
+    final cachedAt = signed
+        ? await local.signedCachedAt(documentId)
+        : await local.unsignedCachedAt(documentId);
+    if (cachedAt == null) return true;
+    return serverUpdatedAt.isAfter(cachedAt);
   }
 
   /// Synthetic [DocumentEntity] returned to the UI after an offline
