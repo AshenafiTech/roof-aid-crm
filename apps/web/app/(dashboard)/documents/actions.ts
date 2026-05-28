@@ -251,7 +251,8 @@ export async function loadTemplateForPreview(
 
   // contractor_name is the company name captured at signup (tenants.name).
   // Renames here propagate to every newly-generated preview / PDF.
-  const tenantName = tenantRow?.name?.trim() ?? "";
+  // Uppercased to match the convention used in the rendered PDF.
+  const tenantName = (tenantRow?.name?.trim() ?? "").toUpperCase();
 
   const fields = (parsed.fields ?? {}) as Record<string, unknown>;
   const insurance = (fields.insurance_company as string | undefined) ?? "";

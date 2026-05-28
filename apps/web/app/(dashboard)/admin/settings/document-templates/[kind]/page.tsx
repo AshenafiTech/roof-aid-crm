@@ -126,6 +126,8 @@ export default async function EditTemplatePage({
 
 // Read the tenant's company name (the value captured at signup as
 // `tenants.name`). Renames propagate to every render of this page.
+// Uppercased to match the contractor convention used in the rendered
+// document (header field, body tokens, signature label).
 async function getCurrentTenantName(): Promise<string | undefined> {
   const user = await getCurrentUser();
   const supabase = await createClient();
@@ -134,5 +136,6 @@ async function getCurrentTenantName(): Promise<string | undefined> {
     .select("name")
     .eq("id", user.tenantId)
     .single();
-  return data?.name?.trim() || undefined;
+  const raw = data?.name?.trim();
+  return raw ? raw.toUpperCase() : undefined;
 }
