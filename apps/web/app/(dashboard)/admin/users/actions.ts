@@ -251,7 +251,19 @@ export async function toggleUserActive(input: z.infer<typeof toggleActiveSchema>
   revalidatePath("/admin/users");
 }
 
-export async function resetUserPassword(userId: string) {
+/**
+ * Generate a new temporary password for `userId` and overwrite the
+ * stored hash via the Supabase admin API. Returns the plaintext password
+ * to the caller exactly ONCE — it is not persisted anywhere and cannot
+ * be retrieved later, since auth stores only a bcrypt hash.
+ *
+ * The owner cannot reset another owner's password; everyone else can be
+ * reset by anyone with user-management privileges. The previous password
+ * stops working immediately.
+ */
+export async function resetUserPassword(
+  userId: string,
+): Promise<{ email: string; tempPassword: string }> {
   z.string().uuid().parse(userId);
   const { supabase, profile } = await requireUserMgmt();
 
@@ -265,15 +277,16 @@ export async function resetUserPassword(userId: string) {
     throw new Error("Cannot reset another owner's password");
   }
 
+  const tempPassword = crypto.randomUUID().slice(0, 16) + "Aa1!";
+
   const admin = createAdminClient();
-  const { error } = await admin.auth.admin.generateLink({
-    type: "recovery",
-    email: target.email,
+  const { error } = await admin.auth.admin.updateUserById(userId, {
+    password: tempPassword,
   });
   if (error) throw new Error(error.message);
 
   revalidatePath("/admin/users");
-  return { email: target.email };
+  return { email: target.email, tempPassword };
 }
 
 export async function deleteUser(userId: string) {

@@ -169,13 +169,13 @@ export function ImportProspects() {
               <p className="text-xs text-muted-foreground">Total Rows</p>
             </Card>
             <Card className="p-4 text-center">
-              <p className="text-2xl font-semibold text-emerald-600">
+              <p className="text-2xl font-semibold text-emerald-600 dark:text-emerald-400">
                 {parseResult.validRows}
               </p>
               <p className="text-xs text-muted-foreground">Valid</p>
             </Card>
             <Card className="p-4 text-center">
-              <p className="text-2xl font-semibold text-amber-600">
+              <p className="text-2xl font-semibold text-amber-600 dark:text-amber-400">
                 {parseResult.skippedRows}
               </p>
               <p className="text-xs text-muted-foreground">Will Skip</p>
@@ -184,7 +184,7 @@ export function ImportProspects() {
 
           {/* File info */}
           <div className="flex items-center gap-3 rounded-lg border px-4 py-3">
-            <FileSpreadsheet className="h-5 w-5 shrink-0 text-emerald-600" />
+            <FileSpreadsheet className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium">{file?.name}</p>
               <p className="text-xs text-muted-foreground">
@@ -212,7 +212,7 @@ export function ImportProspects() {
                     {mapped ? (
                       <Badge
                         variant="outline"
-                        className="border-emerald-200 bg-emerald-50 text-emerald-700"
+                        className="border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300"
                       >
                         {mapped}
                       </Badge>
@@ -253,7 +253,11 @@ export function ImportProspects() {
                   {parseResult.preview.map((row) => (
                     <tr
                       key={row.row}
-                      className={row.skip ? "bg-amber-50/50 text-muted-foreground" : ""}
+                      className={
+                        row.skip
+                          ? "border-l-2 border-l-amber-500/70 bg-amber-50/60 dark:bg-amber-500/10"
+                          : "hover:bg-muted/30"
+                      }
                     >
                       <td className="px-3 py-2 tabular-nums">{row.row}</td>
                       <td className="px-3 py-2 font-medium">{row.name}</td>
@@ -275,12 +279,14 @@ export function ImportProspects() {
                       </td>
                       <td className="px-3 py-2">
                         {row.skip ? (
-                          <span className="flex items-center gap-1 text-amber-600">
+                          <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-700 ring-1 ring-amber-500/30 dark:text-amber-300">
                             <SkipForward className="h-3 w-3" />
                             {row.skipReason}
                           </span>
                         ) : (
-                          <span className="text-emerald-600">Ready</span>
+                          <span className="inline-flex items-center rounded-md bg-emerald-500/15 px-2 py-0.5 text-[11px] font-medium text-emerald-700 ring-1 ring-emerald-500/30 dark:text-emerald-300">
+                            Ready
+                          </span>
                         )}
                       </td>
                     </tr>
@@ -295,7 +301,10 @@ export function ImportProspects() {
             <p className="text-sm text-muted-foreground">
               <strong className="text-foreground">{parseResult.validRows}</strong>{" "}
               prospects will be imported as{" "}
-              <Badge variant="outline" className="border-blue-200 bg-blue-50 text-blue-700">
+              <Badge
+                variant="outline"
+                className="border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300"
+              >
                 New Leads
               </Badge>
             </p>
@@ -325,20 +334,20 @@ export function ImportProspects() {
       {/* ── Step 4: Done ── */}
       {step === "done" && importResult && (
         <Card className="flex flex-col items-center justify-center px-6 py-16 text-center">
-          <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50">
-            <CheckCircle2 className="h-8 w-8 text-emerald-600" />
+          <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-500/10">
+            <CheckCircle2 className="h-8 w-8 text-emerald-600 dark:text-emerald-400" />
           </div>
           <h3 className="text-base font-semibold">Import Complete</h3>
 
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <div className="rounded-lg border px-6 py-3 text-center">
-              <p className="text-2xl font-semibold text-emerald-600">
+              <p className="text-2xl font-semibold text-emerald-600 dark:text-emerald-400">
                 {importResult.imported}
               </p>
               <p className="text-xs text-muted-foreground">Imported</p>
             </div>
             <div className="rounded-lg border px-6 py-3 text-center">
-              <p className="text-2xl font-semibold text-amber-600">
+              <p className="text-2xl font-semibold text-amber-600 dark:text-amber-400">
                 {importResult.skipped}
               </p>
               <p className="text-xs text-muted-foreground">Skipped</p>

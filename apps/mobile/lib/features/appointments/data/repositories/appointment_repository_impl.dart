@@ -6,6 +6,7 @@ import '../../../../core/error/exceptions.dart';
 import '../../../../core/error/failures.dart';
 import '../../../../core/offline/sync_op.dart';
 import '../../../../core/offline/sync_worker.dart';
+import '../../../documents/domain/repositories/document_repository.dart';
 import '../../domain/entities/appointment_entity.dart';
 import '../../domain/repositories/appointment_repository.dart';
 import '../datasources/appointment_local_datasource.dart';
@@ -26,6 +27,15 @@ class AppointmentRepositoryImpl implements AppointmentRepository {
   final AppointmentLocalDatasource local;
   final SyncWorker syncWorker;
 
+  /// Optional cross-feature dep: after a successful schedule fetch we
+  /// fire-and-forget a per-prospect document warm-up so the rufero
+  /// arrives at each visit with the PDFs already on disk.
+  ///
+  /// Stored as a resolver (not the repo directly) so DI registration
+  /// order doesn't matter — this repo registers eagerly, the docs
+  /// repo registers later, and we resolve lazily at call time.
+  final DocumentRepository Function()? documentsForPreCache;
+
   /// Pulse fires after any local-side change (cached list refresh,
   /// pending transition added/cleared). [watchMyAppointments] listens
   /// to this and re-runs its merge so a Mark complete tap reflects
@@ -37,6 +47,7 @@ class AppointmentRepositoryImpl implements AppointmentRepository {
     required this.remote,
     required this.local,
     required this.syncWorker,
+    this.documentsForPreCache,
   }) {
     // Drain handler: re-send the pending transition we stashed
     // locally. Idempotent — running it twice maps to the same server
@@ -72,6 +83,11 @@ class AppointmentRepositoryImpl implements AppointmentRepository {
         await local.cacheList(list);
         _localChanges.add(null);
       }
+      // Fire-and-forget doc pre-cache for every unique prospect on
+      // the schedule. The rufero loads their day in the morning with
+      // signal → PDFs land on disk → afternoon offline view "just
+      // works".
+      unawaited(_warmDocsFor(list));
       return Right(list);
     } on NetworkException catch (_) {
       // Offline — fall back to the cached set with pending overlays.
@@ -179,6 +195,27 @@ class AppointmentRepositoryImpl implements AppointmentRepository {
   }
 
   // ── helpers ───────────────────────────────────────────────
+
+  /// Kick the documents repo to pre-cache PDFs for every unique
+  /// prospect on the schedule. Best-effort and silent — any failure
+  /// just means the rufero falls back to the on-demand cache path
+  /// next time they open a doc.
+  Future<void> _warmDocsFor(List<AppointmentEntity> list) async {
+    final resolver = documentsForPreCache;
+    if (resolver == null) return;
+    final docsRepo = resolver();
+    final seen = <String>{};
+    for (final a in list) {
+      if (!seen.add(a.prospectId)) continue;
+      // getForProspect internally caches both the doc metadata list
+      // and (fire-and-forget) the PDF bytes.
+      try {
+        await docsRepo.getForProspect(a.prospectId);
+      } catch (_) {
+        // ignore — best effort warm-up.
+      }
+    }
+  }
 
   List<AppointmentEntity> _applyDateFilter(
     List<AppointmentEntity> list, {

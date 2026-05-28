@@ -3,9 +3,12 @@
 import { useMemo, useState, useTransition } from "react";
 import {
   Ban,
+  Check,
   CheckCircle2,
   ChevronDown,
   Copy,
+  Eye,
+  EyeOff,
   KeyRound,
   Loader2,
   Mail,
@@ -259,10 +262,11 @@ export function UserManagement({
           action={confirmAction}
           open={!!confirmAction}
           onOpenChange={(open) => { if (!open) setConfirmAction(null); }}
-          onSuccess={(removedId) => {
+          onSuccess={(removedId, resetCreds) => {
             if (confirmAction.type === "delete" && removedId) refreshUsers(undefined, removedId);
             else if (confirmAction.type === "deactivate" || confirmAction.type === "activate")
               refreshUsers({ ...confirmAction.user, is_active: confirmAction.type === "activate" });
+            if (resetCreds) setCredentialsResult(resetCreds);
             setConfirmAction(null);
           }}
         />
@@ -657,7 +661,10 @@ function ConfirmActionDialog({
   action: { type: "deactivate" | "activate" | "delete" | "reset"; user: TenantUser };
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  onSuccess: (removedId?: string) => void;
+  onSuccess: (
+    removedId?: string,
+    resetCreds?: { email: string; tempPassword: string },
+  ) => void;
 }) {
   const [pending, start] = useTransition();
 
@@ -682,9 +689,9 @@ function ConfirmActionDialog({
     },
     reset: {
       title: "Reset Password",
-      description: `A password recovery link will be generated for ${action.user.email}.`,
+      description: `A new temporary password will be generated for ${action.user.email}. Their previous password will stop working immediately — share the new one with them securely.`,
       icon: KeyRound, iconBg: "bg-blue-100 text-blue-700",
-      buttonLabel: "Send Reset Link", buttonClass: "",
+      buttonLabel: "Generate New Password", buttonClass: "",
     },
   }[action.type];
 
@@ -704,8 +711,10 @@ function ConfirmActionDialog({
           toast.success(`${displayName(action.user)} deleted`);
           onSuccess(action.user.id); return;
         } else if (action.type === "reset") {
-          await resetUserPassword(action.user.id);
-          toast.success(`Reset link sent to ${action.user.email}`);
+          const creds = await resetUserPassword(action.user.id);
+          toast.success(`New password generated for ${creds.email}`);
+          onSuccess(undefined, creds);
+          return;
         }
         onSuccess();
       } catch (err) {
@@ -738,7 +747,10 @@ function ConfirmActionDialog({
   );
 }
 
-/* ── Credentials dialog ── */
+/* ── Credentials dialog ──
+   Shown after invite OR password reset. The plaintext password is
+   transient (auth stores only a hash), so this is the one and only
+   chance the admin has to capture it. */
 function CredentialsDialog({
   open,
   onOpenChange,
@@ -750,38 +762,135 @@ function CredentialsDialog({
   email: string;
   tempPassword: string;
 }) {
-  function copyAll() {
-    navigator.clipboard.writeText(`Email: ${email}\nTemporary Password: ${tempPassword}`);
-    toast.success("Copied to clipboard");
+  const [showPassword, setShowPassword] = useState(false);
+  const [copied, setCopied] = useState<"email" | "password" | "both" | null>(null);
+
+  function copy(text: string, which: "email" | "password" | "both") {
+    void navigator.clipboard.writeText(text);
+    setCopied(which);
+    setTimeout(() => setCopied((c) => (c === which ? null : c)), 1500);
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-sm">
-        <div className="flex flex-col items-center text-center pt-2">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-100 text-green-700 mb-4">
+      <DialogContent className="sm:max-w-md">
+        <div className="flex flex-col items-center pt-2 text-center">
+          <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-300">
             <CheckCircle2 className="h-5 w-5" />
           </div>
-          <h3 className="text-base font-semibold">User Created Successfully</h3>
-          <p className="text-sm text-muted-foreground mt-1">Share these credentials securely with the new user.</p>
+          <h3 className="text-base font-semibold">Sign-in credentials</h3>
+          <p className="mt-1 max-w-xs text-xs text-muted-foreground">
+            Share these with the user securely. The password is shown only
+            once — copy it now. You can generate a new one anytime from the
+            user&apos;s row.
+          </p>
         </div>
-        <div className="mt-4 rounded-lg border bg-muted/30 divide-y">
-          <div className="px-4 py-3">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Email</p>
-            <p className="text-sm font-mono">{email}</p>
-          </div>
-          <div className="px-4 py-3">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Temporary Password</p>
-            <p className="text-sm font-mono">{tempPassword}</p>
-          </div>
+
+        <div className="mt-4 space-y-2">
+          <CredentialField
+            label="Email"
+            value={email}
+            displayValue={email}
+            onCopy={() => copy(email, "email")}
+            copied={copied === "email"}
+          />
+          <CredentialField
+            label="Temporary password"
+            value={tempPassword}
+            displayValue={showPassword ? tempPassword : "•".repeat(Math.min(tempPassword.length, 18))}
+            onCopy={() => copy(tempPassword, "password")}
+            copied={copied === "password"}
+            extra={
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 shrink-0"
+                onClick={() => setShowPassword((v) => !v)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                title={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? (
+                  <EyeOff className="h-3.5 w-3.5" />
+                ) : (
+                  <Eye className="h-3.5 w-3.5" />
+                )}
+              </Button>
+            }
+          />
         </div>
+
         <div className="flex gap-2 pt-2">
-          <Button variant="outline" className="flex-1 gap-2" onClick={copyAll}>
-            <Copy className="h-3.5 w-3.5" /> Copy
+          <Button
+            variant="outline"
+            className="flex-1 gap-2"
+            onClick={() =>
+              copy(`Email: ${email}\nTemporary password: ${tempPassword}`, "both")
+            }
+          >
+            {copied === "both" ? (
+              <>
+                <Check className="h-3.5 w-3.5" /> Copied
+              </>
+            ) : (
+              <>
+                <Copy className="h-3.5 w-3.5" /> Copy both
+              </>
+            )}
           </Button>
-          <Button className="flex-1" onClick={() => onOpenChange(false)}>Done</Button>
+          <Button className="flex-1" onClick={() => onOpenChange(false)}>
+            Done
+          </Button>
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function CredentialField({
+  label,
+  value,
+  displayValue,
+  onCopy,
+  copied,
+  extra,
+}: {
+  label: string;
+  value: string;
+  displayValue: string;
+  onCopy: () => void;
+  copied: boolean;
+  extra?: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-lg border bg-muted/30 px-3 py-2.5">
+      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        {label}
+      </p>
+      <div className="flex items-center gap-2">
+        <p
+          className="flex-1 select-all break-all font-mono text-sm"
+          title={value}
+        >
+          {displayValue}
+        </p>
+        {extra}
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 shrink-0"
+          onClick={onCopy}
+          aria-label={`Copy ${label.toLowerCase()}`}
+          title={`Copy ${label.toLowerCase()}`}
+        >
+          {copied ? (
+            <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+          ) : (
+            <Copy className="h-3.5 w-3.5" />
+          )}
+        </Button>
+      </div>
+    </div>
   );
 }

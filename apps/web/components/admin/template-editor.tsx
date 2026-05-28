@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState, useTransition } from "react";
-import { ArrowDown, ArrowUp, Loader2, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Loader2, Pencil, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 
@@ -9,17 +9,20 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 
 import type { Block } from "@/lib/templates/blocks";
+import { getDefaultSections } from "@/lib/templates/defaults";
 import {
   newSection,
   type Section,
   type TemplateDoc,
 } from "@/lib/templates/sections";
-import type { TemplateKind } from "@/lib/templates/template-kinds";
+import { TEMPLATE_TITLES, type TemplateKind } from "@/lib/templates/template-kinds";
 
 import { SectionContentEditor } from "./section-content-editor";
+import { TemplatePreviewSurface } from "./template-preview";
 
 import {
   saveTemplateDraft,
@@ -31,9 +34,13 @@ interface Props {
   kind: TemplateKind;
   initialContent: TemplateDoc;
   activeVersionNo: number | null;
+  /** Live tenant company name, forwarded to the inline Preview tab so the
+   *  Contractor field and inline {{contractor_name}} tokens render the
+   *  current value. */
+  tenantName?: string;
 }
 
-export function TemplateEditor({ kind, initialContent, activeVersionNo }: Props) {
+export function TemplateEditor({ kind, initialContent, activeVersionNo, tenantName }: Props) {
   const router = useRouter();
   const [sections, setSections] = useState<Section[]>(initialContent.sections);
   const [changeSummary, setChangeSummary] = useState("");
@@ -65,17 +72,16 @@ export function TemplateEditor({ kind, initialContent, activeVersionNo }: Props)
     setSections((prev) => [...prev, newSection({ title: "New section", content: [] })]);
   }, []);
 
-  function saveDraft(onSuccess?: (id: string) => void) {
+  function saveDraft() {
     start(async () => {
       try {
-        const { versionId, versionNo } = await saveTemplateDraft({
+        const { versionNo } = await saveTemplateDraft({
           kind,
           content: { sections } as never,
           changeSummary: changeSummary.trim() || undefined,
         });
         toast.success(`Saved as draft v${versionNo}`);
         setChangeSummary("");
-        onSuccess?.(versionId);
         router.refresh();
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Save failed");
@@ -84,11 +90,17 @@ export function TemplateEditor({ kind, initialContent, activeVersionNo }: Props)
   }
 
   function publish() {
-    saveDraft(async (versionId) => {
+    start(async () => {
       try {
+        const { versionId, versionNo } = await saveTemplateDraft({
+          kind,
+          content: { sections } as never,
+          changeSummary: changeSummary.trim() || undefined,
+        });
         await publishTemplateVersion({ kind, versionId });
-        toast.success("Template published");
-        router.refresh();
+        toast.success(`Published ${TEMPLATE_TITLES[kind]} v${versionNo}`);
+        setChangeSummary("");
+        router.push(`/admin/settings/document-templates/${kind}`);
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Publish failed");
       }
@@ -110,33 +122,72 @@ export function TemplateEditor({ kind, initialContent, activeVersionNo }: Props)
     });
   }
 
+  function handleLoadDefaults() {
+    if (
+      !confirm(
+        "Replace the current draft with the built-in default content? Unsaved edits will be lost. You'll still need to Save + publish to make it active.",
+      )
+    ) {
+      return;
+    }
+    setSections(getDefaultSections(kind));
+    toast.success("Loaded built-in defaults — preview, then Save + publish");
+  }
+
   return (
     <div className="space-y-4">
-      <FixedHeaderHint />
+      <Tabs defaultValue="edit" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="edit">
+            <Pencil className="mr-1 h-3.5 w-3.5" />
+            Edit
+          </TabsTrigger>
+          <TabsTrigger value="preview">Preview</TabsTrigger>
+        </TabsList>
 
-      <div className="space-y-3">
-        {sections.map((sec, idx) => (
-          <SectionCard
-            key={sec.id}
-            kind={kind}
-            section={sec}
-            number={idx + 1}
-            isFirst={idx === 0}
-            isLast={idx === sections.length - 1}
-            onTitleChange={(title) => updateSection(sec.id, { title })}
-            onContentChange={(content) => updateSection(sec.id, { content })}
-            onMoveUp={() => moveSection(idx, -1)}
-            onMoveDown={() => moveSection(idx, 1)}
-            onDelete={() => deleteSection(sec.id)}
-          />
-        ))}
-      </div>
+        {/* forceMount keeps both panels alive so switching tabs doesn't
+            tear down TipTap editors and lose focus / cursor state. We hide
+            the inactive panel via data-[state=inactive]:hidden. */}
+        <TabsContent
+          value="edit"
+          forceMount
+          className="space-y-4 data-[state=inactive]:hidden"
+        >
+          <FixedHeaderHint />
 
-      <Button variant="outline" onClick={addSection} className="w-full">
-        <Plus className="mr-1 h-4 w-4" /> Add section
-      </Button>
+          <div className="space-y-3">
+            {sections.map((sec, idx) => (
+              <SectionCard
+                key={sec.id}
+                kind={kind}
+                section={sec}
+                number={idx + 1}
+                isFirst={idx === 0}
+                isLast={idx === sections.length - 1}
+                onTitleChange={(title) => updateSection(sec.id, { title })}
+                onContentChange={(content) => updateSection(sec.id, { content })}
+                onMoveUp={() => moveSection(idx, -1)}
+                onMoveDown={() => moveSection(idx, 1)}
+                onDelete={() => deleteSection(sec.id)}
+              />
+            ))}
+          </div>
 
-      <FixedFooterHint />
+          <Button variant="outline" onClick={addSection} className="w-full">
+            <Plus className="mr-1 h-4 w-4" /> Add section
+          </Button>
+
+          <FixedFooterHint />
+        </TabsContent>
+
+        <TabsContent
+          value="preview"
+          forceMount
+          className="data-[state=inactive]:hidden"
+        >
+          <TemplatePreviewSurface kind={kind} sections={sections} tenantName={tenantName} />
+        </TabsContent>
+      </Tabs>
 
       <div className="space-y-2">
         <Label htmlFor="change-summary" className="text-xs">
@@ -151,7 +202,7 @@ export function TemplateEditor({ kind, initialContent, activeVersionNo }: Props)
         />
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-muted/40 p-3 text-sm">
+      <div className="sticky bottom-0 z-10 -mx-4 flex flex-wrap items-center justify-between gap-3 border-t bg-background/95 px-4 py-3 text-sm shadow-sm backdrop-blur sm:mx-0 sm:rounded-md sm:border">
         <div className="text-muted-foreground">
           {activeVersionNo != null ? (
             <>
@@ -163,13 +214,23 @@ export function TemplateEditor({ kind, initialContent, activeVersionNo }: Props)
             <>Active: built-in default. Saving creates v1 as a draft.</>
           )}
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleLoadDefaults}
+            disabled={pending}
+            title="Replace the current draft with the latest built-in defaults"
+          >
+            <RotateCcw className="mr-1 h-4 w-4" />
+            Load defaults
+          </Button>
           {activeVersionNo != null && (
             <Button variant="ghost" size="sm" onClick={handleRevert} disabled={pending}>
               Revert to default
             </Button>
           )}
-          <Button variant="outline" size="sm" onClick={() => saveDraft()} disabled={pending}>
+          <Button variant="outline" size="sm" onClick={saveDraft} disabled={pending}>
             {pending ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
             Save draft
           </Button>
@@ -291,7 +352,7 @@ function FixedHeaderHint() {
       <p className="mt-0.5 text-xs text-muted-foreground">
         The document title and metadata block (Claim number, Date of loss,
         Date, Homeowner, Property Address, Contractor) are rendered
-        automatically from the prospect + telefonista fields. You can't
+        automatically from the prospect + telefonista fields. You can&apos;t
         edit them here.
       </p>
     </Card>
@@ -304,8 +365,9 @@ function FixedFooterHint() {
       <p className="font-medium">Fixed signature block</p>
       <p className="mt-0.5 text-xs text-muted-foreground">
         Every generated document ends with the standard signature lines
-        (Homeowner, Co-Homeowner, Contractor / Roof AID Representative).
-        This stays consistent across templates and isn't editable.
+        (Homeowner, Co-Homeowner, Contractor Acceptance, and the
+        Representative line — labeled with your company name). This stays
+        consistent across templates and isn&apos;t editable.
       </p>
     </Card>
   );

@@ -265,7 +265,7 @@ export async function createAppointment(input: z.infer<typeof createSchema>) {
       created_by: profile.id,
       scheduled_at: parsed.scheduledAt,
       duration_minutes: parsed.durationMinutes ?? 60,
-      status: "pending",
+      status: "confirmed",
       notes: parsed.notes?.trim() || null,
       ...(parsed.rescheduledFrom
         ? { rescheduled_from: parsed.rescheduledFrom }

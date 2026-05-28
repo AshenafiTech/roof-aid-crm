@@ -20,5 +20,13 @@
   <string>????</string>
   <key>CFBundleVersion</key>
   <string>1.0</string>
+  <!-- iOS 13.0 minimum.
+       connectivity_plus >= 5.0, supabase_flutter, and several
+       transitive pods drop iOS 12 support. Anything older here would
+       break `pod install` on Codemagic / a Mac builder.
+       Flutter reads MinimumOSVersion from here when generating
+       Generated.xcconfig at build time. -->
+  <key>MinimumOSVersion</key>
+  <string>13.0</string>
 </dict>
 </plist>

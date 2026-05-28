@@ -66,5 +66,47 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<!-- ===== M5 runtime permission strings ===== -->
+	<!-- iOS surfaces these to the user the first time the app
+	     requests the corresponding capability. Apple App Store will
+	     reject builds whose Info.plist is missing a usage string for
+	     any permission the code actually triggers. -->
+	<key>NSCameraUsageDescription</key>
+	<string>Roof-Aid needs camera access so the rufero can capture inspection photos of the roof, damage close-ups, and supporting evidence.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Roof-Aid needs photo library access so the rufero can attach previously-taken photos to an inspection.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Roof-Aid may save a signed-document copy back to your photo library for your records.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Roof-Aid records the GPS coordinates of each inspection photo to verify visit location for insurance documentation.</string>
+
+	<!-- URL schemes the app may try to launch (canLaunchUrl on iOS
+	     returns false unless the scheme is whitelisted here). -->
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>tel</string>
+		<string>sms</string>
+		<string>mailto</string>
+		<string>maps</string>
+	</array>
+
+	<!-- ===== Google Maps SDK key =====
+	     Replace REPLACE_WITH_GOOGLE_MAPS_IOS_KEY with the actual
+	     iOS API key from Google Cloud Console (it's a SEPARATE key
+	     from the Android one — Google requires per-platform keys
+	     with matching bundle id restrictions).
+	     Keeping it as a hardcoded placeholder for now so the build
+	     fails loudly if someone forgets; once the key is provisioned
+	     it can be moved to a build-time substitution via xcconfig. -->
+	<key>GMSApiKey</key>
+	<string>REPLACE_WITH_GOOGLE_MAPS_IOS_KEY</string>
+
+	<!-- File-sharing capabilities (so Files.app / iCloud Drive can
+	     surface inspection PDFs the rufero saves locally). Harmless
+	     no-ops if the app doesn't actually export files. -->
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
 </dict>
 </plist>

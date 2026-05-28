@@ -6,6 +6,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../../../core/offline/hive_boxes.dart';
+import '../../domain/entities/document_entity.dart';
 
 /// Local cache for document PDFs + pending homeowner signatures.
 ///
@@ -41,6 +42,13 @@ abstract class DocumentLocalDatasource {
   /// Absolute path to the signed PDF on disk, or null if not cached.
   Future<String?> signedPdfPath(String documentId);
 
+  /// When the cached PDF was written. Compared against the server's
+  /// `updated_at` to decide whether the local copy is stale (e.g.
+  /// company-only signed first, then homeowner-signed later — the
+  /// signed_storage_path doesn't change, but the bytes do).
+  Future<DateTime?> unsignedCachedAt(String documentId);
+  Future<DateTime?> signedCachedAt(String documentId);
+
   /// Persist a captured signature PNG that the [embed_signature] sync
   /// op will replay later. The PNG sticks around on disk until the
   /// drain finishes (or [clearPendingSignature] is called).
@@ -59,6 +67,17 @@ abstract class DocumentLocalDatasource {
   /// Remove the pending signature PNG + Hive marker after a successful
   /// embed.
   Future<void> clearPendingSignature(String documentId);
+
+  /// Cache the per-prospect document list. Called after every
+  /// successful remote fetch so the next offline read can serve the
+  /// same data + the existing PDF cache renders correctly.
+  Future<void> cacheDocList(String prospectId, List<DocumentEntity> docs);
+
+  /// Cached document list for [prospectId], or empty if none. The
+  /// page lookup logic still picks signable vs already-signed off
+  /// the same fields it does online — this just feeds it the rows
+  /// without a network round-trip.
+  Future<List<DocumentEntity>> getCachedDocList(String prospectId);
 }
 
 /// Snapshot of a captured-offline signature waiting to be embedded.
@@ -128,7 +147,11 @@ class DocumentLocalDatasourceImpl implements DocumentLocalDatasource {
     final dir = await _pdfsDirectory();
     final file = File('${dir.path}/$documentId.pdf');
     await file.writeAsBytes(bytes, flush: true);
-    await _patch(documentId, unsignedPath: file.path);
+    await _patch(
+      documentId,
+      unsignedPath: file.path,
+      unsignedCachedAt: DateTime.now(),
+    );
     return file.path;
   }
 
@@ -140,7 +163,11 @@ class DocumentLocalDatasourceImpl implements DocumentLocalDatasource {
     final dir = await _pdfsDirectory();
     final file = File('${dir.path}/$documentId-signed.pdf');
     await file.writeAsBytes(bytes, flush: true);
-    await _patch(documentId, signedPath: file.path);
+    await _patch(
+      documentId,
+      signedPath: file.path,
+      signedCachedAt: DateTime.now(),
+    );
     return file.path;
   }
 
@@ -225,7 +252,62 @@ class DocumentLocalDatasourceImpl implements DocumentLocalDatasource {
     await _patch(documentId, clearPendingSig: true);
   }
 
+  @override
+  Future<void> cacheDocList(
+    String prospectId,
+    List<DocumentEntity> docs,
+  ) async {
+    final box = await _opened();
+    await box.put(
+      _docListKey(prospectId),
+      jsonEncode(docs.map(_encodeDoc).toList()),
+    );
+  }
+
+  @override
+  Future<List<DocumentEntity>> getCachedDocList(String prospectId) async {
+    final box = await _opened();
+    final raw = box.get(_docListKey(prospectId));
+    if (raw == null) return const [];
+    try {
+      final list = jsonDecode(raw) as List;
+      return list
+          .map((m) => _decodeDoc((m as Map).cast<String, dynamic>()))
+          .toList(growable: false);
+    } catch (_) {
+      return const [];
+    }
+  }
+
   // ── helpers ───────────────────────────────────────────────
+
+  String _docListKey(String prospectId) => 'doc_list:$prospectId';
+
+  Map<String, dynamic> _encodeDoc(DocumentEntity d) => {
+        'id': d.id,
+        'tenant_id': d.tenantId,
+        'prospect_id': d.prospectId,
+        'type': d.type,
+        'status': d.status,
+        'storage_path': d.storagePath,
+        'signed_storage_path': d.signedStoragePath,
+        'created_by': d.createdBy,
+        'created_at': d.createdAt.toIso8601String(),
+        'updated_at': d.updatedAt.toIso8601String(),
+      };
+
+  DocumentEntity _decodeDoc(Map<String, dynamic> m) => DocumentEntity(
+        id: m['id'] as String,
+        tenantId: m['tenant_id'] as String,
+        prospectId: m['prospect_id'] as String,
+        type: m['type'] as String,
+        status: m['status'] as String,
+        createdAt: DateTime.parse(m['created_at'] as String),
+        updatedAt: DateTime.parse(m['updated_at'] as String),
+        storagePath: m['storage_path'] as String?,
+        signedStoragePath: m['signed_storage_path'] as String?,
+        createdBy: m['created_by'] as String?,
+      );
 
   Future<Map<String, dynamic>?> _readRecord(String documentId) async {
     final box = await _opened();
@@ -244,6 +326,8 @@ class DocumentLocalDatasourceImpl implements DocumentLocalDatasource {
     String documentId, {
     String? unsignedPath,
     String? signedPath,
+    DateTime? unsignedCachedAt,
+    DateTime? signedCachedAt,
     Map<String, dynamic>? pendingSig,
     bool clearPendingSig = false,
   }) async {
@@ -251,8 +335,38 @@ class DocumentLocalDatasourceImpl implements DocumentLocalDatasource {
     final current = await _readRecord(documentId) ?? <String, dynamic>{};
     if (unsignedPath != null) current['unsigned_path'] = unsignedPath;
     if (signedPath != null) current['signed_path'] = signedPath;
+    if (unsignedCachedAt != null) {
+      current['unsigned_cached_at'] = unsignedCachedAt.toIso8601String();
+    }
+    if (signedCachedAt != null) {
+      current['signed_cached_at'] = signedCachedAt.toIso8601String();
+    }
     if (pendingSig != null) current['pending_sig'] = pendingSig;
     if (clearPendingSig) current.remove('pending_sig');
     await box.put(_docKey(documentId), jsonEncode(current));
+  }
+
+  @override
+  Future<DateTime?> unsignedCachedAt(String documentId) async {
+    final r = await _readRecord(documentId);
+    final iso = r?['unsigned_cached_at'] as String?;
+    if (iso == null) return null;
+    try {
+      return DateTime.parse(iso);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  Future<DateTime?> signedCachedAt(String documentId) async {
+    final r = await _readRecord(documentId);
+    final iso = r?['signed_cached_at'] as String?;
+    if (iso == null) return null;
+    try {
+      return DateTime.parse(iso);
+    } catch (_) {
+      return null;
+    }
   }
 }

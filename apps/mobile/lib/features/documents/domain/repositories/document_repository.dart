@@ -48,4 +48,26 @@ abstract class DocumentRepository {
   /// "Signature captured · syncing when online" indicator instead
   /// of the normal "Already signed" affordances.
   Future<bool> hasPendingSignature(String documentId);
+
+  /// Returns an absolute local path to the document PDF, fetching +
+  /// caching on demand if the local cache is empty OR stale. Falls
+  /// back to null when there's no cache AND no network — caller
+  /// should then surface an error or use [getSignedUrl] as a last
+  /// resort.
+  ///
+  /// Pass [signed]=true to get the signed copy (or null if not yet
+  /// signed), [signed]=false for the unsigned PDF.
+  ///
+  /// [serverUpdatedAt] is the doc row's `updated_at` from the server.
+  /// When provided and newer than the locally-cached timestamp, the
+  /// PDF is re-downloaded. This covers the two-party signing case
+  /// where the same `signed_storage_path` holds the company-only PDF
+  /// first and the fully-signed PDF after the homeowner signs — the
+  /// path is identical but the bytes are different.
+  Future<String?> ensureLocalPdfPath({
+    required String documentId,
+    required String storagePath,
+    required bool signed,
+    DateTime? serverUpdatedAt,
+  });
 }

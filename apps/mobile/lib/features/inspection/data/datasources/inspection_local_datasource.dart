@@ -23,6 +23,13 @@ abstract class InspectionLocalDatasource {
   Future<InspectionEntity?> getById(String inspectionId);
   Future<InspectionEntity?> findByAppointmentId(String appointmentId);
 
+  /// All cached drafts for a prospect, newest first. Drives the
+  /// Inspections tab on the prospect detail page when the rufero is
+  /// offline — instead of throwing "appear to be offline" we show
+  /// whatever drafts they've already touched (including stubs created
+  /// offline that haven't drained yet).
+  Future<List<InspectionEntity>> findByProspectId(String prospectId);
+
   /// Upsert. Caller sets [dirty] true when the change hasn't been
   /// confirmed by the server yet, false after a successful server write
   /// or after the sync worker drains the pending op.
@@ -71,6 +78,24 @@ class InspectionLocalDatasourceImpl implements InspectionLocalDatasource {
       }
     }
     return null;
+  }
+
+  @override
+  Future<List<InspectionEntity>> findByProspectId(String prospectId) async {
+    final box = await _opened();
+    final out = <InspectionEntity>[];
+    for (final raw in box.values) {
+      try {
+        final wrapped = _decode(raw);
+        if (wrapped.inspection.prospectId == prospectId) {
+          out.add(wrapped.inspection);
+        }
+      } catch (_) {
+        // Corrupt row — skip.
+      }
+    }
+    out.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return out;
   }
 
   @override

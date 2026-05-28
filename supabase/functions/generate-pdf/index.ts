@@ -150,30 +150,40 @@ serve(async (req) => {
   }
 
   // 3. Resolve token values (header fields + content variables).
-  const homeowner = prospect.name ?? '—'
+  //
+  // Header fields are split into three sources:
+  //   - From the prospect record: homeowner_name, property_address.
+  //   - From the tenant record: contractor_name (= tenants.name, which is
+  //     the company name captured at signup; renames propagate to every
+  //     newly generated document since we re-read it each call).
+  //   - Intentionally blank: claim_number, today (the "Date" field), and
+  //     loss_date. These are filled by mobile/inspection after the doc is
+  //     generated, or are handwritten on the printed copy. Even if a
+  //     telefonista typed values in NewDocumentDialog they're ignored so
+  //     the PDF shows fillable dashed lines.
+  const homeowner = prospect.name ?? ''
   const address = [prospect.address, prospect.city, prospect.state, prospect.zip]
     .filter(Boolean)
     .join(', ')
   const fields = (input.fields ?? {}) as Record<string, unknown>
   const insurance = (fields.insurance_company as string | undefined) ?? ''
-  const claim = (fields.claim_number as string | undefined) ?? ''
-  const lossDate = (fields.loss_date as string | undefined) ?? ''
   const deductibleNum = fields.deductible as number | undefined
   const deductible = typeof deductibleNum === 'number' ? `$${deductibleNum.toFixed(2)}` : ''
   const totalJobCostNum = fields.total_job_cost as number | undefined
   const totalJobCost =
     typeof totalJobCostNum === 'number' ? `$${totalJobCostNum.toFixed(2)}` : ''
   const scope = (fields.scope_of_work as string | undefined) ?? ''
-  const todayIso = new Date().toISOString().slice(0, 10)
 
   const tokenValues: Record<string, string> = {
     homeowner_name: homeowner,
     property_address: address,
     contractor_name: tenantName,
-    today: todayIso,
+    // Intentionally blank — filled by mobile / handwritten:
+    today: '',
+    claim_number: '',
+    loss_date: '',
+    // Optional per-template body fields:
     insurance_company: insurance,
-    claim_number: claim,
-    loss_date: lossDate,
     deductible,
     total_job_cost: totalJobCost,
     scope_of_work: scope,
@@ -240,11 +250,13 @@ serve(async (req) => {
     }
   }
 
-  // Fixed top metadata block.
+  // Fixed top metadata block. claim_number, loss_date, and the "Date"
+  // (today) field are intentionally blank — see the tokenValues comment
+  // above. Renderer draws a fillable dashed line when value is empty.
   renderTemplateHeader(ctx, {
-    claim_number: claim,
-    loss_date: lossDate,
-    today: todayIso,
+    claim_number: '',
+    loss_date: '',
+    today: '',
     homeowner_name: homeowner,
     property_address: address,
     contractor_name: tenantName,
