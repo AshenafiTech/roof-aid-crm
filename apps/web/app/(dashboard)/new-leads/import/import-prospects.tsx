@@ -255,8 +255,8 @@ export function ImportProspects() {
                       key={row.row}
                       className={
                         row.skip
-                          ? "bg-amber-50/50 text-muted-foreground dark:bg-amber-500/5"
-                          : ""
+                          ? "border-l-2 border-l-amber-500/70 bg-amber-50/60 dark:bg-amber-500/10"
+                          : "hover:bg-muted/30"
                       }
                     >
                       <td className="px-3 py-2 tabular-nums">{row.row}</td>
@@ -279,12 +279,12 @@ export function ImportProspects() {
                       </td>
                       <td className="px-3 py-2">
                         {row.skip ? (
-                          <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400">
+                          <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-700 ring-1 ring-amber-500/30 dark:text-amber-300">
                             <SkipForward className="h-3 w-3" />
                             {row.skipReason}
                           </span>
                         ) : (
-                          <span className="text-emerald-600 dark:text-emerald-400">
+                          <span className="inline-flex items-center rounded-md bg-emerald-500/15 px-2 py-0.5 text-[11px] font-medium text-emerald-700 ring-1 ring-emerald-500/30 dark:text-emerald-300">
                             Ready
                           </span>
                         )}
