@@ -236,16 +236,25 @@ export async function loadTemplateForPreview(
     }
   }
 
-  const { data: prospect } = await supabase
-    .from("prospects")
-    .select("name, address, city, state, zip")
-    .eq("id", parsed.prospectId)
-    .single();
+  const [{ data: prospect }, { data: tenantRow }] = await Promise.all([
+    supabase
+      .from("prospects")
+      .select("name, address, city, state, zip")
+      .eq("id", parsed.prospectId)
+      .single(),
+    supabase
+      .from("tenants")
+      .select("name")
+      .eq("id", profile.tenant_id)
+      .single(),
+  ]);
+
+  // contractor_name is the company name captured at signup (tenants.name).
+  // Renames here propagate to every newly-generated preview / PDF.
+  const tenantName = tenantRow?.name?.trim() ?? "";
 
   const fields = (parsed.fields ?? {}) as Record<string, unknown>;
   const insurance = (fields.insurance_company as string | undefined) ?? "";
-  const claim = (fields.claim_number as string | undefined) ?? "";
-  const lossDate = (fields.loss_date as string | undefined) ?? "";
   const deductibleNum = fields.deductible as number | undefined;
   const deductible =
     typeof deductibleNum === "number" ? `$${deductibleNum.toFixed(2)}` : "";
@@ -264,11 +273,13 @@ export async function loadTemplateForPreview(
     ]
       .filter(Boolean)
       .join(", "),
-    contractor_name: "Roof AID",
-    today: new Date().toISOString().slice(0, 10),
+    contractor_name: tenantName,
+    // Intentionally blank — filled by mobile / handwritten on the
+    // printed copy (matches the generate-pdf token map).
+    today: "",
+    claim_number: "",
+    loss_date: "",
     insurance_company: insurance,
-    claim_number: claim,
-    loss_date: lossDate,
     deductible,
     total_job_cost: totalJobCost,
     scope_of_work: scope,

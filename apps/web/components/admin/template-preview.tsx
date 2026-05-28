@@ -102,7 +102,7 @@ export function TemplatePreviewSurface({
                   />
                 ))
               )}
-              <SignatureBlock />
+              <SignatureBlock tenantName={resolvedTokens.contractor_name} />
             </div>
           </div>
         </div>
@@ -372,7 +372,10 @@ function TokenPlaceholder({ label }: { label: string }) {
 // Signature block mirrors the reference document: numbered "Signatures"
 // heading, then for each signer a "<role> Signature: ____ Date: ____"
 // row followed by a "Printed Name: ___" row.
-function SignatureBlock() {
+function SignatureBlock({ tenantName }: { tenantName?: string }) {
+  const repLabel = tenantName
+    ? `${tenantName} Representative Signature`
+    : "Contractor Representative Signature";
   return (
     <section className="space-y-4 border-t border-gray-400 pt-5 text-[12px]">
       <h2 className="text-[15px] font-bold">7. Signatures</h2>
@@ -381,7 +384,7 @@ function SignatureBlock() {
       <SignerRow label="Co-Homeowner Signature (if applicable)" />
       <PrintedNameRow />
       <SignerRow label="Contractor Acceptance" />
-      <SignerRow label="Roof AID Representative Signature" />
+      <SignerRow label={repLabel} />
       <PrintedNameRow />
     </section>
   );

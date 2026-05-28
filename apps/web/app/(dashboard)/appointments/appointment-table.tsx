@@ -174,17 +174,29 @@ export function AppointmentTable({
       {/* Rows */}
       <div className="space-y-2">
         {appointments.map((appt) => (
-          <Card key={appt.id} className="px-4 py-3">
-            <div className="grid items-center gap-3 lg:grid-cols-[1fr_140px_180px_120px_100px]">
+          <Card
+            key={appt.id}
+            className={
+              "relative px-4 py-3 transition-colors" +
+              (appt.prospect ? " hover:border-primary/40 hover:bg-muted/30" : "")
+            }
+          >
+            {appt.prospect && (
+              <Link
+                href={`/prospects/${appt.prospect.id}`}
+                className="absolute inset-0 z-0 rounded-[inherit] focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                aria-label={`Open ${appt.prospect.name}`}
+              >
+                <span className="sr-only">Open prospect</span>
+              </Link>
+            )}
+            <div className="pointer-events-none grid items-center gap-3 lg:grid-cols-[1fr_140px_180px_120px_100px]">
               {/* Prospect */}
               <div className="min-w-0">
                 {appt.prospect ? (
-                  <Link
-                    href={`/prospects/${appt.prospect.id}`}
-                    className="text-sm font-medium hover:underline"
-                  >
+                  <span className="text-sm font-medium">
                     {appt.prospect.name}
-                  </Link>
+                  </span>
                 ) : (
                   <span className="text-sm text-muted-foreground">
                     Unknown prospect
@@ -220,7 +232,9 @@ export function AppointmentTable({
               {/* Rufero */}
               <div className="min-w-0">
                 {canAssign ? (
-                  <RuferoCell appointment={appt} ruferos={ruferos} />
+                  <div className="pointer-events-auto">
+                    <RuferoCell appointment={appt} ruferos={ruferos} />
+                  </div>
                 ) : (
                   <div className="flex items-center gap-1 text-sm">
                     <User className="h-3 w-3 text-muted-foreground lg:hidden" />
@@ -246,7 +260,7 @@ export function AppointmentTable({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="ml-auto h-7 w-7"
+                  className="pointer-events-auto ml-auto h-7 w-7"
                   onClick={() => setDrawerAppt(appt)}
                   aria-label="Manage appointment"
                 >
@@ -256,7 +270,7 @@ export function AppointmentTable({
             </div>
 
             {appt.notes && (
-              <p className="mt-2 border-t pt-2 text-xs text-muted-foreground">
+              <p className="pointer-events-none mt-2 border-t pt-2 text-xs text-muted-foreground">
                 {appt.notes}
               </p>
             )}

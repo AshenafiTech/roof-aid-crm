@@ -146,9 +146,10 @@ function FixedFooterPreview() {
     <Card className="border-dashed bg-muted/30 px-4 py-3 text-sm">
       <p className="font-medium">Signature block (fixed)</p>
       <p className="mt-0.5 text-xs text-muted-foreground">
-        Homeowner, Co-Homeowner, and Contractor / Roof AID Representative
-        signature lines are appended automatically at the bottom of the
-        last page. The homeowner signs digitally in the next step.
+        Homeowner, Co-Homeowner, Contractor Acceptance, and the
+        Representative signature line (labeled with your company name)
+        are appended automatically at the bottom of the last page. The
+        homeowner signs digitally in the next step.
       </p>
     </Card>
   );
