@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   CheckCircle2,
+  Clock,
   Eye,
   FileSignature,
   FileText,
@@ -21,13 +22,61 @@ import type { DocumentListItem } from "@/lib/queries/documents";
 import { DocumentRowActions } from "@/components/shared/document-actions";
 import { NewDocumentDialog } from "@/components/shared/new-document-dialog";
 
-const STATUS_CLASS: Record<string, string> = {
-  generated: "bg-gray-50 text-gray-700 border-gray-200",
-  sent: "bg-blue-50 text-blue-700 border-blue-200",
-  signed: "bg-emerald-50 text-emerald-700 border-emerald-200",
-  uploaded: "bg-violet-50 text-violet-700 border-violet-200",
-  failed: "bg-red-50 text-red-700 border-red-200",
+// Snake_case status → presentation. Each entry pairs a human label
+// with a small icon + tinted chip styling that holds up in dark mode.
+type StatusMeta = {
+  label: string;
+  Icon: typeof CheckCircle2 | null;
+  className: string;
 };
+
+const STATUS_META: Record<string, StatusMeta> = {
+  generated: {
+    label: "Draft",
+    Icon: FileText,
+    className:
+      "border-gray-300 bg-gray-100 text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200",
+  },
+  awaiting_homeowner_signature: {
+    label: "Awaiting homeowner",
+    Icon: Clock,
+    className:
+      "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300",
+  },
+  sent: {
+    label: "Sent",
+    Icon: null,
+    className:
+      "border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-500/40 dark:bg-blue-500/10 dark:text-blue-300",
+  },
+  signed: {
+    label: "Signed",
+    Icon: CheckCircle2,
+    className:
+      "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-300",
+  },
+  uploaded: {
+    label: "Uploaded",
+    Icon: Upload,
+    className:
+      "border-violet-300 bg-violet-50 text-violet-700 dark:border-violet-500/40 dark:bg-violet-500/10 dark:text-violet-300",
+  },
+  failed: {
+    label: "Failed",
+    Icon: null,
+    className:
+      "border-red-300 bg-red-50 text-red-700 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-300",
+  },
+};
+
+function getStatusMeta(status: string | null | undefined): StatusMeta {
+  if (status && STATUS_META[status]) return STATUS_META[status];
+  return {
+    label: status ?? "—",
+    Icon: null,
+    className: "border-border bg-muted text-muted-foreground",
+  };
+}
 
 const TYPE_LABEL: Record<string, string> = {
   "3rd_party_auth": "3rd Party Authorization",
@@ -139,59 +188,73 @@ export function DocumentsTab({
           {documents.map((d) => {
             const { Icon, bg, fg } = getTypeIcon(d.type);
             const isSigned = d.status === "signed";
+            const isAwaiting = d.status === "awaiting_homeowner_signature";
             const canSign = d.status === "generated" && !!d.storage_path;
-            const createdBy =
-              d.created_by_user
-                ? [d.created_by_user.first_name, d.created_by_user.last_name]
-                    .filter(Boolean)
-                    .join(" ")
-                : "";
+            const statusMeta = getStatusMeta(d.status);
+            const StatusIcon = statusMeta.Icon;
+            const createdBy = d.created_by_user
+              ? [d.created_by_user.first_name, d.created_by_user.last_name]
+                  .filter(Boolean)
+                  .join(" ")
+              : "";
+
+            // Subtle left-edge accent that carries the status color so
+            // owners can scan a list of docs at a glance.
+            const accent = isSigned
+              ? "border-l-4 border-l-emerald-400"
+              : isAwaiting
+                ? "border-l-4 border-l-amber-400"
+                : "border-l-4 border-l-transparent";
 
             return (
               <Card
                 key={d.id}
-                className={`flex items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/30 ${
-                  isSigned ? "border-l-4 border-l-emerald-400" : ""
-                }`}
+                className={`group relative flex items-center gap-4 px-4 py-3 transition-all hover:border-primary/40 hover:bg-muted/30 hover:shadow-sm ${accent}`}
               >
+                {/* Overlay link makes the whole card clickable. Interactive
+                    children (Sign / View / ⋯) opt back in via
+                    pointer-events-auto so their handlers still fire. */}
                 <Link
                   href={`/documents/${d.id}`}
-                  className="flex min-w-0 flex-1 items-center gap-3"
+                  className="absolute inset-0 z-0 rounded-[inherit] focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                  aria-label={`Open ${TYPE_LABEL[d.type] ?? d.type}`}
                 >
+                  <span className="sr-only">Open document</span>
+                </Link>
+
+                <div className="pointer-events-none flex min-w-0 flex-1 items-center gap-3">
                   <div
-                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md ${bg}`}
+                    className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition-transform group-hover:scale-105 ${bg}`}
                   >
                     <Icon className={`h-5 w-5 ${fg}`} />
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="truncate text-sm font-semibold">
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <p className="truncate text-sm font-semibold leading-none">
                         {TYPE_LABEL[d.type] ?? d.type}
                       </p>
                       <Badge
                         variant="outline"
-                        className={`shrink-0 capitalize ${
-                          STATUS_CLASS[d.status ?? ""] ?? ""
-                        }`}
+                        className={`inline-flex shrink-0 items-center gap-1 text-[11px] font-medium ${statusMeta.className}`}
                       >
-                        {isSigned && (
-                          <CheckCircle2 className="mr-1 h-3 w-3" />
-                        )}
-                        {d.status ?? "—"}
+                        {StatusIcon && <StatusIcon className="h-3 w-3" />}
+                        {statusMeta.label}
                       </Badge>
                     </div>
-                    <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                      {d.created_at ? formatRelative(d.created_at) : "—"}
-                      {createdBy ? ` · by ${createdBy}` : ""}
-                      {d.page_count ? ` · ${d.page_count}pp` : ""}
+                    <p className="truncate text-xs text-muted-foreground">
+                      {d.created_at ? `Created ${formatRelative(d.created_at)}` : "—"}
+                      {createdBy ? ` · ${createdBy}` : ""}
+                      {d.page_count
+                        ? ` · ${d.page_count} page${d.page_count === 1 ? "" : "s"}`
+                        : ""}
                       {isSigned && d.signed_at
                         ? ` · signed ${formatRelative(d.signed_at)}`
                         : ""}
                     </p>
                   </div>
-                </Link>
+                </div>
 
-                <div className="flex shrink-0 items-center gap-1.5">
+                <div className="pointer-events-auto flex shrink-0 items-center gap-1.5">
                   {canSign ? (
                     <Button asChild size="sm">
                       <Link href={`/documents/${d.id}/sign`}>
@@ -200,7 +263,7 @@ export function DocumentsTab({
                       </Link>
                     </Button>
                   ) : (
-                    <Button asChild size="sm" variant="outline">
+                    <Button asChild size="sm" variant="ghost">
                       <Link href={`/documents/${d.id}`}>
                         <Eye className="mr-1.5 h-3.5 w-3.5" />
                         View

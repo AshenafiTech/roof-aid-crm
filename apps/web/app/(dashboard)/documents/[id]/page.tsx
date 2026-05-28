@@ -1,6 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, CheckCircle2, Pen } from "lucide-react";
+import {
+  ArrowLeft,
+  CheckCircle2,
+  ChevronDown,
+  Mail,
+  MapPin,
+  Pen,
+  Phone,
+} from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,6 +28,21 @@ const TYPE_LABEL: Record<string, string> = {
   supplement: "Supplement",
   upload: "Uploaded PDF",
 };
+
+const STATUS_LABEL: Record<string, string> = {
+  generated: "Generated",
+  awaiting_homeowner_signature: "Awaiting homeowner",
+  signed: "Signed",
+};
+
+function formatShort(iso: string | null): string | null {
+  if (!iso) return null;
+  return new Date(iso).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
 
 export default async function DocumentDetailPage({
   params,
@@ -46,13 +69,22 @@ export default async function DocumentDetailPage({
     created_at: string | null;
     signature_metadata: Record<string, unknown> | null;
     prospect:
-      | { id: string; name: string; email: string | null }
+      | {
+          id: string;
+          name: string;
+          email: string | null;
+          address: string | null;
+          city: string | null;
+          state: string | null;
+          zip: string | null;
+          phones: string[] | null;
+        }
       | null;
   };
   const docRes = await supabase
     .from("documents")
     .select(
-      "id, type, status, storage_path, signed_storage_path, signed_at, page_count, sha256, signed_sha256, created_at, signature_metadata, prospect:prospects!prospect_id(id, name, email)",
+      "id, type, status, storage_path, signed_storage_path, signed_at, page_count, sha256, signed_sha256, created_at, signature_metadata, prospect:prospects!prospect_id(id, name, email, address, city, state, zip, phones)",
     )
     .eq("id", id)
     .maybeSingle();
@@ -75,9 +107,24 @@ export default async function DocumentDetailPage({
     signFor(doc.signed_storage_path),
   ]);
 
+  const statusLabel = doc.status ? (STATUS_LABEL[doc.status] ?? doc.status) : "—";
+  const createdShort = formatShort(doc.created_at);
+  const signedShort = formatShort(doc.signed_at);
+  const propAddress = prospect
+    ? [prospect.address, prospect.city, prospect.state, prospect.zip]
+        .filter(Boolean)
+        .join(", ")
+    : "";
+  const primaryPhone = prospect?.phones?.[0] ?? null;
+
   return (
-    <div className="space-y-6">
-      <Button asChild variant="ghost" size="sm" className="h-8 px-2">
+    <div className="space-y-4">
+      <Button
+        asChild
+        variant="ghost"
+        size="sm"
+        className="-ml-2 h-8 px-2 text-muted-foreground hover:text-foreground"
+      >
         <Link
           href={
             prospect
@@ -91,15 +138,13 @@ export default async function DocumentDetailPage({
       </Button>
 
       {justSigned && (
-        <Card className="flex items-start gap-3 border-emerald-200 bg-emerald-50 px-4 py-4 dark:border-emerald-900 dark:bg-emerald-950">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300">
-            <CheckCircle2 className="h-5 w-5" />
-          </div>
-          <div className="flex-1">
-            <h2 className="font-semibold text-emerald-900 dark:text-emerald-100">
+        <Card className="flex items-start gap-3 border-emerald-200 bg-emerald-50 px-4 py-3 dark:border-emerald-900 dark:bg-emerald-950">
+          <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-300" />
+          <div className="text-sm">
+            <p className="font-semibold text-emerald-900 dark:text-emerald-100">
               Document signed
-            </h2>
-            <p className="mt-0.5 text-sm text-emerald-800 dark:text-emerald-200">
+            </p>
+            <p className="text-emerald-800 dark:text-emerald-200">
               {prospect?.email
                 ? `A copy is being emailed to ${prospect.email}.`
                 : "No email on file — download the signed PDF below to share manually."}
@@ -108,114 +153,160 @@ export default async function DocumentDetailPage({
         </Card>
       )}
 
+      {/* Header card — title + status + customer info + actions */}
       <Card className="space-y-4 px-5 py-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-xs uppercase text-muted-foreground">Type</p>
-            <h1 className="text-lg font-semibold">
-              {TYPE_LABEL[doc.type] ?? doc.type}
-            </h1>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-xl font-semibold tracking-tight">
+                {TYPE_LABEL[doc.type] ?? doc.type}
+              </h1>
+              <Badge variant="outline">{statusLabel}</Badge>
+              {doc.status === "awaiting_homeowner_signature" && (
+                <span className="text-xs text-muted-foreground">
+                  — homeowner signs on the mobile app
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {createdShort && <>Created {createdShort}</>}
+              {signedShort && <> · Signed {signedShort}</>}
+              {doc.page_count != null && (
+                <>
+                  {" · "}
+                  {doc.page_count} {doc.page_count === 1 ? "page" : "pages"}
+                </>
+              )}
+            </p>
           </div>
-          <Badge variant="outline" className="capitalize">
-            {doc.status === "awaiting_homeowner_signature"
-              ? "Awaiting homeowner"
-              : (doc.status ?? "—")}
-          </Badge>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {doc.status === "generated" &&
+              ["owner", "admin", "super_admin"].includes(user.role) && (
+                <Button asChild size="sm">
+                  <Link href={`/documents/${doc.id}/sign`}>
+                    <Pen className="mr-1.5 h-4 w-4" />
+                    Sign as company
+                  </Link>
+                </Button>
+              )}
+            {doc.status === "signed" && prospect?.email && (
+              <ResendEmailButton signedDocId={doc.id} email={prospect.email} />
+            )}
+            <DocumentRowActions
+              document={{
+                id: doc.id,
+                status: doc.status,
+                storage_path: doc.storage_path,
+                signed_storage_path: doc.signed_storage_path,
+              }}
+              currentUserRole={user.role}
+            />
+          </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Detail label="Prospect">
-            {prospect ? (
+        {/* Customer info block — pulled from the prospect record */}
+        {prospect ? (
+          <div className="grid gap-2 rounded-md border bg-muted/30 px-4 py-3 text-sm sm:grid-cols-2">
+            <CustomerField label="Homeowner">
               <Link
                 href={`/prospects/${prospect.id}`}
-                className="text-sm text-blue-600 hover:underline"
+                className="font-medium text-foreground hover:underline"
               >
                 {prospect.name}
               </Link>
-            ) : (
-              "(deleted)"
-            )}
-          </Detail>
-          <Detail label="Created">
-            {doc.created_at
-              ? new Date(doc.created_at).toLocaleString()
-              : "—"}
-          </Detail>
-          <Detail label="Pages">{doc.page_count ?? "—"}</Detail>
-          <Detail label="Signed at">
-            {doc.signed_at
-              ? new Date(doc.signed_at).toLocaleString()
-              : "—"}
-          </Detail>
-          <Detail label="Unsigned SHA-256">
-            <code className="break-all text-xs">{doc.sha256 ?? "—"}</code>
-          </Detail>
-          <Detail label="Signed SHA-256">
-            <code className="break-all text-xs">{doc.signed_sha256 ?? "—"}</code>
-          </Detail>
-        </div>
-
-        <div className="flex flex-wrap gap-2 pt-2">
-          {doc.status === "generated" &&
-            ["owner", "admin", "super_admin"].includes(user.role) && (
-              <Button asChild size="sm">
-                <Link href={`/documents/${doc.id}/sign`}>
-                  <Pen className="mr-1.5 h-4 w-4" />
-                  Sign as company
-                </Link>
-              </Button>
-            )}
-          {doc.status === "awaiting_homeowner_signature" && (
-            <span className="inline-flex items-center rounded-md bg-amber-100 px-2 py-1 text-xs font-medium text-amber-900 dark:bg-amber-900/40 dark:text-amber-100">
-              Waiting on homeowner — signs from the mobile app
-            </span>
-          )}
-          {doc.status === "signed" && prospect?.email && (
-            <ResendEmailButton signedDocId={doc.id} email={prospect.email} />
-          )}
-          <DocumentRowActions
-            document={{
-              id: doc.id,
-              status: doc.status,
-              storage_path: doc.storage_path,
-              signed_storage_path: doc.signed_storage_path,
-            }}
-            currentUserRole={user.role}
-          />
-        </div>
+            </CustomerField>
+            <CustomerField label="Property address" icon={MapPin}>
+              {propAddress || "—"}
+            </CustomerField>
+            <CustomerField label="Phone" icon={Phone}>
+              {primaryPhone ? (
+                <a
+                  href={`tel:${primaryPhone}`}
+                  className="hover:underline"
+                >
+                  {primaryPhone}
+                </a>
+              ) : (
+                "—"
+              )}
+            </CustomerField>
+            <CustomerField label="Email" icon={Mail}>
+              {prospect.email ? (
+                <a
+                  href={`mailto:${prospect.email}`}
+                  className="truncate hover:underline"
+                >
+                  {prospect.email}
+                </a>
+              ) : (
+                "—"
+              )}
+            </CustomerField>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">Prospect deleted.</p>
+        )}
       </Card>
 
+      {/* PDF — focal point of the page */}
       <PdfFrame
         unsignedUrl={unsignedUrl}
         signedUrl={signedUrl}
         defaultView={signedUrl ? "signed" : "unsigned"}
       />
 
+      {/* Verification hashes — collapsed by default; for audit checks only */}
+      <details className="group rounded-md border bg-muted/20 px-4 py-2 text-sm">
+        <summary className="flex cursor-pointer list-none items-center gap-2 text-muted-foreground hover:text-foreground">
+          <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+          File integrity (SHA-256)
+        </summary>
+        <dl className="mt-3 grid gap-x-6 gap-y-2 text-xs sm:grid-cols-[max-content_1fr]">
+          <dt className="text-muted-foreground">Unsigned</dt>
+          <dd>
+            <code className="break-all">{doc.sha256 ?? "—"}</code>
+          </dd>
+          <dt className="text-muted-foreground">Signed</dt>
+          <dd>
+            <code className="break-all">{doc.signed_sha256 ?? "—"}</code>
+          </dd>
+        </dl>
+      </details>
+
       <DocumentAuditSection documentId={doc.id} />
 
       {doc.signature_metadata && (
-        <Card className="space-y-2 px-5 py-4">
-          <h2 className="text-sm font-medium">Signature audit</h2>
-          <pre className="overflow-x-auto whitespace-pre-wrap rounded bg-muted/40 p-3 text-xs">
+        <details className="group rounded-md border bg-muted/20 px-4 py-2 text-sm">
+          <summary className="flex cursor-pointer list-none items-center gap-2 text-muted-foreground hover:text-foreground">
+            <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+            Signature metadata (raw)
+          </summary>
+          <pre className="mt-3 overflow-x-auto whitespace-pre-wrap rounded bg-background p-3 text-xs">
             {JSON.stringify(doc.signature_metadata, null, 2)}
           </pre>
-        </Card>
+        </details>
       )}
     </div>
   );
 }
 
-function Detail({
+function CustomerField({
   label,
+  icon: Icon,
   children,
 }: {
   label: string;
+  icon?: typeof MapPin;
   children: React.ReactNode;
 }) {
   return (
-    <div>
-      <p className="text-xs uppercase text-muted-foreground">{label}</p>
-      <div className="mt-1 text-sm">{children}</div>
+    <div className="min-w-0">
+      <p className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+        {Icon && <Icon className="h-3 w-3" />}
+        {label}
+      </p>
+      <div className="mt-0.5 truncate">{children}</div>
     </div>
   );
 }
