@@ -80,12 +80,12 @@ export function ProspectTabs({
     <Tabs value={current} onValueChange={setTab}>
       <TabsList>
         <TabsTrigger value="overview">Overview</TabsTrigger>
+        <TabsTrigger value="documents">Documents</TabsTrigger>
         <TabsTrigger value="pipeline">Pipeline</TabsTrigger>
         <TabsTrigger value="assignment">Assignment</TabsTrigger>
         <TabsTrigger value="activity">Activity</TabsTrigger>
         <TabsTrigger value="notes">Notes</TabsTrigger>
         <TabsTrigger value="sms">SMS</TabsTrigger>
-        <TabsTrigger value="documents">Documents</TabsTrigger>
       </TabsList>
 
       <TabsContent value="overview" className="pt-4">

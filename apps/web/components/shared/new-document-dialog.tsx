@@ -13,9 +13,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 
 import {
   createDocument,
@@ -30,7 +27,7 @@ import {
 } from "@/lib/templates/template-kinds";
 import { DocumentPreviewEditor } from "@/components/shared/document-preview-editor";
 
-type Step = "template" | "fields" | "preview" | "done";
+type Step = "template" | "preview" | "done";
 
 const TEMPLATE_CARDS: Array<{ kind: TemplateKind }> = TEMPLATE_KINDS.filter(
   (k) => k !== "supplement",
@@ -53,14 +50,6 @@ export function NewDocumentDialog({
   const [pending, start] = useTransition();
   const [createdId, setCreatedId] = useState<string | null>(null);
 
-  // Field state.
-  const [insurance, setInsurance] = useState("");
-  const [claim, setClaim] = useState("");
-  const [lossDate, setLossDate] = useState("");
-  const [deductible, setDeductible] = useState("");
-  const [totalJobCost, setTotalJobCost] = useState("");
-  const [scope, setScope] = useState("");
-
   // Preview-edit state. When templateVersionId is null we're previewing
   // the built-in defaults; either way the telefonista can override per
   // prospect, and edits get logged.
@@ -76,12 +65,6 @@ export function NewDocumentDialog({
     setStep("template");
     setKind(null);
     setCreatedId(null);
-    setInsurance("");
-    setClaim("");
-    setLossDate("");
-    setDeductible("");
-    setTotalJobCost("");
-    setScope("");
     setTemplateVersionId(null);
     setBaselineContent({ sections: [] });
     setFinalContent({ sections: [] });
@@ -91,30 +74,19 @@ export function NewDocumentDialog({
     setAutoCompanySign(true);
   }
 
+  // Pick a template → load its preview and jump straight there. The old
+  // "fields" step (insurance carrier, claim #, deductible, etc.) was
+  // removed per owner direction: header fields come from prospect/tenant
+  // data, and anything else can be edited inline in the preview before
+  // generating. Pass `k` directly to avoid stale `kind` state.
   function pickTemplate(k: TemplateKind) {
     setKind(k);
-    setStep("fields");
-  }
-
-  function buildFields(): Record<string, unknown> {
-    const fields: Record<string, unknown> = {};
-    if (insurance) fields.insurance_company = insurance.trim();
-    if (claim) fields.claim_number = claim.trim();
-    if (lossDate) fields.loss_date = lossDate;
-    if (deductible) fields.deductible = Number(deductible);
-    if (totalJobCost) fields.total_job_cost = Number(totalJobCost);
-    if (scope) fields.scope_of_work = scope.trim();
-    return fields;
-  }
-
-  function goPreview() {
-    if (!kind) return;
     start(async () => {
       try {
         const preview = await loadTemplateForPreview({
           prospectId,
-          templateKind: kind,
-          fields: buildFields(),
+          templateKind: k,
+          fields: {},
         });
         setTemplateVersionId(preview.templateVersionId);
         setBaselineContent(preview.baselineContent);
@@ -134,11 +106,10 @@ export function NewDocumentDialog({
     if (!kind) return;
     start(async () => {
       try {
-        const baseFields = buildFields();
         const payload: Parameters<typeof createDocument>[0] = {
           prospectId,
           templateKind: kind,
-          fields: baseFields,
+          fields: {},
           finalContent: finalContent as never,
           baselineContent: baselineContent as never,
           fieldOverrides: baselineValues,
@@ -165,7 +136,7 @@ export function NewDocumentDialog({
         if (!v) reset();
       }}
     >
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="sm:max-w-2xl max-h-[92vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-orange-100 text-orange-700">
@@ -175,7 +146,6 @@ export function NewDocumentDialog({
           </DialogTitle>
           <DialogDescription>
             {step === "template" && "Pick a template to generate."}
-            {step === "fields" && "Fill in the details — all fields optional."}
             {step === "preview" && "Review and adjust the document. Any edits are logged for the owner. The original template is unchanged."}
             {step === "done" && "Document is ready."}
           </DialogDescription>
@@ -196,114 +166,6 @@ export function NewDocumentDialog({
                 </p>
               </button>
             ))}
-          </div>
-        )}
-
-        {step === "fields" && kind && (
-          <div className="space-y-3 pt-2">
-            {kind === "3rd_party_auth" && (
-              <>
-                <FieldGroup>
-                  <Label>Insurance carrier</Label>
-                  <Input
-                    value={insurance}
-                    onChange={(e) => setInsurance(e.target.value)}
-                    placeholder="State Farm"
-                  />
-                </FieldGroup>
-                <FieldGroup>
-                  <Label>Claim #</Label>
-                  <Input
-                    value={claim}
-                    onChange={(e) => setClaim(e.target.value)}
-                    placeholder="STF-2026-001"
-                  />
-                </FieldGroup>
-                <FieldGroup>
-                  <Label>Date of loss</Label>
-                  <Input
-                    type="date"
-                    value={lossDate}
-                    onChange={(e) => setLossDate(e.target.value)}
-                  />
-                </FieldGroup>
-              </>
-            )}
-
-            {(kind === "acv_contract" || kind === "rcv_contract") && (
-              <>
-                <div className="grid grid-cols-2 gap-3">
-                  <FieldGroup>
-                    <Label>Insurance carrier</Label>
-                    <Input
-                      value={insurance}
-                      onChange={(e) => setInsurance(e.target.value)}
-                    />
-                  </FieldGroup>
-                  <FieldGroup>
-                    <Label>Claim #</Label>
-                    <Input
-                      value={claim}
-                      onChange={(e) => setClaim(e.target.value)}
-                    />
-                  </FieldGroup>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <FieldGroup>
-                    <Label>Deductible ($)</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={deductible}
-                      onChange={(e) => setDeductible(e.target.value)}
-                    />
-                  </FieldGroup>
-                  <FieldGroup>
-                    <Label>Total job cost ($)</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={totalJobCost}
-                      onChange={(e) => setTotalJobCost(e.target.value)}
-                    />
-                  </FieldGroup>
-                </div>
-                <FieldGroup>
-                  <Label>Scope of work</Label>
-                  <Textarea
-                    rows={4}
-                    value={scope}
-                    onChange={(e) => setScope(e.target.value)}
-                    placeholder="Tear-off + replacement, gutter repair, …"
-                  />
-                </FieldGroup>
-              </>
-            )}
-
-            <div className="flex gap-2 pt-2">
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={() => setStep("template")}
-                disabled={pending}
-              >
-                Back
-              </Button>
-              <Button
-                className="flex-1"
-                onClick={goPreview}
-                disabled={pending}
-              >
-                {pending ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Loading…
-                  </>
-                ) : (
-                  "Continue →"
-                )}
-              </Button>
-            </div>
           </div>
         )}
 
@@ -349,11 +211,11 @@ export function NewDocumentDialog({
                 </span>
               </label>
             )}
-            <div className="flex gap-2">
+            <div className="sticky bottom-0 -mx-4 flex gap-2 border-t bg-background/95 px-4 pt-3 pb-1 backdrop-blur">
               <Button
                 variant="outline"
                 className="flex-1"
-                onClick={() => setStep("fields")}
+                onClick={() => setStep("template")}
                 disabled={pending}
               >
                 Back
@@ -377,7 +239,7 @@ export function NewDocumentDialog({
                     Generating…
                   </>
                 ) : (
-                  "Generate document"
+                  "Save & generate"
                 )}
               </Button>
             </div>
@@ -386,7 +248,10 @@ export function NewDocumentDialog({
 
         {step === "done" && createdId && (
           <div className="space-y-3 pt-2">
-            <p className="text-sm">Document generated successfully.</p>
+            <p className="text-sm text-muted-foreground">
+              The company signature was applied automatically. The homeowner
+              will sign on mobile when the inspector arrives.
+            </p>
             <div className="flex flex-col gap-2 sm:flex-row">
               <Button
                 variant="outline"
@@ -396,15 +261,15 @@ export function NewDocumentDialog({
                   onOpenChange(false);
                 }}
               >
-                Close
+                Done
               </Button>
               <Button
                 className="flex-1"
                 onClick={() => {
-                  window.location.href = `/documents/${createdId}/sign`;
+                  window.location.href = `/documents/${createdId}`;
                 }}
               >
-                Sign now →
+                View document
               </Button>
             </div>
           </div>
@@ -412,8 +277,4 @@ export function NewDocumentDialog({
       </DialogContent>
     </Dialog>
   );
-}
-
-function FieldGroup({ children }: { children: React.ReactNode }) {
-  return <div className="space-y-1.5">{children}</div>;
 }

@@ -24,7 +24,7 @@ function thirdPartyAuth(): Section[] {
       p(
         'Homeowner authorizes {{contractor_name}} to inspect, document, photograph, and evaluate the property solely for the purpose of preparing a construction estimate and determining the scope of repairs required due to the reported loss.',
       ),
-      para(bold('Not an Insurance Adjusting Agreement')),
+      p('Not an Insurance Adjusting Agreement'),
       p(
         '{{contractor_name}} is not a public adjuster and does not provide services that constitute the interpretation of insurance policy coverage, negotiation of claim settlements, or representation of the Homeowner in an adjusting capacity.',
       ),
@@ -71,14 +71,21 @@ function thirdPartyAuth(): Section[] {
       b(
         'The Homeowner agrees to compensate {{contractor_name}} for all work performed up to termination, including inspections, photographs, documentation, estimates, and communication/negotiation with the insurance company.',
       ),
-      para(bold('Compensation Amount:'), plain(' The greater of:')),
-      b('Flat fee of $4,000, or', 2),
-      b('25% of total approved insurance claim (RCV + Supplements).', 2),
-      para(
-        plain('Payment is due immediately upon termination. This fee is '),
-        bold('not a penalty'),
-        plain(', but a fair estimate of services rendered.'),
-      ),
+      {
+        type: 'bullet',
+        level: 1,
+        spans: [bold('Compensation Amount:'), plain(' The greater of:')],
+      },
+      b('25% of total approved insurance claim (ACV, RCV + Supplements).', 2),
+      {
+        type: 'bullet',
+        level: 1,
+        spans: [
+          plain('Payment is due immediately upon termination. This fee is '),
+          bold('not a penalty'),
+          plain(', but a fair estimate of services rendered.'),
+        ],
+      },
     ]),
   ]
 }

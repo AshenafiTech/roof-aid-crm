@@ -590,13 +590,14 @@ export function renderTemplateHeader(ctx: RenderContext, fields: HeaderFields) {
     ctx.state.y -= lineHeight
   }
 
-  fieldLine('Claim number', fields.claim_number || '________________________________')
-  fieldLine('Date of loss', fields.loss_date || '________________________________')
-  fieldLine('Date', fields.today || '')
+  const FILL = '________________________________'
+  fieldLine('Claim number', fields.claim_number || FILL)
+  fieldLine('Date of loss', fields.loss_date || FILL)
+  fieldLine('Date', fields.today || FILL)
   ctx.state.y -= 4
-  fieldLine('Homeowner(s)', fields.homeowner_name || '—', { boldValue: true })
-  fieldLine('Property Address', fields.property_address || '________________________________')
-  fieldLine('Contractor', fields.contractor_name || '')
+  fieldLine('Homeowner(s)', fields.homeowner_name || FILL, { boldValue: true })
+  fieldLine('Property Address', fields.property_address || FILL)
+  fieldLine('Contractor', fields.contractor_name || FILL)
   ctx.state.y -= 8
 }
 
