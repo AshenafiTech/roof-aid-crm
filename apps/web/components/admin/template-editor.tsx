@@ -365,8 +365,9 @@ function FixedFooterHint() {
       <p className="font-medium">Fixed signature block</p>
       <p className="mt-0.5 text-xs text-muted-foreground">
         Every generated document ends with the standard signature lines
-        (Homeowner, Co-Homeowner, Contractor / Roof AID Representative).
-        This stays consistent across templates and isn&apos;t editable.
+        (Homeowner, Co-Homeowner, Contractor Acceptance, and the
+        Representative line — labeled with your company name). This stays
+        consistent across templates and isn&apos;t editable.
       </p>
     </Card>
   );
