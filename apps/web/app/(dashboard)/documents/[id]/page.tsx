@@ -44,6 +44,29 @@ function formatShort(iso: string | null): string | null {
   });
 }
 
+// Declared above the page function — Turbopack's RSC transform doesn't
+// hoist later `function` declarations into the server component closure
+// the way the language spec does.
+function CustomerField({
+  label,
+  icon: Icon,
+  children,
+}: {
+  label: string;
+  icon?: typeof MapPin;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="min-w-0">
+      <p className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+        {Icon && <Icon className="h-3 w-3" />}
+        {label}
+      </p>
+      <div className="mt-0.5 truncate">{children}</div>
+    </div>
+  );
+}
+
 export default async function DocumentDetailPage({
   params,
   searchParams,
@@ -287,26 +310,6 @@ export default async function DocumentDetailPage({
           </pre>
         </details>
       )}
-    </div>
-  );
-}
-
-function CustomerField({
-  label,
-  icon: Icon,
-  children,
-}: {
-  label: string;
-  icon?: typeof MapPin;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="min-w-0">
-      <p className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-        {Icon && <Icon className="h-3 w-3" />}
-        {label}
-      </p>
-      <div className="mt-0.5 truncate">{children}</div>
     </div>
   );
 }
