@@ -114,7 +114,10 @@ serve(async (req) => {
     .select('name')
     .eq('id', prospect.tenant_id)
     .single()
-  const tenantName = tenantRow?.name?.trim() || 'Roof AID'
+  // Contractor reads in ALL CAPS throughout the document (header field,
+  // body token substitutions, and the rep signature label). Matches the
+  // visual convention used in the reference legal document.
+  const tenantName = (tenantRow?.name?.trim() || 'Roof AID').toUpperCase()
 
   // 2. Resolve template:
   //    - Telefonista-edited (final_content) → use exactly.
